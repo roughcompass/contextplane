@@ -103,7 +103,7 @@ long after what it carried should be gone.
 
 | Record class | Legal basis | Retention | Payload | On erasure |
 |---|---|---|---|---|
-| `task_checkpoint` | contract performance | — | — | minimize + tombstone: body fields cleared, id/sequence/predecessor/digest kept |
+| `intent_checkpoint` | contract performance | — | — | minimize + tombstone: body fields cleared, id/sequence/predecessor/digest kept |
 | `context_receipt` | legitimate interest (verification) | 730d | — | minimize + tombstone: items and exclusions minimized, envelope kept |
 | `receipt_item` | legitimate interest (verification) | — | — | minimize: item key replaced with a tenant-keyed erased marker |
 | `receipt_exclusion` | legitimate interest (verification) | — | — | minimize: item key replaced, block and withholding reason kept |

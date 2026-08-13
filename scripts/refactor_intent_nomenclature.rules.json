@@ -950,6 +950,59 @@
       "reason": "A block that runs between a downgrade and its re-upgrade is below the nomenclature revision, so it must ask the database for the names that revision restored. The pre-cut spelling is the schema at that point, not residue.",
       "immutability_basis": "Schema of an already-applied revision, addressed from a downgrade window.",
       "verification": "Two named files and three tokens; the downgrade/re-upgrade tests fail if the name is wrong in either direction, so an entry that stopped being needed cannot sit here unnoticed."
+    },
+    {
+      "id": "SV-09",
+      "category": "refactor-specification",
+      "include_paths": [
+        "scripts/refactor_intent_nomenclature.py",
+        "scripts/refactor_intent_nomenclature.rules.json",
+        "tests/unit/test_refactor_intent_nomenclature.py"
+      ],
+      "token_pattern": "[Tt]ask",
+      "reason": "These three files are the rename's specification and the tests that hold it, so every Task-domain token in them is either the left-hand side of a rule, a probe pattern the residue scanner matches with, or a fixture asserting that a rewrite happened. A manifest mapping task_memory to intent_memory has to contain the literal task_memory; the scanner has to contain the probes it scans with, which is why entries like TASK = \"task\" and ambiguous_task_ids appear; and the tests have to contain both spellings to assert anything at all. Renaming any of it would delete the rename.",
+      "immutability_basis": "Left-hand side and probe vocabulary of the rename it defines; removing the pre-image removes the rule.",
+      "verification": "The breadth is on the token side and the narrowness is on the path side, deliberately: three exact files, none of them a product module, so no shipped surface can hide behind this. Enumerating tokens instead was tried and is the wrong shape -- it silently stops covering the engine the moment a probe is added, which is exactly when the check would start reporting on its own scanner. What still constrains these files is stronger than a residue scan: the engine's unit suite asserts every rule's pre-image and post-image, and check reports a digest mismatch the moment the manifest's own bytes move."
+    },
+    {
+      "id": "SV-10",
+      "category": "arc-v1-evidence",
+      "include_paths": [
+        "tests/fixtures/arc_authoring/expected_impact_envelope_v1/*",
+        "tests/fixtures/arc_authoring/observation_class_predicate_v1/*",
+        "tests/fixtures/arc_authoring/field_provenance_v1/*",
+        "tests/fixtures/arc_authoring/source_approval_evidence_v1/*"
+      ],
+      "token_pattern": "^(?:task_kind|task_kinds)$",
+      "reason": "The same class as SV-05, which covers artifact_semantics_v1 only. These four V1 fixture subtrees carry the V1 field spelling because their digests identify these exact bytes; the V1 verification suite reads them to prove the product can still verify what it signed before the rename.",
+      "immutability_basis": "Signed V1 canonical artifact, identified by digest.",
+      "verification": "Regenerating the V1 vectors must leave every one of these subtrees byte-identical, which the frozen-tree digest asserts."
+    },
+    {
+      "id": "SV-11",
+      "category": "arc-v1-evidence",
+      "include_paths": [
+        "tests/fixtures/arc_authoring/generate_vectors.py"
+      ],
+      "token_pattern": "^(?:task_kind|task_kinds|task_summary_template)$",
+      "reason": "Widens SV-07, which admitted only the scope enumeration. The generator emits the V1 field names into the V1 subtrees, so those literals are part of what it must keep producing byte-for-byte; renaming them would regenerate different bytes and invalidate every V1 digest.",
+      "immutability_basis": "Generator of signed V1 canonical artifacts.",
+      "verification": "Regenerate and diff: the V1 subtrees must be byte-identical afterwards."
+    },
+    {
+      "id": "SV-12",
+      "category": "v1-verification-surface",
+      "include_paths": [
+        "contextplane/arc/schemas/authoring_profile_shapes.py",
+        "contextplane/arc/schemas/canonical.py",
+        "tests/unit/test_arc_canonical_manifest.py",
+        "tests/unit/test_arc_authoring_profiles.py",
+        "tests/integration/test_arc_intent_migrations.py"
+      ],
+      "token_pattern": "^(?:task_kind|task_kinds|task_summary|task_summary_template)$",
+      "reason": "Active code that must keep naming the V1 field set, because the product authors V2 and still verifies V1. These are V1 schema literals and V1 artifact-kind values, not relational columns: authoring_profile_shapes.py binds them into the _V1 schema constants and says so at its own definitions, and canonical.py holds task_summary and intent_summary together in one optional-field set precisely because both versions are live. Renaming them does not rename a concept, it redefines what V1 means, and installing a renamed postimage was measured to turn twelve frozen fixture vectors red, four of them in a subtree this manifest marks immutable.",
+      "immutability_basis": "Field names of a published V1 contract the product still verifies against.",
+      "verification": "The V1 fixture vectors and the canonical-manifest suite are the control: they read these constants, so a rename here goes red there. Scoped to the two schema modules and the three suites that assert on them; no V2 authoring path is admitted, and the V2 spellings are unaffected."
     }
   ],
   "files": [
@@ -1151,7 +1204,7 @@
     {
       "path": "tests/conformance/test_rest_mcp_parity.py",
       "preimage_sha256": "1de9297147372244748c1e13e5f3108239be8ae3d0053927e4e2be299e12d956",
-      "postimage_sha256": "544be344423033e90ee3f402bc76371320f7226dff024fabd5503157b288edf2"
+      "postimage_sha256": "dd7967d3e33aecaa5a18d845d04f172196e383120762b0a01fdc2cfd68d1f388"
     },
     {
       "path": "tests/conformance/test_task_memory_schemas.py",
@@ -1406,7 +1459,7 @@
     {
       "path": "contextplane/api/schemas/arc_authoring_profiles.py",
       "preimage_sha256": "7b61f296de3be9eb5ca04d771c531e1502f3cd48b437ac1304abef0ccf309db3",
-      "postimage_sha256": "f716c1f103b79e403d637c5f5c10c29f2300decf5515c3fce4139965fe8cf63e"
+      "postimage_sha256": "f41486108f73d1071ad819c46b03a9dfa0b1115806e88a001e51bc7f6188fe29"
     },
     {
       "path": "contextplane/arc/models.py",
@@ -1416,12 +1469,12 @@
     {
       "path": "contextplane/arc/schemas/authoring_profile_shapes.py",
       "preimage_sha256": "df55a11467b937e0da5820b86da87000bf546f65a674f8a29d15f7f7edfab98a",
-      "postimage_sha256": "7de63e692cf93ab3bad0c38c481846635a423ddff70d9ae0f0ed8b493df7ce21"
+      "postimage_sha256": "2eaa14df297ba711060ccee7c5985a909aeba36d6e9027de5aa044f7a8473595"
     },
     {
       "path": "contextplane/arc/schemas/canonical.py",
       "preimage_sha256": "d3265834484786e872a28229b7b2f4e6c1201aa2e15de0153e9b8a65a9ab7687",
-      "postimage_sha256": "c477a47d333304e53ab7a37729c5906451beef2990ff51e6bd5456768ef1d327"
+      "postimage_sha256": "da47325bdd94ab40c2dd2cf6b83f6c4f1c958b26c26f574c4d6460274c0160c9"
     },
     {
       "path": "contextplane/arc/service/approved_exceptions.py",
@@ -1451,17 +1504,17 @@
     {
       "path": "contextplane/arc/service/corpus.py",
       "preimage_sha256": "98b3932330ec84d9442cc2e431aa2bbf0f0b2907652fa0e2c43bcc782ae59511",
-      "postimage_sha256": "49eccebf95b69c4a8647a807be59b523fefe33e6351b13e6c54b651a3a633d7f"
+      "postimage_sha256": "c9cae6b8cd5988dff83fd067ed0e7880966f809b9fdc7c551d6ba9571a1c1aa9"
     },
     {
       "path": "contextplane/arc/service/envelope.py",
       "preimage_sha256": "9a9e2373fef2c3da8c897a02317fb1af9cf467b3fd5de20c6ea1e135cd734c0f",
-      "postimage_sha256": "d999f9068bdc8bc6fa7f3f157202c597453bee8972b361f10e2998b38d34f1f9"
+      "postimage_sha256": "c568971c25c49a02b0dda1445f5405a744fa49f17094badcaf8f0716c75b5e7e"
     },
     {
       "path": "contextplane/arc/service/provenance.py",
       "preimage_sha256": "0f274c804de9a39f29addff03fcc5cd4a8bc8d1334faa594310c7d8445351821",
-      "postimage_sha256": "533429a795c7dad70eddccd412a55b88323890000f658cf036c54bc95b2f68c7"
+      "postimage_sha256": "48cfff8c13940ba8683bdc963d8e73ec0e75500287f26fba3d2687776517696e"
     },
     {
       "path": "contextplane/arc/service/queries/materialisation.py",
@@ -1476,12 +1529,12 @@
     {
       "path": "contextplane/arc/service/replay_corpus.py",
       "preimage_sha256": "88d20a59cf4b9aecbd2e898fe65acf6a5b071c95ca352b794ffdcedff9741ec2",
-      "postimage_sha256": "a93c896a1227cd7c53a4f9f3dd5d1cc6b407bf6f774581cf566f4f11bd7f9edf"
+      "postimage_sha256": "62c8df5d68a6d725eb55fb275e3e2c19239f8181d07b70555eca0d4c923cca31"
     },
     {
       "path": "contextplane/arc/service/resolution.py",
       "preimage_sha256": "d434a5aecaf79942e104f7d594b9fd269085661df5b64093270f857f7ce353ea",
-      "postimage_sha256": "1efac11fdc97e634c780f1aeee87d2154f9c5cbda9c2381fbba1501afdcab8f8"
+      "postimage_sha256": "fefb8f5cd38afeaaae5e91735cbcc96961ddd21f1f55bd225807f3f7ae459491"
     },
     {
       "path": "contextplane/arc/service/risk.py",
@@ -1491,7 +1544,7 @@
     {
       "path": "contextplane/arc/service/selection.py",
       "preimage_sha256": "5ca8ca88119b41d2dafee5f732348ac161851585e85e9ae5444153e411a97d26",
-      "postimage_sha256": "8bb27d036d691b32022487652f2cf48904cd3e7a656e64b826fe68a6240b52a9"
+      "postimage_sha256": "78807af1d69d8411554fe007ed3ee0b7b32abdfd7a23a53caf6dd0c3d2fc9d5e"
     },
     {
       "path": "contextplane/arc/service/semantic_tests.py",
@@ -1501,12 +1554,12 @@
     {
       "path": "contextplane/arc/service/shadow.py",
       "preimage_sha256": "b9ed3695b9fa9c79d7b1801106a7dc22c14090658d5d0b395bfe782312ea3075",
-      "postimage_sha256": "650baead67ab00a21771dbecf79bf90c0036373f2b2a692d0a60d99421bfccc2"
+      "postimage_sha256": "871b0d5696f5423fae77759a06c7efbf45c15a1f852370091977d762da2973da"
     },
     {
       "path": "contextplane/arc/service/submission.py",
       "preimage_sha256": "d1269d4b3c28dcca084ba4d1e8f48a63f2b04af85e6471388900bcd6d12c8333",
-      "postimage_sha256": "fd484123bdea9ab5e08bceb9ef051d85d5d764d368bf32ca940571e0e3fa071c"
+      "postimage_sha256": "2df819817d6b178047d07a989922f588a6e6081821615ff16de30f2e57cba300"
     },
     {
       "path": "contextplane/arc/types.py",
@@ -1526,7 +1579,7 @@
     {
       "path": "tests/conformance/test_arc_authoring_mcp.py",
       "preimage_sha256": "652db512c719c08ed2d2f6d5be319a8db39a06088cb5b0d9624f77a4eac6caa8",
-      "postimage_sha256": "e56c02f0dedbec30ef8a96d39b0170da5a64b3dd0be5cab4d98245d897975f03"
+      "postimage_sha256": "bfcfe7791b1e3bc5cb659940e7af17788a146c98e345a34207dfc8504fdff3fb"
     },
     {
       "path": "tests/conformance/test_arc_tenant_isolation.py",
@@ -1536,17 +1589,17 @@
     {
       "path": "tests/helpers/arc_authoring_pipeline.py",
       "preimage_sha256": "91305fbdffb73b56ee76f8e7f75dd8043e5a0e5bd258dd3f15c4ff3bdb89a238",
-      "postimage_sha256": "69d3ab26c5f165ab04f99a2766c70af9840c5675c3426c43615f700443d467e0"
+      "postimage_sha256": "5f9cf8d49862d4c04004c3c0a5519a31832745b9c9a98e68dffb55fcb595bd62"
     },
     {
       "path": "tests/integration/test_arc_activation_predicates.py",
       "preimage_sha256": "e930f5e49404866850efcfc2c1924103b8bf38663656de9427ffa026fa97b263",
-      "postimage_sha256": "6edca638b8b06510067592577fddbed9f659afeb0dfb42054ff5605fbf7ed047"
+      "postimage_sha256": "15fd41367be972ec0eac0cf0118506163576124212fc3c06f70f0b2d03ad4509"
     },
     {
       "path": "tests/integration/test_arc_approval_race.py",
       "preimage_sha256": "4e4a5aa76a59c0323baf9090776249fa87de182f33211caa775dc156cf7ffcc4",
-      "postimage_sha256": "85e8f0312c78aaeebaadcef7f434c9f93cf5b2840d3558e27ccc9b5f2edda2d8"
+      "postimage_sha256": "378f3109d94eb447d0521125fc03aa140951ea815baba4f6483dee0be2cac46f"
     },
     {
       "path": "tests/integration/test_arc_approval_trust_cascade.py",
@@ -1566,7 +1619,7 @@
     {
       "path": "tests/integration/test_arc_authored_context_resolution.py",
       "preimage_sha256": "f4cde340a7ce9cd266449ad64f3014521bcccb3ad04fd0e96513966b24e0ab38",
-      "postimage_sha256": "d6fc964f89b7b26d4fd14c79770a84af524124b1455fb22bcdd294f2c3ec3e2b"
+      "postimage_sha256": "c2dc12846b68078d725f3f93f428b34e3dd5097d4cb0c2cc3f06a575af5a2bab"
     },
     {
       "path": "tests/integration/test_arc_concurrency.py",
@@ -1581,7 +1634,7 @@
     {
       "path": "tests/integration/test_arc_digest_chain.py",
       "preimage_sha256": "9b7b7eb54a3d5545273fe92960994c45e7556cf4a8b7c6267e327081b93ffa86",
-      "postimage_sha256": "a059a1603fac3a58181e212c07df7bfaccf28c6f2cea432623098bd82f896c50"
+      "postimage_sha256": "851aab662b2ebc57b89a5f2a0c2827fb5824e59abb7919290407ba54f46e79a7"
     },
     {
       "path": "tests/integration/test_arc_host_keys.py",
@@ -1591,7 +1644,7 @@
     {
       "path": "tests/integration/test_arc_post_activation_serving.py",
       "preimage_sha256": "0744d0184cc746500047fb5be12be75160594bac43dfc810f99728748717f7e1",
-      "postimage_sha256": "82c0c57ac86e568a1ed396e739f8dcaf2ce2bb2789b82dc345cf0cb2cea1da58"
+      "postimage_sha256": "5cb43ff1737983ef686f46dfcfbc2a94e75ae0f29e704b7a60c4e9f7f394c281"
     },
     {
       "path": "tests/integration/test_arc_replay.py",
@@ -1611,12 +1664,12 @@
     {
       "path": "tests/integration/test_arc_submission.py",
       "preimage_sha256": "7b6d3eefafa2cf683bb8dd988120c08efbfabd2c8cf279b0147e989de1942b1b",
-      "postimage_sha256": "9c089ea1ab24b1c03bd2c04bc0ab54a1b6d9878222c04fe5754f2aded89a6b9c"
+      "postimage_sha256": "e42b5c69bc7b88a418ad3de1d8846516e74935352307fb80ff266ee92f8c8da3"
     },
     {
       "path": "tests/integration/test_arc_validation.py",
       "preimage_sha256": "ece8b3bbd2cc9b5c60056d0cea6003a4aba3f9314b4a7d1388f286df87cf3c5e",
-      "postimage_sha256": "f607cbc782bc71187c1c87d4320997421c3d404eb9687202d248de8276cee0ca"
+      "postimage_sha256": "0bf5af20fbb99c5987a439352c68a44a2dcce586863f5ad3ed7a259e15975812"
     },
     {
       "path": "tests/perf/test_arc_latency.py",
@@ -1631,7 +1684,7 @@
     {
       "path": "tests/unit/test_arc_applicability.py",
       "preimage_sha256": "bb40f1b07019dc34d27ff36f81c4567d36aef6f456949f51a9b5612a8e7ee52e",
-      "postimage_sha256": "da81b5056f540f43ad28d2a5c91b8ca00b8d0e34bae3539a8c28599247a2827b"
+      "postimage_sha256": "ec4e582b72286fec28c215610735d5ef19cff0a790eb314b6ab363c4b34332ff"
     },
     {
       "path": "tests/unit/test_arc_attestation.py",
@@ -1641,7 +1694,7 @@
     {
       "path": "tests/unit/test_arc_authoring_profiles.py",
       "preimage_sha256": "b5a20f56ea34d03e65b8ec1a3b19f6b7a389bb0733a3134c140992f9867929ab",
-      "postimage_sha256": "89c92deb7798a374d88a455aec4e2c1812eb7b55b35b2b51036307498a021563"
+      "postimage_sha256": "3000e80fa75a18fff42d2018c3f369e1f4e3165efac46867c15c094c88ccc9ca"
     },
     {
       "path": "tests/unit/test_arc_authorization.py",
@@ -1651,57 +1704,57 @@
     {
       "path": "tests/unit/test_arc_canonical_manifest.py",
       "preimage_sha256": "436c41e321e30eeb793d3f7fa2f770fb280993acde6496a4feeef7aea8248557",
-      "postimage_sha256": "e69fdd27780e3fd62982b019be60eb7f2030b57783db40600c0415cf112876eb"
+      "postimage_sha256": "1065f1e67e4a6db228c8d203cec7b15484f3825040975699d012a8d91b13efa9"
     },
     {
       "path": "tests/unit/test_arc_determinism.py",
       "preimage_sha256": "2eca7e0b79738b2e45b281b4850de0a361af02d0864255d8669719ba82508c51",
-      "postimage_sha256": "379e6da76e12d819a4a952492a1b5b1532cecff453db8c5e27f4ff2ba94c2743"
+      "postimage_sha256": "69f55e8ae69af70e4bac1ed724e12174025e3b66bdd5627212ee4a846fda3959"
     },
     {
       "path": "tests/unit/test_arc_directive_types.py",
       "preimage_sha256": "1ce8eebcff85ede6903b05c30c49cf50818702d165dda0582eb2015dc28e919c",
-      "postimage_sha256": "9e92d12b1fd0e6299f980cce2eb8c8d84f124aaf045ee826e57bc1b0c639fc30"
+      "postimage_sha256": "cb3500475de4b2965353c3dcfade0a87d4375a4cd59f155e2a6749cc4bea6a5d"
     },
     {
       "path": "tests/unit/test_arc_envelope.py",
       "preimage_sha256": "a1f389501735c22292e0d720536782366c908f498ddaafd1586fe62b6be5cb5a",
-      "postimage_sha256": "06abae13044d2d4d6cde7bd7525a2b6de6c205b5171a036d21f8cd49b704991d"
+      "postimage_sha256": "3e3c011e06341573a117282265657b011c280d785598a8f1660feba5d7baa9f5"
     },
     {
       "path": "tests/unit/test_arc_materialisation.py",
       "preimage_sha256": "a918c6a61149b332b9d490f1e2ec29c44821712b7c5882aad122ace31d9e3a1a",
-      "postimage_sha256": "b099c22f4616e2e206b259426fb3c6b4452babb3b1c5908712db1f6631e27246"
+      "postimage_sha256": "f843ac633d5b17d968fdd5da931634f873499e482f75028b78072df8e13dc3b2"
     },
     {
       "path": "tests/unit/test_arc_provenance.py",
       "preimage_sha256": "48e2f0f701cc19042f0d0936052d20b16384202705cc4e626a73653da4e69d00",
-      "postimage_sha256": "976d347b3ba15e9c2fde8d7c88b9d8e1a365ca93e11145785a44e7a4d81bfb5d"
+      "postimage_sha256": "bb9447ecc70ff1490bf1fff6df1d1ae850cf2e33ce39da3406c98f935a785790"
     },
     {
       "path": "tests/unit/test_arc_replay_corpus.py",
       "preimage_sha256": "19f3f9bfbf0173d6421e06990e50260af95b1b240831e0cbfa1960e413a3e27c",
-      "postimage_sha256": "93bae84e5c87e4ff36ff5a990520e1b819f0fb8c2a44312e16927327bd6108a7"
+      "postimage_sha256": "80dbbbff5dec6e3bc844eb7135e987ecf73547b46106a92df862d295876d7ebf"
     },
     {
       "path": "tests/unit/test_arc_review_package.py",
       "preimage_sha256": "5d49551c49bf225b5b9e5857068699464b490be07c7394c2c5329aaf96afa699",
-      "postimage_sha256": "66315c4046a5ffedb045ffecff242609e0074993862ba2a60f08532e653f7032"
+      "postimage_sha256": "29c86032dec4ed9a32d602a973c55043587bd5064454ea72abe12efe35d58fdd"
     },
     {
       "path": "tests/unit/test_arc_risk.py",
       "preimage_sha256": "6fc903fd4efeee92a44683585bd1aa9b081cd8576cf8764074c4276cbe1fa774",
-      "postimage_sha256": "f99918bc2f34059c97c990c8e1890b540414776cefdb1fd752ccb1987c0a0177"
+      "postimage_sha256": "df02c248c43311323e4948933aa3c46bed61424f9119541222cc92b50e66cdfa"
     },
     {
       "path": "tests/unit/test_arc_selection.py",
       "preimage_sha256": "47a4e3d2d4ccfa051443801964bd49435b68a2db1a9b2ceaf98607f0a26021df",
-      "postimage_sha256": "eca49d06333c2e1b425edb455994d3fc7b720865ae23b51c3f49d6d08498fa08"
+      "postimage_sha256": "275138f07b946e60f50839e906b9c00a73aacbae9279bd016f48e6113314cfb4"
     },
     {
       "path": "tests/unit/test_arc_selection_eval_gate.py",
       "preimage_sha256": "e21781be267e9f2a352a5acca7b4cf667cd9bd93de20f2b6d0752d818ae909db",
-      "postimage_sha256": "3c312a3c7e2612fcc403caa4167cce46dc917b8efc21067cd5f5e232248a2222"
+      "postimage_sha256": "57bbec916ff98813fcd7f8c963f1776e2dbb7def92bbae712689d4a31623e006"
     },
     {
       "path": "tests/unit/test_arc_semantic_tests.py",
@@ -1711,7 +1764,7 @@
     {
       "path": "tests/unit/test_arc_shadow.py",
       "preimage_sha256": "1a544ea9744505c61ae67cd8f9ac7b123ea921c494132530ab299164621c881a",
-      "postimage_sha256": "ff0fc9c8843ac902d5a741f1bb889989b6073cccef8419fccb965583b1d93048"
+      "postimage_sha256": "87f44a43cc84bf32e24d01524e7acdaa93c92ea26c94a4d7216442cccef0ffa5"
     },
     {
       "path": "tests/unit/test_error_contract_http.py",
