@@ -91,7 +91,7 @@ from contextplane.arc.service.selection import (
     select,
     select_and_verify,
 )
-from contextplane.arc.types import ActionClass, DirectiveType, ResolutionStatus, IntentKind, IntentManifest
+from contextplane.arc.types import ActionClass, DirectiveType, IntentKind, IntentManifest, ResolutionStatus
 from contextplane.main import create_app
 from tests.helpers.arc_authoring_pipeline import AUTHORING_NOW as _NOW
 from tests.helpers.arc_authoring_pipeline import directive_row as _directive

@@ -38,9 +38,9 @@ from contextplane.arc.types import (
     AuthorityScope,
     Directive,
     DirectiveType,
-    ResolutionStatus,
     IntentKind,
     IntentManifest,
+    ResolutionStatus,
 )
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)

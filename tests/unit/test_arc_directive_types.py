@@ -15,9 +15,9 @@ from contextplane.arc.types import (
     ConstraintOperator,
     Directive,
     DirectiveType,
+    IntentKind,
     NormalizedConstraint,
     SatisfactionMode,
-    IntentKind,
     parse_action_class,
     parse_intent_kind,
 )

@@ -20,9 +20,9 @@ from contextplane.arc.types import (
     ConflictSubjectKey,
     Directive,
     DirectiveType,
-    NormalizedConstraint,
     IntentKind,
     IntentManifest,
+    NormalizedConstraint,
 )
 
 _T1 = uuid.UUID("aaaaaaaa-0000-4000-8000-000000000001")

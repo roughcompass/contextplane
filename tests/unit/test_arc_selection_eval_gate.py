@@ -60,10 +60,10 @@ from contextplane.arc.types import (
     ConflictSubjectKey,
     Directive,
     DirectiveType,
-    NormalizedConstraint,
-    ResolutionStatus,
     IntentKind,
     IntentManifest,
+    NormalizedConstraint,
+    ResolutionStatus,
 )
 
 _FIXTURE_PATH = Path(__file__).parent.parent.parent / "eval" / "fixtures" / "arc_selection_cases.json"

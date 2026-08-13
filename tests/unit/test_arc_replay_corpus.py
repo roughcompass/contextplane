@@ -95,7 +95,9 @@ def test_generate_corpus_includes_one_match_for_every_envelope_item() -> None:
         envelope_items=items, scope_predicate_digest="a" * 64, applicability_baseline_digest="b" * 64
     )
     matches = [
-        c for c in generated.classes if c.get("intent_kind") == ["code_change"] and c.get("environment") == ["production"]
+        c
+        for c in generated.classes
+        if c.get("intent_kind") == ["code_change"] and c.get("environment") == ["production"]
     ]
     assert matches, "at least one generated class must match the item's own predicate exactly"
 

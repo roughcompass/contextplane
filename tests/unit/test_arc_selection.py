@@ -23,10 +23,10 @@ from contextplane.arc.types import (
     ConflictSubjectKey,
     Directive,
     DirectiveType,
-    NormalizedConstraint,
-    ResolutionStatus,
     IntentKind,
     IntentManifest,
+    NormalizedConstraint,
+    ResolutionStatus,
 )
 
 _T1 = uuid.UUID("aaaaaaaa-0000-4000-8000-000000000001")
@@ -188,7 +188,10 @@ def test_a_non_matching_rule_contributes_nothing() -> None:
         directive_id=uuid.uuid4(), revision_id=rid, directive_type=DirectiveType.CITATION_ONLY, source_anchor="a#1"
     )
     rule = ApplicabilityRule(
-        rule_id=uuid.uuid4(), revision_id=rid, scope=AuthorityScope.GLOBAL, intent_kinds=frozenset({IntentKind.DEPLOYMENT})
+        rule_id=uuid.uuid4(),
+        revision_id=rid,
+        scope=AuthorityScope.GLOBAL,
+        intent_kinds=frozenset({IntentKind.DEPLOYMENT}),
     )
     result = select(_inputs(candidates=((directive, rule, _NOW),)))
     assert result.mandatory == ()

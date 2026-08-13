@@ -31,9 +31,9 @@ from contextplane.arc.types import (
     ConflictSubjectKey,
     Directive,
     DirectiveType,
-    NormalizedConstraint,
     IntentKind,
     IntentManifest,
+    NormalizedConstraint,
 )
 
 SEED = 20260730
