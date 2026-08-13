@@ -51,6 +51,7 @@ import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Final
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -97,6 +98,12 @@ from run_integration_tests import forbidden_variables
 #: reachable from the command line: a caller who could choose the candidates
 #: could choose the one that passes.
 SCALE_CANDIDATES: Final = (1, 2, 4, 8)
+
+# `sockaddr_un.sun_path` is 104 bytes on Darwin and 108 on Linux. The smaller of
+# the two is the portable bound, and it is checked rather than assumed because
+# exceeding it surfaces as a bare OSError from inside socketserver with no
+# mention of the path that caused it.
+_SUN_PATH_LIMIT: Final = 104
 
 #: One warm-up, then three measured runs, per candidate. The warm-up exists
 #: because the first run of anything pays for a cold page cache and a cold
@@ -728,22 +735,46 @@ def run_mode(arguments: argparse.Namespace, environ: Mapping[str, str]) -> Path:
     lease = acquire_lease(evidence_root / ".leases", provider=provider)
     broker = Broker(secret=secret, consumed_root=evidence_root / ".consumed")
     try:
-        # The socket lives beside the sequence's own evidence and dies with it.
         # A control is only authorization if something is listening to
         # authenticate it, and until this was stood up every sealed child
         # refused to collect -- correctly, since a control with nobody to
         # present it to is a file, not a permission.
-        endpoint = evidence_root / ".broker" / f"{sequence.sequence_id}.sock"
-        with BrokerServer(broker=broker, path=endpoint) as server:
-            results = execute_sequence(
-                sequence,
-                plans,
-                lease=lease,
-                secret=secret,
-                environment=child_environment(environ),
-                product_root=product_root,
-                server=server,
-            )
+        #
+        # The socket does NOT live beside the sequence's evidence, and cannot.
+        # `sockaddr_un.sun_path` is 104 bytes on this platform and 108 on Linux,
+        # and an evidence-root path is already most of that before the socket
+        # name is appended: under a linked worktree it measured 117 bytes and in
+        # a canonical checkout 108, so binding there failed with a bare
+        # "AF_UNIX path too long" before the first child ran -- in both
+        # locations, and on any checkout deeper than a very shallow one.
+        #
+        # Relocating it costs no integrity. The endpoint is a runtime rendezvous
+        # passed to the child in the environment; it is never recorded in
+        # evidence and never verified, because what authorizes a child is the
+        # HMAC control it presents, not where it presented it. A short private
+        # directory is therefore the correct home: 0700 from `mkdtemp`, removed
+        # with the sequence, and named so a leftover is attributable.
+        with TemporaryDirectory(prefix="cp-broker-") as broker_directory:
+            endpoint = Path(broker_directory) / "b.sock"
+            if len(str(endpoint).encode()) >= _SUN_PATH_LIMIT:
+                # Named rather than left to surface as errno 63 from deep inside
+                # socketserver, which is what made the original failure read as
+                # unrelated to path length.
+                msg = (
+                    f"broker endpoint {endpoint} is {len(str(endpoint).encode())} bytes, at or over the "
+                    f"{_SUN_PATH_LIMIT}-byte limit for a Unix socket path; set TMPDIR to something shorter"
+                )
+                raise GateError(msg)
+            with BrokerServer(broker=broker, path=endpoint) as server:
+                results = execute_sequence(
+                    sequence,
+                    plans,
+                    lease=lease,
+                    secret=secret,
+                    environment=child_environment(environ),
+                    product_root=product_root,
+                    server=server,
+                )
         # Admission closes before publication and stays closed: nothing outside
         # this sequence may present a control while its manifest is written.
         broker.close_admission()
