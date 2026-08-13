@@ -1,0 +1,67 @@
+{
+  "author_issuer": "https://idp.registry.example/",
+  "author_subject": "author-1",
+  "created_at": "2026-01-06T09:00:00Z",
+  "envelope_id": "00000000-0000-4000-8000-000000000040",
+  "items": [
+    {
+      "class_predicate": {
+        "capability_ids": [
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "data_sensitivity_tier": [
+          "confidential"
+        ],
+        "domain_ids": [
+          "payments"
+        ],
+        "environment": [
+          "production"
+        ],
+        "intent_kind": [
+          "code_change"
+        ],
+        "profile": "arc_observation_class_predicate_v2",
+        "requested_action_classes": [
+          "merge"
+        ]
+      },
+      "delta_code": "newly_selected",
+      "item_id": "item-1",
+      "maximum_count": 50,
+      "minimum_count": 1,
+      "rationale_code": "mandatory_rule_widens_reach"
+    },
+    {
+      "class_predicate": {
+        "capability_ids": [
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "data_sensitivity_tier": [
+          "confidential"
+        ],
+        "domain_ids": [
+          "billing"
+        ],
+        "environment": [
+          "production"
+        ],
+        "intent_kind": [
+          "release"
+        ],
+        "profile": "arc_observation_class_predicate_v2",
+        "requested_action_classes": [
+          "merge"
+        ]
+      },
+      "delta_code": "conflict_changed",
+      "item_id": "item-2",
+      "maximum_count": null,
+      "minimum_count": 0,
+      "rationale_code": "supersedes_prior_billing_directive"
+    }
+  ],
+  "profile": "arc_expected_impact_envelope_v2",
+  "proposal_id": "00000000-0000-4000-8000-000000000003",
+  "proposal_version": 1.5
+}

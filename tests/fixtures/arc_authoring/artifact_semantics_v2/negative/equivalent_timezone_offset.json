@@ -1,0 +1,123 @@
+{
+  "applicability": [
+    {
+      "action_classes": [
+        "merge"
+      ],
+      "capability_ids": [
+        "00000000-0000-4000-8000-000000000006"
+      ],
+      "capability_labels": [
+        "payments.write"
+      ],
+      "data_sensitivity_tiers": [
+        "confidential"
+      ],
+      "domain_ids": [
+        "payments"
+      ],
+      "effective_from": "2026-01-06T00:00:00Z",
+      "effective_until": null,
+      "environments": [
+        "production"
+      ],
+      "intent_kinds": [
+        "code_change"
+      ],
+      "is_mandatory": true,
+      "rule_id": "00000000-0000-4000-8000-000000000111",
+      "scope": "tenant",
+      "target_tenant_id": "00000000-0000-4000-8000-000000000005"
+    },
+    {
+      "action_classes": null,
+      "capability_ids": null,
+      "capability_labels": null,
+      "data_sensitivity_tiers": null,
+      "domain_ids": null,
+      "effective_from": null,
+      "effective_until": null,
+      "environments": null,
+      "intent_kinds": null,
+      "is_mandatory": false,
+      "rule_id": "00000000-0000-4000-8000-000000000112",
+      "scope": "global",
+      "target_tenant_id": null
+    }
+  ],
+  "applicability_baseline_version": "2026-01-01",
+  "approved_retention_floor_days": 400,
+  "artifact_id": "00000000-0000-4000-8000-000000000001",
+  "content_classification": "confidential",
+  "detail_audience": "agent_and_human",
+  "directives": [
+    {
+      "accepted_verifier_classes": [
+        "retention_attestation_provider"
+      ],
+      "accepted_verifier_ids": [
+        "verifier-retention-1"
+      ],
+      "compact_statement_plaintext": "Data retention for policy documents must not exceed 400 days.",
+      "compact_statement_plaintext_digest": "fca81f80ecb4249999577e9be942f65e2fae5db0b3d3cc844c368bc49faeba12",
+      "conflict_key_action_class": "data_retention",
+      "conflict_key_constraint_operator": "lte_days",
+      "conflict_key_constraint_value": "400",
+      "conflict_key_modality": "must_not",
+      "conflict_key_namespace": "arc.retention",
+      "conflict_key_operation": "retain",
+      "conflict_key_schema_version": 1,
+      "conflict_key_subject_selector": "capability:*",
+      "conflict_key_target_selector": "domain:payments",
+      "conflict_subject_digest": "246ce342ca0d8f277b771f905b0fd0b8a4a54e186c498d5e0234bcb6b3e10f0b",
+      "created_at": "2026-01-05T12:15:00Z",
+      "delegable_exception": false,
+      "directive_id": "00000000-0000-4000-8000-000000000101",
+      "directive_type": "verify_before_action",
+      "required_evidence_type": "retention_attestation",
+      "satisfaction_mode": "signed_result",
+      "source_anchor": "docs-cms://policy/data-retention/rev-42#section-2",
+      "verification_max_age_seconds": 86400
+    },
+    {
+      "accepted_verifier_classes": null,
+      "accepted_verifier_ids": null,
+      "compact_statement_plaintext": "Payments data is classified confidential per policy section 5.",
+      "compact_statement_plaintext_digest": "b1f39ba0bb3c5e49b69f8646f3e0e28133d0b0b0b6d4b3e24d4e14d2c725ba03",
+      "conflict_key_action_class": null,
+      "conflict_key_constraint_operator": null,
+      "conflict_key_constraint_value": null,
+      "conflict_key_modality": null,
+      "conflict_key_namespace": null,
+      "conflict_key_operation": null,
+      "conflict_key_schema_version": 1,
+      "conflict_key_subject_selector": null,
+      "conflict_key_target_selector": null,
+      "conflict_subject_digest": null,
+      "created_at": "2026-01-05T12:16:00Z",
+      "delegable_exception": true,
+      "directive_id": "00000000-0000-4000-8000-000000000102",
+      "directive_type": "citation_only",
+      "required_evidence_type": null,
+      "satisfaction_mode": null,
+      "source_anchor": "docs-cms://policy/data-retention/rev-42#section-5",
+      "verification_max_age_seconds": null
+    }
+  ],
+  "initial_freshness_basis": "connector_verified",
+  "kind": "directive_bundle",
+  "materialiser_profile": "arc_materialiser_v2",
+  "materialiser_version": "1.0.0",
+  "owning_scope": "tenant",
+  "owning_tenant_id": "00000000-0000-4000-8000-000000000005",
+  "profile": "arc_artifact_semantics_v2",
+  "projection_schema_version": 1,
+  "review_expires_at": "2027-01-05T14:00:00+02:00",
+  "reviewed_baseline_revision_id": null,
+  "revision_id": "00000000-0000-4000-8000-000000000002",
+  "source_approval_evidence_digest": "322147dfe67c2599cafb42dc7efe9eb3784b98e858d106dd91fd26de1da1b3b5",
+  "source_content_digest": "d1b083aed51ee7dd2bb242ce872562d7d989483e11b986a4153e73d1f3fb5c31",
+  "source_revision_locator": "docs-cms://policy/data-retention/rev-42",
+  "source_system": "docs-cms",
+  "visibility": "standard"
+}

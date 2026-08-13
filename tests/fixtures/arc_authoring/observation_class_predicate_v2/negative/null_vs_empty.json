@@ -1,0 +1,19 @@
+{
+  "capability_ids": [
+    "00000000-0000-4000-8000-000000000006"
+  ],
+  "data_sensitivity_tier": [
+    "confidential"
+  ],
+  "domain_ids": [
+    "payments"
+  ],
+  "environment": [
+    "production"
+  ],
+  "intent_kind": [],
+  "profile": "arc_observation_class_predicate_v2",
+  "requested_action_classes": [
+    "merge"
+  ]
+}

@@ -95,7 +95,7 @@ def _load_fixture_case(profile: str, case_id: str) -> dict[str, Any]:
 
 def test_build_canonical_evidence_reuses_authoring_profiles_and_is_not_a_second_canonicalizer() -> None:
     """`build_canonical_evidence` must call straight through to
-    `authoring_profiles.canonicalize_artifact_revision_v1` -- asserted by
+    `authoring_profiles.canonicalize_artifact_revision_v2` -- asserted by
     AST inspection of this module's own source, not merely by behavioral
     coincidence, so a future edit that inlines a hand-rolled JSON dump here
     instead fails this test rather than silently becoming a third
@@ -106,7 +106,7 @@ def test_build_canonical_evidence_reuses_authoring_profiles_and_is_not_a_second_
     calls = {
         node.func.attr for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
     }
-    assert "canonicalize_artifact_revision_v1" in calls
+    assert "canonicalize_artifact_revision_v2" in calls
 
 
 def test_canonical_bytes_match_the_authoritative_fixture() -> None:
@@ -118,7 +118,7 @@ def test_canonical_bytes_match_the_authoritative_fixture() -> None:
     test cannot drift from it silently. Mirrors `test_arc_enrollment.py`'s
     identically-shaped proof for `arc_approval_verifier_enrollment_v1`.
     """
-    fixture = _load_fixture_case("arc_artifact_revision_v1", "typical")
+    fixture = _load_fixture_case("arc_artifact_revision_v2", "typical")
     raw = fixture["input"]
 
     canonical_bytes = acv.build_canonical_evidence(

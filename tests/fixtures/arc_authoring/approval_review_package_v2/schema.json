@@ -1,0 +1,161 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "artifact_semantics_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "baseline_diff_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "expected_impact_envelope_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "field_provenance": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "author_issuer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "author_subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "evidence_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "field_path": {
+            "type": "string"
+          },
+          "provenance_class": {
+            "enum": [
+              "source_backed",
+              "human_judgment",
+              "server_derived"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "field_path",
+          "provenance_class",
+          "evidence_digest",
+          "author_issuer",
+          "author_subject"
+        ],
+        "type": "object"
+      },
+      "type": "array",
+      "x-array-kind": "ordered",
+      "x-order-key": "field_path"
+    },
+    "profile": {
+      "const": "arc_approval_review_package_v2",
+      "type": "string"
+    },
+    "proposal_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "proposal_version": {
+      "type": "number"
+    },
+    "risk_algorithm_version": {
+      "type": "string"
+    },
+    "risk_classification": {
+      "enum": [
+        "global_mandatory",
+        "global_non_mandatory",
+        "tenant_mandatory",
+        "tenant_non_mandatory",
+        "domain_mandatory",
+        "domain_non_mandatory",
+        "capability_mandatory",
+        "capability_non_mandatory",
+        "intent_mandatory",
+        "intent_non_mandatory"
+      ],
+      "type": "string"
+    },
+    "semantic_tests": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "actual_result_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "canonical_input_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "expected_result_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "test_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "test_id",
+          "canonical_input_digest",
+          "expected_result_digest",
+          "actual_result_digest",
+          "passed"
+        ],
+        "type": "object"
+      },
+      "type": "array",
+      "x-array-kind": "ordered",
+      "x-order-key": "test_id"
+    },
+    "source_approval_evidence_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "submitted_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "submitted_by_issuer": {
+      "type": "string"
+    },
+    "submitted_by_subject": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile",
+    "artifact_semantics_digest",
+    "source_approval_evidence_digest",
+    "field_provenance",
+    "semantic_tests",
+    "risk_classification",
+    "risk_algorithm_version",
+    "expected_impact_envelope_digest",
+    "baseline_diff_digest",
+    "proposal_id",
+    "proposal_version",
+    "submitted_by_issuer",
+    "submitted_by_subject",
+    "submitted_at"
+  ],
+  "type": "object"
+}
