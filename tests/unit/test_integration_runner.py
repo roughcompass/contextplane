@@ -854,6 +854,61 @@ def test_the_target_is_red_when_a_test_fails(tmp_path: Path) -> None:
     assert "'failed': 1" in result.stdout
 
 
+SKIPPING_SUITE = {
+    "test_skipping.py": (
+        "import pytest\n\n\n"
+        '@pytest.mark.skip(reason="opted out, the way a missing credential opts a module out")\n'
+        "def test_opts_out() -> None:\n    raise AssertionError('a skipped node must not execute')\n"
+    ),
+}
+
+
+def test_the_target_is_green_when_a_test_skips(tmp_path: Path) -> None:
+    """A skip is an outcome the suite disclosed, so it does not fail the target.
+
+    Measured against the shipped tier this is not hypothetical: the tests that
+    opt out on an absent vendor credential or an unreachable stack skip on
+    every machine without them, and counting those as unsuccessful made this
+    target unable to exit zero anywhere -- including CI, which has neither.
+
+    The denominator is asserted alongside the exit status. A skip that dropped
+    out of the reconciliation would also produce a green run, and it would be
+    the shortened-denominator defect wearing this case's expected result.
+    """
+    build_fixture_repository(tmp_path, suite={**PASSING_SUITE, **SKIPPING_SUITE})
+
+    result = make_test_integration(tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "3 nodes reconciled" in result.stdout
+    assert "'skipped': 1" in result.stdout
+    assert "'passed': 2" in result.stdout
+
+
+def test_a_skip_in_the_same_run_does_not_excuse_a_failure(tmp_path: Path) -> None:
+    """The discriminator for the case above, and the reason it is a pair.
+
+    Exempting skips is one word away from exempting everything that is not a
+    pass. Both halves would look identical from a green suite, so the failure
+    is put in the same run as the skip: the target must still go red, and name
+    the failure rather than the skip.
+    """
+    build_fixture_repository(
+        tmp_path,
+        suite={
+            **PASSING_SUITE,
+            **SKIPPING_SUITE,
+            "test_failing.py": "def test_broken() -> None:\n    assert False\n",
+        },
+    )
+
+    result = make_test_integration(tmp_path)
+
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "'failed': 1" in result.stdout
+    assert "'skipped': 1" in result.stdout
+
+
 # A node the worker never runs and never reports, while exiting cleanly. It is
 # deselected only when a worker id is present, so the parent still collects and
 # schedules it -- which is the state the reconciler exists to catch.

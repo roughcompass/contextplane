@@ -782,7 +782,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"integration runner: run invalid: {exceeded}", file=sys.stderr)
         return 1
 
-    unsuccessful = {node: outcome for node, outcome in outcomes.items() if outcome is not NodeOutcome.PASSED}
+    # A skip is a disclosed outcome, not a lost one. Modules opt out on an
+    # absent credential or an unreachable stack, so counting that as
+    # unsuccessful leaves this target unable to exit zero anywhere, CI
+    # included -- the zero-test pass with its sign flipped. What catches a run
+    # going shorter than its suite in silence is untouched: an empty collection
+    # is fatal and an undisclosed node is `MISSING` and voids the run by name.
+    disclosed_without_failing: Final = (NodeOutcome.PASSED, NodeOutcome.SKIPPED)
+    unsuccessful = {node: o for node, o in outcomes.items() if o not in disclosed_without_failing}
     counts = Counter(outcome.value for outcome in outcomes.values())
     print(f"integration runner: {len(outcomes)} nodes reconciled ({dict(sorted(counts.items()))})")
     return 1 if unsuccessful else 0
