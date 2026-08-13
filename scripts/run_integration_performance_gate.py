@@ -56,8 +56,10 @@ from typing import Any, Final
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from integration_control import (
+    BROKER_ENDPOINT_VARIABLE,
     CONTROL_ENVIRONMENT_VARIABLE,
     Broker,
+    BrokerServer,
     ControlError,
     Lease,
     LeaseError,
@@ -407,6 +409,7 @@ def execute_sequence(
     secret: bytes,
     environment: Mapping[str, str],
     product_root: Path,
+    server: BrokerServer,
     now: Callable[[], float] = time.time,
 ) -> list[ChildResult]:
     """Run every child in order, or void the sequence.
@@ -414,6 +417,11 @@ def execute_sequence(
     A clean-tree checkpoint and an independent commit binding run before *and*
     after each child. Checking once at the start proves the tree was right at
     the least interesting moment — before anything had a chance to change it.
+
+    `server` is the live socket a child presents its control to. Issuing a
+    control without one running is not a weaker authorization, it is none: the
+    child refuses to collect rather than proceeding unauthenticated, so the
+    sequence dies at its first child.
     """
     results: list[ChildResult] = []
     # Candidates whose budget is already established as blown. Scale only: a
@@ -433,33 +441,40 @@ def execute_sequence(
 
         run_id = sequence.child_run_id(plan)
         directory = create_run_directory(sequence.evidence_root, run_id).path
-        control = issue(
-            secret=secret,
-            directory=directory / "control",
-            bound={
-                "controller_id": sequence.controller_id,
-                "lease_id": lease.lease_id,
-                "sequence_id": sequence.sequence_id,
-                "child_sequence": plan.child_sequence,
-                "mode": plan.mode,
-                "role": plan.role,
-                "worker_count": plan.worker_count,
-                "provider": plan.provider,
-                "expected_commit": sequence.expected_commit,
-                "host_digest": host_digest(),
-                "schema_fingerprint": sequence.schema_fingerprint,
-                "collection_digest": sequence.collection_digest,
-                "command_digest": command_digest(plan.provider),
-            },
-            now=now,
-        )
+        bound = {
+            "controller_id": sequence.controller_id,
+            "lease_id": lease.lease_id,
+            "sequence_id": sequence.sequence_id,
+            "child_sequence": plan.child_sequence,
+            "mode": plan.mode,
+            "role": plan.role,
+            "worker_count": plan.worker_count,
+            "provider": plan.provider,
+            "expected_commit": sequence.expected_commit,
+            "host_digest": host_digest(),
+            "schema_fingerprint": sequence.schema_fingerprint,
+            "collection_digest": sequence.collection_digest,
+            "command_digest": command_digest(plan.provider),
+        }
+        control = issue(secret=secret, directory=directory / "control", bound=bound, now=now)
+        # The same fields the control was just minted from, restated as what the
+        # broker will require of whoever presents one. Set here, per child, and
+        # never taken from the request: a child that could state its own
+        # expectations could state ones its control happens to satisfy. Because
+        # both sides come from `bound`, a field added to the minting site is
+        # enforced by the broker without anyone remembering to add it twice.
+        server.expectations = bound
 
         started = time.monotonic()
         exit_status, timed_out, time_file, stdout_path, stderr_path = run_child(
             plan,
             directory=directory,
             control_path=control.path,
-            environment=environment,
+            # The endpoint travels in the environment rather than in the command,
+            # because the command is fixed by contract and its digest is bound
+            # into the control. A socket path is not a caller-supplied argument:
+            # the child is told where to ask, never what the answer should be.
+            environment={**environment, BROKER_ENDPOINT_VARIABLE: str(server.path)},
             product_root=product_root,
         )
         elapsed = time.monotonic() - started
@@ -713,14 +728,22 @@ def run_mode(arguments: argparse.Namespace, environ: Mapping[str, str]) -> Path:
     lease = acquire_lease(evidence_root / ".leases", provider=provider)
     broker = Broker(secret=secret, consumed_root=evidence_root / ".consumed")
     try:
-        results = execute_sequence(
-            sequence,
-            plans,
-            lease=lease,
-            secret=secret,
-            environment=child_environment(environ),
-            product_root=product_root,
-        )
+        # The socket lives beside the sequence's own evidence and dies with it.
+        # A control is only authorization if something is listening to
+        # authenticate it, and until this was stood up every sealed child
+        # refused to collect -- correctly, since a control with nobody to
+        # present it to is a file, not a permission.
+        endpoint = evidence_root / ".broker" / f"{sequence.sequence_id}.sock"
+        with BrokerServer(broker=broker, path=endpoint) as server:
+            results = execute_sequence(
+                sequence,
+                plans,
+                lease=lease,
+                secret=secret,
+                environment=child_environment(environ),
+                product_root=product_root,
+                server=server,
+            )
         # Admission closes before publication and stays closed: nothing outside
         # this sequence may present a control while its manifest is written.
         broker.close_admission()

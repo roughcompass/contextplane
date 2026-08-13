@@ -30,6 +30,7 @@ from pathlib import Path
 
 import pytest
 from integration_control import (
+    BROKER_ENDPOINT_VARIABLE,
     CONTROL_ENVIRONMENT_VARIABLE,
     INHERITED_CONTROL_VARIABLE,
     REQUIRED_MODE,
@@ -936,6 +937,99 @@ def test_a_child_learns_its_worker_count_from_the_authenticated_reply(tmp_path: 
         returned = present_control(server.path, control.path)
     assert returned["worker_count"] == 4
     assert "mac" not in returned
+
+
+class _Captured(Exception):
+    """Stops `execute_sequence` at the one call this case is about."""
+
+
+def test_the_controller_hands_each_child_a_broker_to_authenticate_against(
+    tmp_path: Path, repository: tuple[Path, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What the controller actually builds, not what a test can build by hand.
+
+    Every other control-plane case here calls `present_control` directly, so
+    all of them passed while the controller stood up no socket at all: it
+    minted a control, put its path in the child's environment, and left
+    `CONTEXTPLANE_INTEGRATION_BROKER` unset. Two sealed sequences voided at
+    child 1 before a test ran, and no unit test could have caught it, because
+    none of them ever asked what `execute_sequence` puts in a child's
+    environment.
+
+    So this intercepts the real `run_child` and asserts on the environment the
+    real `execute_sequence` assembled. Asserting that a hand-built environment
+    is accepted would pass identically against the broken controller.
+    """
+    root, commit = repository
+    git = open_git({"PATH": os.environ.get("PATH", "")}, expected_root=root)
+    sequence = gate.SequenceRun(
+        mode="scale", provider="devstack", evidence_root=tmp_path / "evidence", expected_commit=commit, git=git
+    )
+    plan = gate.ChildPlan(
+        child_sequence=1, mode="scale", role="warm-up", worker_count=4, provider="devstack", deadline_seconds=60.0
+    )
+
+    seen: dict[str, str] = {}
+
+    def _capture(_plan: object, **kwargs: object) -> None:
+        seen.update(dict(kwargs["environment"]))  # type: ignore[arg-type]
+        raise _Captured
+
+    monkeypatch.setattr(gate, "run_child", _capture)
+
+    secret = new_sequence_secret()
+    broker = Broker(secret=secret, consumed_root=tmp_path / "consumed")
+    endpoint = Path(tempfile.mkdtemp()) / "broker.sock"
+    lease = acquire_lease(tmp_path / "leases", provider="devstack")
+    try:
+        with BrokerServer(broker=broker, path=endpoint) as server, pytest.raises(_Captured):
+            gate.execute_sequence(
+                sequence,
+                [plan],
+                lease=lease,
+                secret=secret,
+                environment={"PATH": os.environ.get("PATH", "")},
+                product_root=root,
+                server=server,
+            )
+    finally:
+        release_lease(lease)
+
+    assert seen[BROKER_ENDPOINT_VARIABLE] == str(endpoint)
+
+
+def test_a_child_given_both_halves_by_the_controller_is_authorized(tmp_path: Path) -> None:
+    """The other half: what the runner does with both variables once it has them."""
+    from run_integration_tests import authorize
+
+    secret = new_sequence_secret()
+    control = issue(secret=secret, directory=tmp_path / "controls", bound=_bound())
+
+    with _serving(tmp_path, secret, {"sequence_id": "sequence-1", "mode": "scale"}) as server:
+        environment = {
+            CONTROL_ENVIRONMENT_VARIABLE: str(control.path),
+            BROKER_ENDPOINT_VARIABLE: str(server.path),
+        }
+        authorized = authorize(environment)
+
+    assert authorized is not None
+    assert authorized["worker_count"] == 4
+
+
+def test_a_child_given_only_a_control_refuses_rather_than_running_unauthorized(tmp_path: Path) -> None:
+    """The discriminator, and it is the exact failure both voided sequences hit.
+
+    Without it the case above could be satisfied by a runner that ignored the
+    endpoint entirely. A half-configured child is refused rather than
+    downgraded to an unauthenticated run, because the run that proceeds without
+    an answer is the one whose evidence means nothing.
+    """
+    from run_integration_tests import authorize
+
+    control = issue(secret=new_sequence_secret(), directory=tmp_path / "controls", bound=_bound())
+
+    with pytest.raises(ControlRejected, match="is not authorization"):
+        authorize({CONTROL_ENVIRONMENT_VARIABLE: str(control.path)})
 
 
 def test_the_broker_refuses_a_control_minted_under_a_different_secret(tmp_path: Path) -> None:
