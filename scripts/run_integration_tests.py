@@ -45,7 +45,7 @@ from integration_control import (
     reject_inherited_control,
 )
 from integration_reporter import EVENTS_PATH_VARIABLE, WORKER_ID_VARIABLE
-from integration_schedule_inputs import frozen_history
+from integration_schedule_inputs import frozen_history, workers_supported
 from integration_scheduler import (
     DeadlineExceeded,
     IntervalWatchdog,
@@ -617,40 +617,6 @@ def authorize(environ: Mapping[str, str]) -> Mapping[str, Any] | None:
     return present_control(Path(endpoint), Path(control))
 
 
-def _workers_the_provider_can_serve(workers: int, *, provider: str) -> int:
-    """Clamp the count to what the resolved provider can actually run.
-
-    The container provider gives every worker its own server, so workers share
-    nothing and the count is whatever the machine can carry. The locally managed
-    cluster is **one** server for all of them, and its migration-reversibility
-    template is named by a content fingerprint every worker computes
-    identically -- so two workers publishing it concurrently race on
-    `CREATE DATABASE`, and the first to finish its session drops the template the
-    others are still cloning from. Measured at 8 workers: five
-    migration-reversibility nodes fail there and all five pass serially.
-
-    So this is not a performance tuning knob. It is the difference between a
-    provider that can serve N independent sessions and one that can serve one,
-    and it is enforced here rather than left to each caller because the caller
-    that gets it wrong sees five unrelated-looking failures.
-
-    Clamping rather than refusing, because a developer without a container
-    runtime must still be able to run the tier; announced rather than silent,
-    because a run that quietly used a different count than the repository
-    committed is exactly what the committed default exists to prevent. Lifting
-    it needs an ownership protocol for that template, which is filed.
-    """
-    if provider != "devstack" or workers <= 1:
-        return workers
-    print(
-        f"integration runner: {provider} is a single shared server; running 1 worker instead of "
-        f"{workers}. Concurrent workers race on the migration template, which has no ownership "
-        "protocol yet. The container provider runs the committed count.",
-        file=sys.stderr,
-    )
-    return 1
-
-
 def resolve_worker_count(authorized: Mapping[str, Any] | None, *, requested: int | None) -> int:
     """The count the controller authorized, or the tracked default.
 
@@ -766,13 +732,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     except QualificationError as error:
         print(f"integration runner: {error}", file=sys.stderr)
         return 2
+    provider = os.environ.get("CONTEXTPLANE_TEST_PG", "")  # config: intentional - the provider keys duration history
     try:
-        workers = resolve_worker_count(authorized, requested=options.workers)
+        workers = workers_supported(resolve_worker_count(authorized, requested=options.workers), provider=provider)
     except ControlRejected as rejected:
         print(f"integration runner: refusing to run: {rejected}", file=sys.stderr)
         return 2
-    provider = os.environ.get("CONTEXTPLANE_TEST_PG", "")  # config: intentional - the provider keys duration history
-    workers = _workers_the_provider_can_serve(workers, provider=provider)
     history = frozen_history(collection.digest, provider=provider, workers=workers)
     schedule = balance(collection.node_ids, workers=workers, history=history)
     try:

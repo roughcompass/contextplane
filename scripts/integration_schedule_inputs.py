@@ -86,3 +86,37 @@ def frozen_history(
     if recorded.is_file():
         durations = {str(node): float(seconds) for node, seconds in json.loads(recorded.read_text("utf-8")).items()}
     return FrozenHistory(key=key, durations=durations)
+
+
+def workers_supported(workers: int, *, provider: str) -> int:
+    """Clamp a worker count to what the resolved provider can actually serve.
+
+    The container provider gives every worker its own server, so workers share
+    nothing and the count is whatever the machine carries. The locally managed
+    cluster is **one** server for all of them, and its migration-reversibility
+    template is named by a content fingerprint every worker computes identically
+    -- so concurrent workers race to create it, and the first to finish its
+    session drops it while the others are still cloning from it. Measured at 8
+    workers: five migration-reversibility nodes fail there and all five pass
+    serially.
+
+    Not a tuning knob, then. It is the difference between a provider that serves N
+    independent sessions and one that serves a single shared session, and it
+    belongs with the other scheduling inputs because it decides the topology the
+    history key records.
+
+    Clamped rather than refused, because a developer without a container runtime
+    must still be able to run the tier; announced rather than silent, because a
+    run that quietly used a count the repository did not commit is the exact thing
+    a committed default exists to prevent. Lifting it needs an ownership protocol
+    for that template.
+    """
+    if provider != "devstack" or workers <= 1:
+        return workers
+    print(
+        f"integration runner: {provider} is a single shared server; running 1 worker instead of "
+        f"{workers}. Concurrent workers race on the migration template, which has no ownership "
+        "protocol yet. The container provider runs the committed count.",
+        file=sys.stderr,
+    )
+    return 1

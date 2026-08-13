@@ -47,9 +47,11 @@ import socketserver
 import stat
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Final
 
 #: How long a control stays valid after issue. Generous enough that a slow
@@ -413,6 +415,40 @@ class BrokerUnavailable(ControlRejected):
     not authorized to collect. Treating "nobody answered" as anything softer
     would let a sequence run unauthorized whenever the broker died.
     """
+
+
+# `sockaddr_un.sun_path` is 104 bytes on Darwin and 108 on Linux. The smaller is
+# the portable bound, checked rather than assumed because exceeding it surfaces as
+# a bare OSError from inside socketserver naming nothing.
+_SUN_PATH_LIMIT: Final = 104
+
+
+@contextmanager
+def broker_endpoint() -> Iterator[Path]:
+    """A path short enough to bind a Unix socket to, private and short-lived.
+
+    Deliberately not beside the sequence's evidence, which is where it used to be.
+    An evidence-root path is already most of the limit before a socket name is
+    appended -- measured at 117 bytes under a linked worktree and 108 in a
+    canonical checkout -- so binding there failed before the first child ran, in
+    both locations and on any checkout that is not extremely shallow.
+
+    Relocating costs no integrity. The endpoint is a runtime rendezvous handed to
+    the child in the environment; it is never recorded in evidence and never
+    verified, because what authorizes a child is the HMAC control it presents and
+    not the path it presented it on. `mkdtemp` semantics give 0700, and the
+    directory dies with the sequence.
+    """
+    with TemporaryDirectory(prefix="cp-broker-") as directory:
+        endpoint = Path(directory) / "b.sock"
+        measured = len(str(endpoint).encode())
+        if measured >= _SUN_PATH_LIMIT:
+            msg = (
+                f"broker endpoint {endpoint} is {measured} bytes, at or over the {_SUN_PATH_LIMIT}-byte "
+                "limit for a Unix socket path; set TMPDIR to something shorter"
+            )
+            raise ControlError(msg)
+        yield endpoint
 
 
 @dataclass
