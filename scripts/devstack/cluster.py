@@ -312,6 +312,17 @@ class Cluster:
             "listen_addresses=localhost",
             "-c",
             f"unix_socket_directories={socket_dir}",
+            # Pinned, not inherited. Without this the cluster takes the host's zone,
+            # and `timestamptz + interval '<n> days'` is a calendar duration that
+            # preserves local wall-clock across a DST transition -- so it spans 4319
+            # or 4321 hours where a flat 4320 was meant. Any date-boundary assertion
+            # then depends on where the developer is sitting: the same suite passes in
+            # UTC and fails in a zone that observes DST, on the same server and the
+            # same major. The container provider runs UTC, so pinning here is also
+            # what makes the two providers differ in containerization alone, which is
+            # the only way a comparison between them attributes anything correctly.
+            "-c",
+            "TimeZone=UTC",
             *server_flags,
         ]
         completed = subprocess.run(  # noqa: S603 - _bin() resolves an absolute path from the resolved Postgres bindir; the rest are fixed flags or repo-local paths, no caller input; local dev-stack tooling
