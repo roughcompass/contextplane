@@ -190,7 +190,7 @@ async def _stage_and_propose(
     return proposal
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def harness(pg_container: str) -> AsyncIterator[EntitlementAuthHarness]:
     await _seed_ontology(pg_container)
     async with EntitlementAuthHarness(pg_container) as h:
@@ -206,7 +206,7 @@ def _client(harness: EntitlementAuthHarness) -> AsyncClient:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_list_pages_through_open_proposals_without_duplicates(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -254,7 +254,7 @@ async def test_list_pages_through_open_proposals_without_duplicates(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_get_returns_the_full_proposal_view(harness: EntitlementAuthHarness, pg_container: str) -> None:
     persona = harness.add_persona(f"prop-get-{uuid.uuid4().hex[:8]}")
     tenant_id = await _materialise_persona(harness, persona)
@@ -279,7 +279,7 @@ async def test_get_returns_the_full_proposal_view(harness: EntitlementAuthHarnes
     assert body["state"] == "open"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_get_on_a_foreign_tenants_proposal_is_the_same_404_as_missing(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -312,7 +312,7 @@ async def test_get_on_a_foreign_tenants_proposal_is_the_same_404_as_missing(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_accept_writes_the_canonical_row(harness: EntitlementAuthHarness, pg_container: str) -> None:
     persona = harness.add_persona(f"prop-accept-{uuid.uuid4().hex[:8]}")
     tenant_id = await _materialise_persona(harness, persona)
@@ -342,7 +342,7 @@ async def test_accept_writes_the_canonical_row(harness: EntitlementAuthHarness, 
     assert await _live_value(pg_container, subject, "owned_by_team") == "platform"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_accept_with_an_amended_value_promotes_the_amendment(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -370,7 +370,7 @@ async def test_accept_with_an_amended_value_promotes_the_amendment(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_reject_with_reason_leaves_the_claim_staged(harness: EntitlementAuthHarness, pg_container: str) -> None:
     persona = harness.add_persona(f"prop-reject-{uuid.uuid4().hex[:8]}")
     tenant_id = await _materialise_persona(harness, persona)
@@ -404,7 +404,7 @@ async def test_reject_with_reason_leaves_the_claim_staged(harness: EntitlementAu
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_reverse_restores_the_prior_canonical_value(harness: EntitlementAuthHarness, pg_container: str) -> None:
     persona = harness.add_persona(f"prop-reverse-{uuid.uuid4().hex[:8]}")
     tenant_id = await _materialise_persona(harness, persona)
@@ -454,7 +454,7 @@ async def test_reverse_restores_the_prior_canonical_value(harness: EntitlementAu
     assert live[0]["value"] == "platform"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_reversing_an_already_reversed_promotion_is_409(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -491,7 +491,7 @@ async def test_reversing_an_already_reversed_promotion_is_409(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_review_from_a_foreign_tenant_is_403(harness: EntitlementAuthHarness, pg_container: str) -> None:
     owner = harness.add_persona(f"prop-review-owner-{uuid.uuid4().hex[:8]}")
     stranger = harness.add_persona(f"prop-review-stranger-{uuid.uuid4().hex[:8]}")
@@ -515,7 +515,7 @@ async def test_review_from_a_foreign_tenant_is_403(harness: EntitlementAuthHarne
     assert await _live_value(pg_container, subject, "owned_by_team") is None
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_deciding_an_already_decided_proposal_is_409(harness: EntitlementAuthHarness, pg_container: str) -> None:
     persona = harness.add_persona(f"prop-double-{uuid.uuid4().hex[:8]}")
     tenant_id = await _materialise_persona(harness, persona)

@@ -13,9 +13,6 @@ rather than at import.
 
 from __future__ import annotations
 
-import os
-import subprocess  # noqa: S404 - alembic's CLI is the interface under test; driving it in-process would not prove the command works
-import sys
 import uuid
 from collections.abc import Iterator
 
@@ -30,6 +27,15 @@ from contextplane.context.models_receipt import (
 )
 from contextplane.context.schemas.envelope import BLOCK_NAMES
 from contextplane.context.schemas.trust import ReceiptItemIdV1
+from tests.helpers.migration_database import (
+    MigrationDatabases,
+    assert_alembic_ok,
+    assert_at_head,
+    migration_databases,
+    migration_template,
+)
+
+__all__ = ["migration_databases", "migration_template"]
 
 _MODELS = (ContextReceipt, ContextReceiptArm, ContextReceiptExclusion, ContextReceiptItem)
 
@@ -374,55 +380,25 @@ def test_deleting_a_receipt_leaves_external_references_alone(sync_engine: Engine
 # --- downgrade --------------------------------------------------------------------------
 
 
-def test_the_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
+def test_the_migration_downgrades_and_upgrades_again(migration_databases: MigrationDatabases) -> None:
     """On a throwaway database, for the same reason the sibling suites use one:
     downgrading the shared one would drop tables out from under every other
     integration module in the session."""
-    scratch = f"rc_downgrade_{uuid.uuid4().hex[:8]}"
-    admin = create_engine(_sync_url(pg_container), isolation_level="AUTOCOMMIT")
-    try:
-        with admin.connect() as conn:
-            conn.execute(text(f'CREATE DATABASE "{scratch}"'))
+    with migration_databases.head_clone("context receipt") as scratch:
+        assert_at_head(scratch)
+        assert inspect(create_engine(scratch.sync_url)).has_table("context_receipts")
 
-        scratch_url = pg_container.rsplit("/", 1)[0] + "/" + scratch
-        env = {**os.environ, "DATABASE_URL": scratch_url}
-        run = lambda *args: subprocess.run(  # noqa: E731
-            [sys.executable, "-m", "alembic", *args],
-            cwd=os.getcwd(),
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        assert_alembic_ok(scratch.downgrade("0031_external_references"), "downgrade")
 
-        up = run("upgrade", "head")
-        assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
-        assert inspect(create_engine(_sync_url(scratch_url))).has_table("context_receipts")
-
-        down = run("downgrade", "0031_external_references")
-        assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
-
-        after = inspect(create_engine(_sync_url(scratch_url)))
+        after = inspect(create_engine(scratch.sync_url))
         for table in ("context_receipt_items", "context_receipt_arms", "context_receipts"):
             assert not after.has_table(table), f"{table} survived the downgrade"
         # The predecessor is intact: this revision's downgrade must not take the
         # reference tables with it.
         assert after.has_table("context_external_references"), "the downgrade reached past its own revision"
 
-        again = run("upgrade", "head")
-        assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
-        assert inspect(create_engine(_sync_url(scratch_url))).has_table("context_receipt_items")
-    finally:
-        with admin.connect() as conn:
-            conn.execute(
-                text(
-                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                    "WHERE datname = :d AND pid <> pg_backend_pid()"
-                ),
-                {"d": scratch},
-            )
-            conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
-        admin.dispose()
+        assert_alembic_ok(scratch.upgrade_head(), "re-upgrade")
+        assert inspect(create_engine(scratch.sync_url)).has_table("context_receipt_items")
 
 
 # --- what a receipt needs to be evidence rather than a summary --------------------

@@ -66,7 +66,7 @@ TEST_ROOT   := tests
 .PHONY: help install-dev lint format format-check typecheck doc-refs doc-links test-hygiene \
         privileged-writes usage-boundary env-documented helm-env calibration-report coverage-exemptions \
 		auth-consolidation-gate reachability-audit \
-        test-unit test-coverage test-integration test-conformance arc-vectors test-perf test-airgap test-smoke test all \
+        test-unit test-coverage test-integration test-conformance test-native-provider arc-vectors test-perf test-airgap test-smoke test all \
         migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean \
         build-docker helm-package \
         dev-up dev-down dev-status dev-reset dev-logs dev-url
@@ -264,8 +264,26 @@ coverage-exemptions: ## Verify every coverage `omit` entry carries a reason and 
 # Some files here are opt-in on an environment (a provider credential, a running
 # compose stack) and skip themselves when it is absent. A skip is a reported
 # result; a file nobody runs is not.
-test-integration: ## Run every integration test (testcontainers Postgres; slow).
-	$(PYTEST) $(TEST_ROOT)/integration -q --timeout=180
+#
+# Runs through `scripts/run_integration_tests.py` rather than pytest directly.
+# The runner refuses a tampered invocation, collects the directory itself,
+# schedules every node once and reconciles the outcomes, so a node that never
+# reports fails the run instead of silently shrinking the denominator.
+#
+# It takes no arguments on purpose. A selector, a marker or a file list here
+# would change the measured set, and nothing in a timing number can tell an
+# honest speedup from a smaller test set.
+#
+# Both provenances of a run reach this one recipe. Under a controller the run
+# is sealed: one lease, one migrated template, and a database cloned per
+# worker, with each child told only the URL it was assigned. Run by hand it is
+# unsealed, no database is assigned, and each worker resolves one the ordinary
+# way through CONTEXTPLANE_TEST_PG. Both directions are controlled end-to-end
+# through this target in tests/conformance/test_integration_collection.py --
+# the sealed one against a real assignment it has to consume, the unsealed one
+# because it is what every developer and every other lane actually runs.
+test-integration: ## Run every integration test (provider from CONTEXTPLANE_TEST_PG; slow).
+	$(PYTHON) scripts/run_integration_tests.py
 
 profile-governance: ## Run the profile-governance exit suite and its operator-script checks.
 	$(PYTEST) $(TEST_ROOT)/conformance/test_platform_profile_exit.py -q --timeout=60
@@ -275,6 +293,23 @@ profile-governance: ## Run the profile-governance exit suite and its operator-sc
 
 test-conformance: ## Run conformance suite (openapi drift, tenant isolation, MCP).
 	$(PYTEST) $(TEST_ROOT)/conformance -v --timeout=60
+
+# The focused provider lifecycle contract, run under a question the ordinary
+# suite does not ask: does *this* provider actually work here?
+#
+# Under that question a skip is the worst outcome available. The contract file
+# skips honestly when a host cannot supply a server, and inside the full tier
+# that is right. Here it is not: a skip is indistinguishable from a pass in
+# every summary line, and what it stopped checking is the whole reason somebody
+# ran this. The runner therefore fails on zero collection, on any skip, and on
+# any error — including a teardown error, which matters because this contract
+# creates and drops real databases and one that leaks them poisons every later
+# run on the host.
+#
+# Select the provider with CONTEXTPLANE_TEST_PG, e.g.
+# `CONTEXTPLANE_TEST_PG=devstack make test-native-provider`.
+test-native-provider: ## Run the focused provider lifecycle contract; a skip counts as a failure.
+	$(PYTHON) scripts/run_native_provider_contract.py
 
 # The delivery-lifecycle exit gate as one command: the frozen scenario corpus,
 # and the integration module that replays those scenarios against the shipped

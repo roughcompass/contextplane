@@ -187,7 +187,7 @@ async def _materialise_persona(harness: EntitlementAuthHarness, persona: TenantP
     return uuid.UUID(body["tenant_id"]), uuid.UUID(body["actor_id"])
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def harness(pg_container: str) -> AsyncIterator[EntitlementAuthHarness]:
     await _seed_ontology(pg_container)
     async with EntitlementAuthHarness(pg_container) as h:
@@ -203,7 +203,7 @@ def _client(harness: EntitlementAuthHarness) -> AsyncClient:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_confirm_raises_the_score_and_marks_the_original_superseded(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -251,7 +251,7 @@ async def test_confirm_raises_the_score_and_marks_the_original_superseded(
     assert superseded_audit[0]["after_jsonb"] == {"superseded_by": str(new_claim_id)}
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_confirm_on_an_unlinked_claim_is_409(harness: EntitlementAuthHarness, pg_container: str) -> None:
     persona = harness.add_persona(f"cnf-unlinked-{uuid.uuid4().hex[:8]}")
     tenant_id, _actor_id = await _materialise_persona(harness, persona)
@@ -276,7 +276,7 @@ async def test_confirm_on_an_unlinked_claim_is_409(harness: EntitlementAuthHarne
     assert await _audit_rows(pg_container, unlinked.claim_id) == []
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_confirm_by_a_non_human_actor_is_403(harness: EntitlementAuthHarness, pg_container: str) -> None:
     """The human tier is not a role a caller can assert -- it comes from the
     authenticated actor's own `actor_kind`. Flipping the caller's own JIT
@@ -306,7 +306,7 @@ async def test_confirm_by_a_non_human_actor_is_403(harness: EntitlementAuthHarne
     assert await _audit_rows(pg_container, staged.claim_id) == []
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_confirm_on_a_missing_claim_is_404(harness: EntitlementAuthHarness) -> None:
     persona = harness.add_persona(f"cnf-404-{uuid.uuid4().hex[:8]}")
     await _materialise_persona(harness, persona)
@@ -325,7 +325,7 @@ async def test_confirm_on_a_missing_claim_is_404(harness: EntitlementAuthHarness
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_adjudicate_records_the_verdict_and_feeds_calibration_observations(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -368,7 +368,7 @@ async def test_adjudicate_records_the_verdict_and_feeds_calibration_observations
     assert "matches what I found" not in str(payload)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_adjudicate_on_a_missing_claim_is_404(harness: EntitlementAuthHarness) -> None:
     persona = harness.add_persona(f"adj-404-{uuid.uuid4().hex[:8]}")
     await _materialise_persona(harness, persona)
@@ -383,7 +383,7 @@ async def test_adjudicate_on_a_missing_claim_is_404(harness: EntitlementAuthHarn
     assert resp.status_code == 404, resp.text
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_adjudicate_with_an_unknown_verdict_is_422_and_writes_nothing(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -411,7 +411,7 @@ async def test_adjudicate_with_an_unknown_verdict_is_422_and_writes_nothing(
     assert await _adjudication_rows(pg_container, claim.claim_id) == []
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_adjudicate_with_an_out_of_range_confidence_is_422_and_writes_nothing(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:

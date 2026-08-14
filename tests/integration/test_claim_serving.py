@@ -116,13 +116,22 @@ def _serving_at(factory: async_sessionmaker[AsyncSession], minutes: int) -> Clai
     return ClaimServingService(factory, clock=FakeClock(_NOW + datetime.timedelta(minutes=minutes)))
 
 
-async def _drain_all(factory: async_sessionmaker[AsyncSession], embedder: Any) -> int:
+async def _drain_all(
+    factory: async_sessionmaker[AsyncSession], embedder: Any, *, tenant: uuid.UUID | None = None
+) -> int:
     """Drain the embedding outbox until it is empty, and report how many rows it took.
 
     Claims reach the index the same way facts do now: staging and consolidating a claim
     enqueues it, and the shared drain turns the queue into vectors. Tests therefore
     consolidate and then drain, rather than calling an indexing method that no longer
     exists -- which is the point of the unification, so exercising the real route matters.
+
+    `tenant` scopes the reported count to one tenant's rows. The drain itself stays global
+    because that is the shipped drain and the point is to exercise it, but a caller that
+    asserts on the number drained means the rows it enqueued itself. Counting every row in
+    the table turns that into an assertion about whatever else the database happens to
+    hold -- a property no test establishes and none can own, since the outbox is shared by
+    every test in the process. Pass the tenant whenever the return value is asserted on.
     """
     from contextplane.config import Settings
     from contextplane.service.retrieval.embedding_drain import drain_outbox
@@ -135,10 +144,14 @@ async def _drain_all(factory: async_sessionmaker[AsyncSession], embedder: Any) -
         scheduler_jobstore_url=_DSN,
         embedding_provider="stub",
     )
+    scope = "" if tenant is None else " WHERE tenant_id = :tenant"
+    parameters: dict[str, Any] = {} if tenant is None else {"tenant": tenant}
     drained = 0
     for _ in range(50):
         async with factory() as session:
-            pending = (await session.execute(text("SELECT count(*) FROM embedding_outbox"))).scalar_one()
+            pending = (
+                await session.execute(text(f"SELECT count(*) FROM embedding_outbox{scope}"), parameters)
+            ).scalar_one()
         if not pending:
             break
         await drain_outbox(factory, embedder, settings)
@@ -665,8 +678,10 @@ async def test_an_unconsolidated_claim_is_never_indexed(
         evidence=(Evidence(kind="session_event", ref="e1"),),
     )
 
-    # Never enqueued, so a drain finds nothing to do and the claim gets no vector.
-    assert await _drain_all(factory, _TokenEmbedder()) == 0
+    # Never enqueued, so a drain finds nothing of this tenant's to do and the claim gets
+    # no vector. Scoped to this tenant: another test's pending rows are not this one's
+    # subject, and before the scope existed they made this a failing assertion about them.
+    assert await _drain_all(factory, _TokenEmbedder(), tenant=tid) == 0
     async with factory() as session:
         vectors = (
             await session.execute(
@@ -846,8 +861,9 @@ async def test_the_lexical_arm_overturns_a_confident_semantic_miss(
     indexer = _TokenEmbedder()
     later = _serving_at(factory, 30)
     # One drain covers both claims: staging and consolidating each one enqueued it, and
-    # the drain empties the whole queue.
-    assert await _drain_all(factory, indexer) == 2
+    # the drain empties the whole queue. Counted for this tenant, so the two are this
+    # test's own rather than two of however many the queue happens to hold.
+    assert await _drain_all(factory, indexer, tenant=tid) == 2
 
     misleading = _DecoyEmbedder("owned by team: platform")
     found = await later.retrieve(
@@ -888,7 +904,7 @@ async def test_a_consolidated_claim_becomes_retrievable_end_to_end(
         ).scalar_one()
     assert queued == 1, "consolidating a claim did not enqueue it"
 
-    assert await _drain_all(factory, embedder) == 1
+    assert await _drain_all(factory, embedder, tenant=tid) == 1
 
     found = await serving.retrieve(_ctx(tid, aid), query="owned by team", embedder=embedder)
     assert [c.claim_id for c in found] == [claim_id]
@@ -917,7 +933,11 @@ async def test_an_unlinked_claim_is_never_enqueued(
     )
 
     async with factory() as session:
-        queued = (await session.execute(text("SELECT count(*) FROM embedding_outbox"))).scalar_one()
+        queued = (
+            await session.execute(
+                text("SELECT count(*) FROM embedding_outbox WHERE tenant_id = :tenant"), {"tenant": tid}
+            )
+        ).scalar_one()
     assert queued == 0
 
 

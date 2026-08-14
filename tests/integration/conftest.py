@@ -48,8 +48,14 @@ from pathlib import Path
 import pytest
 import respx
 from httpx import Response
+from integration_assignment import (
+    BrokerHandoffError,
+    WorkerAssignment,
+    runner_worker_assignment,
+)
 
 from contextplane.config import Settings
+from tests.helpers.pg_provider import test_database
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -193,3 +199,66 @@ def app_settings(pg_container: str) -> Settings:
 # root `tests/conftest.py` versions are identical to what this suite needs,
 # and pytest resolves fixtures up the conftest tree, so this file inherits
 # them without a duplicate definition.
+
+
+# ---------------------------------------------------------------------------
+# Broker manifest URL handoff
+# ---------------------------------------------------------------------------
+
+#: Set by the sealed runner on every worker it dispatches, sealed or not, because
+#: the reporter is gated on it: a worker with no identity discloses no outcomes
+#: and reconciliation then fails every node as undisclosed.
+#:
+#: So identity answers "which worker is this", never "was this worker assigned a
+#: database". It used to answer both, and the two are true on different
+#: schedules -- every dispatched worker has an identity, only a sealed one has an
+#: assignment. Keying the handoff on identity made an ordinary
+#: `make test-integration` error every database-touching test, because a run with
+#: no controller still dispatches workers that carry one.
+_WORKER_ID_VARIABLE = "CONTEXTPLANE_INTEGRATION_WORKER_ID"
+
+#: Set only when a sealed sequence provisioned databases for this run. This is
+#: what the handoff keys on: its presence is the claim "a broker assigned you a
+#: database", and it is set in the same place that assignment is made, so it
+#: cannot be true while the assignment is absent by construction.
+_SEALED_RUN_VARIABLE = "CONTEXTPLANE_INTEGRATION_SEALED_RUN"
+
+#: The database this worker was assigned. Under the runner it is the whole
+#: answer: the worker consumes it and never asks a provider for anything.
+_ASSIGNED_URL_VARIABLE = "CONTEXTPLANE_TEST_DATABASE_URL"
+
+#: The digest of the broker manifest the assignment came from. Required so a
+#: worker cannot be handed a URL by something that is not the broker holding
+#: this sequence's lease; an assignment with no manifest behind it is a URL of
+#: unknown origin.
+_MANIFEST_DIGEST_VARIABLE = "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST"
+
+
+#: Re-exported so this conftest stays the name test code reaches for, while the
+#: implementation lives beside the parent half that produces these variables.
+#: A control exercising the sealed path from a synthetic tree cannot import a
+#: conftest, and a copy of the error class there would keep passing after this
+#: one changed -- which is the whole failure this pairing exists to prevent.
+__all__ = ["BrokerHandoffError", "WorkerAssignment", "runner_worker_assignment"]
+
+
+@pytest.fixture(scope="session")
+def pg_container() -> Iterator[str]:
+    """Overrides the root fixture so a runner-worker provisions nothing.
+
+    Outside the runner this is the ordinary path and behaves exactly as the root
+    fixture does — a developer running the suite directly still gets a database
+    chosen by ``CONTEXTPLANE_TEST_PG``.
+
+    Under the runner it yields the assigned URL and does not enter
+    ``test_database()`` at all. That is the point rather than an optimization:
+    entering it would let the worker choose a provider, create a database, and
+    run migrations, and one server per worker is a different system from the one
+    the measurement is about.
+    """
+    assignment = runner_worker_assignment(os.environ)
+    if assignment is None:
+        with test_database() as url:
+            yield url
+        return
+    yield assignment.database_url

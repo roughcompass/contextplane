@@ -172,7 +172,7 @@ async def _count_containment_audit_rows(pg_url: str, *, tenant_id: uuid.UUID) ->
     )
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def harness(pg_container: str) -> AsyncIterator[EntitlementAuthHarness]:
     await _seed_ontology(pg_container)
     async with EntitlementAuthHarness(pg_container) as h:
@@ -199,7 +199,7 @@ def _claim_body(**overrides: object) -> dict[str, object]:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_a_conforming_claim_lands_staged_with_derived_authority_and_provenance(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -248,7 +248,7 @@ async def test_a_conforming_claim_lands_staged_with_derived_authority_and_proven
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_an_unresolvable_subject_lands_unlinked(harness: EntitlementAuthHarness, pg_container: str) -> None:
     persona = harness.add_persona(f"assert-unlinked-{uuid.uuid4().hex[:8]}")
     _tenant_id, _actor_id = await _materialise_persona(harness, persona)
@@ -274,7 +274,7 @@ async def test_an_unresolvable_subject_lands_unlinked(harness: EntitlementAuthHa
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_a_directive_value_is_refused_with_the_containment_error(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -304,7 +304,7 @@ async def test_a_directive_value_is_refused_with_the_containment_error(
     assert await _count_containment_audit_rows(pg_container, tenant_id=tenant_id) == 1
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_a_directive_evidence_excerpt_is_refused_not_just_the_value(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -343,7 +343,7 @@ async def test_a_directive_evidence_excerpt_is_refused_not_just_the_value(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_a_pii_bearing_value_is_refused_with_detection_rows_logged(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -385,7 +385,7 @@ async def test_a_pii_bearing_value_is_refused_with_detection_rows_logged(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_a_staged_claim_is_not_visible_through_capability_or_claim_serving_reads(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -432,7 +432,7 @@ async def test_a_staged_claim_is_not_visible_through_capability_or_claim_serving
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_idempotency_key_replay_returns_the_original_claim_not_a_second_one(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:

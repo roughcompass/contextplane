@@ -303,6 +303,38 @@ def test_none_and_empty_string_normalize_together() -> None:
     assert canonical_schema_digest(with_none) == canonical_schema_digest(with_empty)
 
 
+def test_a_differing_type_modifier_changes_the_schema_digest() -> None:
+    """Two columns alike but for their declared width must digest apart.
+
+    An extension type reports `USER-DEFINED` with both length columns null, so
+    the width of a pgvector column reaches the digest only through the type
+    modifier. Without that field these two rows are byte-identical and the
+    digest cannot tell a 384-dimension database from a 128-dimension one.
+    """
+    at_384 = _catalog(columns=[["public", "embeddings", "vector", "USER-DEFINED", "YES", "", "", "", "384"]])
+    at_128 = _catalog(columns=[["public", "embeddings", "vector", "USER-DEFINED", "YES", "", "", "", "128"]])
+    assert canonical_schema_digest(at_384) != canonical_schema_digest(at_128)
+
+
+def test_the_columns_dimension_reads_a_type_modifier() -> None:
+    """Fails if the type-modifier field is ever dropped from the query.
+
+    The digest can only distinguish embedding width if the query actually
+    selects the modifier, and no amount of digesting already-fetched rows can
+    prove that. This is the cheap half of the guard: the integration suite
+    proves two real databases at different widths digest apart, and this fails
+    in milliseconds if someone removes the column that makes it possible.
+    """
+    columns_sql = dict(catalog_queries())["columns"]
+    assert "pg_attribute" in columns_sql, "the type modifier must come from the catalog, not information_schema"
+    # Checked against the select list, not the whole statement: dropping the
+    # modifier from what is selected while leaving the join behind would blind
+    # the digest again, and a test that searched the whole string would still
+    # be green for it.
+    select_list = columns_sql.split(" FROM ", 1)[0]
+    assert "atttypmod" in select_list, "the columns dimension no longer selects a column's type modifier"
+
+
 def test_digest_covers_every_declared_catalog_dimension() -> None:
     """A dimension added to the query set must reach the digest.
 

@@ -127,7 +127,7 @@ async def _stage_and_consolidate(
     return claim.claim_id
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def harness(pg_container: str) -> AsyncIterator[EntitlementAuthHarness]:
     await _seed_ontology(pg_container)
     async with EntitlementAuthHarness(pg_container) as h:
@@ -143,7 +143,7 @@ def _client(harness: EntitlementAuthHarness) -> AsyncClient:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_history_shows_the_chain_across_a_confirmation_in_order(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -178,7 +178,7 @@ async def test_history_shows_the_chain_across_a_confirmation_in_order(
     assert items[1]["source_authority"] == "owner_human"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_history_on_a_foreign_tenants_private_claim_is_the_same_404_as_missing(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -210,7 +210,7 @@ async def test_history_on_a_foreign_tenants_private_claim_is_the_same_404_as_mis
     assert foreign_resp.json() == missing_resp.json()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_history_filters_a_chain_entry_narrower_than_the_caller_may_see(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -258,7 +258,7 @@ async def test_history_filters_a_chain_entry_narrower_than_the_caller_may_see(
     assert reader_ids == [str(first)], "the narrower entry is filtered, not a reason to refuse the chain"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_history_on_a_missing_claim_is_404(harness: EntitlementAuthHarness) -> None:
     persona = harness.add_persona(f"hist-404-{uuid.uuid4().hex[:8]}")
     await _materialise_persona(harness, persona)
@@ -277,7 +277,7 @@ async def test_history_on_a_missing_claim_is_404(harness: EntitlementAuthHarness
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_believed_picks_the_claim_that_was_current_at_the_given_instant(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -327,7 +327,7 @@ async def test_believed_picks_the_claim_that_was_current_at_the_given_instant(
     assert after_items[0]["value"] == "billing"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_believed_on_a_foreign_tenants_private_subject_is_the_same_404_as_missing(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -355,7 +355,7 @@ async def test_believed_on_a_foreign_tenants_private_subject_is_the_same_404_as_
     assert foreign_resp.json() == missing_resp.json()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_believed_with_a_malformed_as_of_is_422(harness: EntitlementAuthHarness, pg_container: str) -> None:
     persona = harness.add_persona(f"believed-badasof-{uuid.uuid4().hex[:8]}")
     tenant_id, _actor_id = await _materialise_persona(harness, persona)

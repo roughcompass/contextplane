@@ -228,7 +228,7 @@ async def _count_facts(pg_url: str, *, tenant_id: uuid.UUID) -> int:
 # ---------------------------------------------------------------------------
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def harness(pg_container: str) -> AsyncIterator[EntitlementAuthHarness]:
     async with EntitlementAuthHarness(pg_container) as h:
         yield h
@@ -240,7 +240,7 @@ async def harness(pg_container: str) -> AsyncIterator[EntitlementAuthHarness]:
 
 
 class TestAdmissionFloor:
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="module")
     async def test_credit_card_body_returns_422_with_no_policy_configured(
         self, harness: EntitlementAuthHarness, pg_container: str
     ) -> None:
@@ -292,7 +292,7 @@ class TestAdmissionFloor:
 
         assert await _count_facts(pg_container, tenant_id=tenant_id) == 0, "a refused body must not reach facts"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="module")
     async def test_refused_write_still_writes_detection_log_row(
         self, harness: EntitlementAuthHarness, pg_container: str
     ) -> None:
@@ -339,7 +339,7 @@ class TestAdmissionFloor:
 
 
 class TestTenantPolicyCannotLowerTheFloor:
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="module")
     async def test_credit_card_body_refused_even_when_tenant_says_advisory(
         self, harness: EntitlementAuthHarness, pg_container: str
     ) -> None:
@@ -382,7 +382,7 @@ class TestTenantPolicyCannotLowerTheFloor:
         assert art_r.status_code == 422, f"An advisory tenant policy must not admit, got {art_r.status_code}"
         assert await _count_facts(pg_container, tenant_id=tenant_id) == 0, "a refused body must not reach facts"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="module")
     async def test_the_detection_row_records_the_tenants_own_advisory_reading(
         self, harness: EntitlementAuthHarness, pg_container: str
     ) -> None:
@@ -436,7 +436,7 @@ class TestTenantPolicyCannotLowerTheFloor:
 
 
 class TestPiiCleanBody:
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="module")
     async def test_clean_body_returns_201_no_detection_log(
         self, harness: EntitlementAuthHarness, pg_container: str
     ) -> None:

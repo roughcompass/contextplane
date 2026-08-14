@@ -12,9 +12,6 @@ from the database fails at query time rather than at import.
 
 from __future__ import annotations
 
-import os
-import subprocess  # noqa: S404 - alembic's CLI is the interface under test; driving it in-process would not prove the command works
-import sys
 import uuid
 from collections.abc import Iterator
 
@@ -22,6 +19,15 @@ import pytest
 from sqlalchemy import Engine, create_engine, inspect, text
 
 from contextplane.workspaces.models import IntentCheckpoint, IntentHead, IntentParticipantGrant
+from tests.helpers.migration_database import (
+    MigrationDatabases,
+    assert_alembic_ok,
+    assert_at_head,
+    migration_databases,
+    migration_template,
+)
+
+__all__ = ["migration_databases", "migration_template"]
 
 _MODELS = (IntentParticipantGrant, IntentCheckpoint, IntentHead)
 
@@ -290,58 +296,31 @@ def test_existing_workspace_tables_are_untouched(sync_engine: Engine) -> None:
 # --- downgrade ----------------------------------------------------------------
 
 
-def test_the_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
-    """Run against a throwaway database on the same server.
+def test_the_migration_downgrades_and_upgrades_again(migration_databases: MigrationDatabases) -> None:
+    """Run against a database of this test's own, cloned from a template at head.
 
     Downgrading the shared one would drop tables out from under every other
     integration module in the session, so a test that proves the downgrade works
-    would break unrelated tests to do it.
+    would break unrelated tests to do it. The clone arrives already at head, so
+    the reversal is what this test pays for rather than a rebuild of the schema
+    it is about to reverse.
     """
-    scratch = f"tm_downgrade_{uuid.uuid4().hex[:8]}"
-    admin = create_engine(_sync_url(pg_container), isolation_level="AUTOCOMMIT")
-    try:
-        with admin.connect() as conn:
-            conn.execute(text(f'CREATE DATABASE "{scratch}"'))
+    with migration_databases.head_clone("intent memory") as scratch:
+        assert_at_head(scratch)
+        assert inspect(create_engine(scratch.sync_url)).has_table("intent_checkpoints")
 
-        scratch_url = pg_container.rsplit("/", 1)[0] + "/" + scratch
-        env = {**os.environ, "DATABASE_URL": scratch_url}
-        # The interpreter is resolved rather than assumed relative to cwd: a
-        # linked worktree has no .venv of its own, while `alembic.ini` and the
-        # migration files must come from this tree.
-        run = lambda *args: subprocess.run(  # noqa: E731
-            [sys.executable, "-m", "alembic", *args],
-            cwd=os.getcwd(),
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        assert_alembic_ok(scratch.downgrade("0012_arc_submission_identity"), "downgrade")
 
-        up = run("upgrade", "head")
-        assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
-
-        scratch_engine = create_engine(_sync_url(scratch_url))
-        assert inspect(scratch_engine).has_table("intent_checkpoints")
-
-        down = run("downgrade", "0012_arc_submission_identity")
-        assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
-
-        after = inspect(create_engine(_sync_url(scratch_url)))
+        after = inspect(create_engine(scratch.sync_url))
         for table in ("intent_heads", "intent_checkpoints", "intent_participant_grants"):
             assert not after.has_table(table), f"{table} survived the downgrade"
         # The trigger function is named in the downgrade rather than left to
         # cascade: a function outlives the table it was attached to.
-        with create_engine(_sync_url(scratch_url)).connect() as conn:
+        with create_engine(scratch.sync_url).connect() as conn:
             remaining = conn.execute(
                 text("SELECT count(*) FROM pg_proc WHERE proname = 'task_checkpoints_are_immutable'")
             ).scalar_one()
         assert remaining == 0, "the immutability trigger function outlived its table"
 
-        again = run("upgrade", "head")
-        assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
-        assert inspect(create_engine(_sync_url(scratch_url))).has_table("intent_checkpoints")
-        scratch_engine.dispose()
-    finally:
-        with admin.connect() as conn:
-            conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}" WITH (FORCE)'))
-        admin.dispose()
+        assert_alembic_ok(scratch.upgrade_head(), "re-upgrade")
+        assert inspect(create_engine(scratch.sync_url)).has_table("intent_checkpoints")

@@ -14,9 +14,6 @@ database fails at query time rather than at import.
 from __future__ import annotations
 
 import dataclasses
-import os
-import subprocess  # noqa: S404 - alembic's CLI is the interface under test; driving it in-process would not prove the command works
-import sys
 import uuid
 from collections.abc import Iterator
 
@@ -25,6 +22,15 @@ from sqlalchemy import Engine, create_engine, inspect, text
 
 from contextplane.context.models import ContextExternalReference, ContextReferenceBinding
 from contextplane.context.schemas.trust import ExternalReferenceV1
+from tests.helpers.migration_database import (
+    MigrationDatabases,
+    assert_alembic_ok,
+    assert_at_head,
+    migration_databases,
+    migration_template,
+)
+
+__all__ = ["migration_databases", "migration_template"]
 
 _MODELS = (ContextExternalReference, ContextReferenceBinding)
 
@@ -350,35 +356,19 @@ def test_a_binding_needs_a_reference_that_exists(sync_engine: Engine, tenant_id:
 # --- downgrade ------------------------------------------------------------------
 
 
-def test_the_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
-    """Run against a throwaway database on the same server, for the same reason
-    the task-memory suite does: downgrading the shared one would drop tables out
-    from under every other integration module in the session."""
-    scratch = f"xr_downgrade_{uuid.uuid4().hex[:8]}"
-    admin = create_engine(_sync_url(pg_container), isolation_level="AUTOCOMMIT")
-    try:
-        with admin.connect() as conn:
-            conn.execute(text(f'CREATE DATABASE "{scratch}"'))
+def test_the_migration_downgrades_and_upgrades_again(migration_databases: MigrationDatabases) -> None:
+    """Run against a database of this test's own, for the same reason the
+    task-memory suite does: downgrading the shared one would drop tables out
+    from under every other integration module in the session. The database
+    arrives at head as a clone, so this test pays for the reversal rather than
+    for rebuilding the schema it is about to reverse."""
+    with migration_databases.head_clone("context reference") as scratch:
+        assert_at_head(scratch)
+        assert inspect(create_engine(scratch.sync_url)).has_table("context_external_references")
 
-        scratch_url = pg_container.rsplit("/", 1)[0] + "/" + scratch
-        env = {**os.environ, "DATABASE_URL": scratch_url}
-        run = lambda *args: subprocess.run(  # noqa: E731
-            [sys.executable, "-m", "alembic", *args],
-            cwd=os.getcwd(),
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        assert_alembic_ok(scratch.downgrade("0030_task_memory"), "downgrade")
 
-        up = run("upgrade", "head")
-        assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
-        assert inspect(create_engine(_sync_url(scratch_url))).has_table("context_external_references")
-
-        down = run("downgrade", "0030_task_memory")
-        assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
-
-        after = inspect(create_engine(_sync_url(scratch_url)))
+        after = inspect(create_engine(scratch.sync_url))
         for table in ("context_reference_bindings", "context_external_references"):
             assert not after.has_table(table), f"{table} survived the downgrade"
         # The predecessor link is intact: downgrading this revision must not
@@ -386,17 +376,42 @@ def test_the_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
         # is at 0030 here, below the revision that renames the table.
         assert after.has_table("task_checkpoints"), "the downgrade reached past its own revision"
 
-        again = run("upgrade", "head")
-        assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
-        assert inspect(create_engine(_sync_url(scratch_url))).has_table("context_reference_bindings")
+        assert_alembic_ok(scratch.upgrade_head(), "re-upgrade")
+        assert inspect(create_engine(scratch.sync_url)).has_table("context_reference_bindings")
+
+
+def test_two_reversibility_nodes_cannot_observe_or_drop_one_anothers_database(
+    migration_databases: MigrationDatabases,
+) -> None:
+    """Independent clones, proven by mutating one and dropping the other.
+
+    Nine nodes now share one template and one server, so the isolation that
+    used to come from each building its own database from scratch has to be
+    demonstrated rather than assumed. A shared or aliased clone would let one
+    node's downgrade decide another node's result, and the symptom would be an
+    unrelated module failing depending on execution order.
+    """
+    first = migration_databases.clone("isolation first")
+    second = migration_databases.clone("isolation second")
+    assert first.name != second.name
+
+    # A destructive change in one is invisible in the other.
+    first_engine = create_engine(first.sync_url)
+    second_engine = create_engine(second.sync_url)
+    try:
+        with first_engine.begin() as conn:
+            conn.execute(text("DROP TABLE context_reference_bindings"))
+        assert not inspect(create_engine(first.sync_url)).has_table("context_reference_bindings")
+        assert inspect(create_engine(second.sync_url)).has_table(
+            "context_reference_bindings"
+        ), "one clone observed another clone's drop"
     finally:
-        with admin.connect() as conn:
-            conn.execute(
-                text(
-                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                    "WHERE datname = :d AND pid <> pg_backend_pid()"
-                ),
-                {"d": scratch},
-            )
-            conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
-        admin.dispose()
+        first_engine.dispose()
+        second_engine.dispose()
+
+    # Dropping one leaves the other connectable, which is the property a
+    # shared-name collision would break.
+    migration_databases.drop(first.name)
+    assert inspect(create_engine(second.sync_url)).has_table("context_external_references")
+    assert first.name not in migration_databases.created
+    assert second.name in migration_databases.created

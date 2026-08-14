@@ -90,6 +90,113 @@ class Exemption:
 #: reason `Settings` cannot cover it, not "this one is fine."
 ALLOWLIST: tuple[Exemption, ...] = (
     Exemption(
+        path="scripts/pg_provider.py",
+        reason=(
+            "Selects and stands up the Postgres the test suite runs against, and plumbs the "
+            "environment it hands to its own alembic subprocess. CONTEXTPLANE_TEST_PG picks the "
+            "provider, CONTEXTPLANE_TEST_PG_PORT the local test cluster's port, and DATABASE_URL "
+            "names a database the harness was pointed at rather than one the app configures; the "
+            "whole-environment read builds a child environment with DATABASE_URL overridden. "
+            "Settings is a frozen snapshot of the shipped app's configuration and cannot describe "
+            "which database a test run should create. Same role as scripts/devstack/: local "
+            "tooling standing up a dependency, not the shipped app reading its own configuration."
+        ),
+    ),
+    Exemption(
+        path="scripts/pg_template.py",
+        reason=(
+            "Builds the migrated template the run clones from, and pins every migration "
+            "subprocess to TZ=UTC so the partition-creating migration agrees with the date in the "
+            "fingerprint. Both whole-environment reads assemble that child environment from an "
+            "explicit override or the parent's, which is process plumbing rather than "
+            "configuration the shipped app reads. Same role as scripts/devstack/."
+        ),
+    ),
+    Exemption(
+        path="scripts/run_integration_lifecycle_comparison.py",
+        reason=(
+            "Manages the process environment it hands to child processes rather than reading "
+            "its own configuration. It rejects and then scrubs the whole GIT_* namespace before "
+            "any git call, because GIT_DIR alone can make `git -C <path>` answer about another "
+            "repository and certify measured evidence against a tree nobody ran; enumerating the "
+            "inherited environment is the only way to scrub it. It also pins CONTEXTPLANE_TEST_PG "
+            "and PYTHONPATH for the pytest child so the tree being measured is the one under "
+            "test. Same role as scripts/devstack/: local tooling plumbing an environment, not the "
+            "shipped app reading configuration Settings should own."
+        ),
+    ),
+    Exemption(
+        path="scripts/run_native_provider_contract.py",
+        reason=(
+            "Plumbs the environment for one pytest child rather than reading configuration. It "
+            "forwards the caller's CONTEXTPLANE_TEST_PG selection verbatim -- the whole question "
+            "this target answers is whether the provider the caller named works here, so routing "
+            "that through a Settings field would answer about a different provider -- and pins "
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD so the plugins that touched a contract run are the "
+            "ones named in the argv rather than whatever is installed beside them. Same role as "
+            "scripts/devstack/: local tooling managing a child's environment."
+        ),
+    ),
+    Exemption(
+        path="scripts/run_integration_performance_gate.py",
+        reason=(
+            "Same reject-then-sanitize role as the lifecycle controller, one layer out. It refuses "
+            "the whole GIT_* namespace at entry because GIT_DIR alone makes `git -C <path>` answer "
+            "about another repository, which would let a sealed sequence certify timings against a "
+            "tree nobody ran; finding those requires enumerating what it inherited. It then builds "
+            "the sanitized environment each measured child receives, so the provider and control "
+            "the child sees are the ones this controller issued. It reads no configuration of its "
+            "own -- the worker default it measures comes from committed pyproject.toml, not the "
+            "environment, precisely so the gate describes what the repository has."
+        ),
+    ),
+    Exemption(
+        path="scripts/run_integration_tests.py",
+        reason=(
+            "The ambient environment is this runner's subject, not its configuration. It refuses "
+            "an invocation carrying PYTEST, PYTHON, any PYTEST_*/GIT_* channel, or a Make-level "
+            "override, and it can only find those by enumerating what it inherited -- a Settings "
+            "field would describe the values it is supposed to reject. It then builds the sealed "
+            "child environment allowlist-first from that same inherited map, so the interpreter "
+            "and provider the measured suite runs under are the ones this process chose. Settings "
+            "is the shipped app's configuration and is never constructed here."
+        ),
+    ),
+    Exemption(
+        path="scripts/integration_reporter.py",
+        reason=(
+            "The worker half of the integration run contract, loaded as a pytest plugin inside "
+            "each worker process. The two variables it reads are how the parent addresses that "
+            "worker -- where to disclose, and who it is disclosing as -- and they are set by the "
+            "parent per child, so they exist only for the lifetime of one subprocess and differ "
+            "between siblings in the same run. Settings is a frozen snapshot of the shipped app's "
+            "configuration taken once at startup and is never constructed here; a field for either "
+            "name would describe a value that is different for every worker. Their absence is also "
+            "meaningful rather than a missing default: it is how this module knows it was imported "
+            "for its definitions instead of run as a worker, and it registers nothing."
+        ),
+    ),
+    Exemption(
+        path="scripts/verify_integration_evidence.py",
+        reason=(
+            "Inspects the ambient environment rather than reading configuration from it: the "
+            "whole-environment access exists so an inherited GIT_* variable can be rejected "
+            "before any Git resolution happens. A verifier that honoured GIT_DIR would "
+            "re-derive its provenance from whatever repository the caller pointed it at, "
+            "which is the one thing independent re-derivation is supposed to prevent. It "
+            "reads no configuration of its own."
+        ),
+    ),
+    Exemption(
+        path="scripts/verify_integration_lifecycle_comparison.py",
+        reason=(
+            "Same GIT_* reject-then-scrub as the controller it verifies, for the same reason: a "
+            "verifier that honoured an inherited GIT_DIR would confirm a comparison against a "
+            "different repository than the one named on its command line. It reads no "
+            "configuration of its own."
+        ),
+    ),
+    Exemption(
         path="scripts/run_workspace_evaluation.py",
         reason=(
             "Reads the evaluation signing key from the environment before it constructs "

@@ -1,0 +1,93 @@
+# Host resources the integration tier actually contends for.
+#
+# Running the tier across parallel workers is only sound if the things two
+# workers cannot share are known. This manifest is that list, and there are
+# exactly three outcomes a node can have:
+#
+#   ordinary            - nothing host-wide is contended; the node is placed
+#                         wherever the balancer likes. This is the default and
+#                         the overwhelming majority.
+#   co-location group   - the nodes named here must land on the same worker,
+#                         because they share one expensive setup.
+#   external-exclusive  - the node drives something outside this process that
+#                         cannot be duplicated, and it is gated on a
+#                         capability being present.
+#
+# There is deliberately no fourth "serial" class. A suite-wide serial shard
+# preserves exactly the serial fraction that makes the tier slow, and almost
+# everything that looks like it needs one does not: Prometheus registries,
+# router reloads, scheduler objects, module globals and environment mutation
+# are process-global, so isolated workers isolate them for free. Naming them
+# serial would buy nothing and cost the whole parallel gain.
+#
+# The guard that reads this file rejects a fixed bind/listen port or a shared
+# mutable server path that is not declared below. Dynamic ports and
+# run-specific paths need no declaration - they are how a collision is
+# removed rather than scheduled around.
+
+[meta]
+version = 1
+
+# --------------------------------------------------------------------------
+# Named co-location groups
+# --------------------------------------------------------------------------
+
+# The embedding-width scenarios migrate two templates - one per width - and
+# clone both. Splitting them across workers would migrate each width twice and
+# throw away the saving the templates exist for, so they ride one worker.
+#
+# Grouped for a *shared setup*, not for isolation: each scenario still gets its
+# own mutable database. Nothing here serializes against the rest of the tier.
+[[groups]]
+name = "embedding"
+reason = "two migrated width templates, cloned per scenario; splitting them re-migrates both"
+members = [
+  "tests/integration/test_embedding_dim_rebuild.py",
+]
+
+# --------------------------------------------------------------------------
+# Capability-gated external-exclusive nodes
+# --------------------------------------------------------------------------
+
+# The compose smoke drives a live stack this process does not own - a
+# mock OIDC server, a mock entitlement service, and their Postgres, on the
+# published compose ports. Two of them cannot exist at once, and the suite
+# cannot start them, so this is opt-in on the capability and runs alone.
+[[external_exclusive]]
+marker = "compose"
+capability = "COMPOSE_STACK_UP"
+reason = "drives the shared dev compose stack on its published ports; cannot be duplicated"
+members = [
+  "tests/integration/test_auth_compose_smoke.py",
+]
+
+# --------------------------------------------------------------------------
+# Declared host resources
+# --------------------------------------------------------------------------
+# Every fixed port and shared mutable server path the guard finds must appear
+# here with a reason. An entry is a statement that the collision is understood,
+# not that it is harmless.
+
+# The single-process developer path: `CONTEXTPLANE_TEST_PG=devstack` outside the
+# runner reuses one cluster on one fixed port so a developer running the tier
+# repeatedly does not pay `initdb` every time.
+#
+# Declared rather than removed because it cannot collide in a measured run: a
+# runner-driven worker takes its database URL from the broker manifest and never
+# calls `test_database()`, so this path is unreachable there. It is also
+# overridable per checkout via `CONTEXTPLANE_TEST_PG_PORT`, which is what makes
+# two simultaneous checkouts survive it.
+[[host_resources]]
+kind = "fixed_port"
+value = 5545
+location = "tests/helpers/pg_provider.py"
+reason = "single-process developer cluster, unreachable under the runner; override with CONTEXTPLANE_TEST_PG_PORT"
+
+# The data directory that same developer cluster initialises. Shared and
+# mutable by design - reusing it is the point - and deliberately not the one
+# `make dev-up` manages, so a test run can never drop a developer's dev data.
+[[host_resources]]
+kind = "shared_server_path"
+value = ".devstack/pgdata-test"
+location = "tests/helpers/pg_provider.py"
+reason = "developer cluster data directory, reused across runs; separate from the dev stack's own pgdata"
