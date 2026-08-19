@@ -1,0 +1,52 @@
+name: Stale claims
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const STALE_HOURS = 8;
+            const cutoff = Date.now() - STALE_HOURS * 3600 * 1000;
+            const prs = await github.paginate(github.rest.pulls.list, {
+              ...context.repo, state: "open",
+            });
+            for (const pr of prs.filter(p => p.draft)) {
+              if (new Date(pr.updated_at).getTime() > cutoff) continue;
+              if (pr.labels.some(l => l.name === "stale-claim")) continue;
+              await github.rest.issues.addLabels({
+                ...context.repo, issue_number: pr.number, labels: ["stale-claim"],
+              }).catch(async () => {
+                await github.rest.issues.createLabel({
+                  ...context.repo, name: "stale-claim", color: "d93f0b",
+                  description: "Draft PR with no push/comment for 8h; open to takeover",
+                });
+                await github.rest.issues.addLabels({
+                  ...context.repo, issue_number: pr.number, labels: ["stale-claim"],
+                });
+              });
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: pr.number,
+                body: `No push or comment for ${STALE_HOURS}h — claim is stale. Any session may take over: post a takeover comment and continue from this branch tip (never force-push over unexamined WIP).`,
+              });
+              // Unassign the linked issues so the claim frees up.
+              const refs = [...(pr.body ?? "").matchAll(/(?:fixes|closes|resolves)\s+#(\d+)/gi)];
+              for (const [, num] of refs) {
+                const issue = await github.rest.issues.get({ ...context.repo, issue_number: +num }).catch(() => null);
+                if (!issue?.data.assignees?.length) continue;
+                await github.rest.issues.removeAssignees({
+                  ...context.repo, issue_number: +num,
+                  assignees: issue.data.assignees.map(a => a.login),
+                });
+              }
+            }
