@@ -4,7 +4,8 @@ reads.
 
 `check_env_documented.py` pins two files -- `.env.example` and the
 configuration reference -- against each other. This gate covers the rest of
-`README.md` and `docs/**/*.md`, where a variable can be introduced in an
+`README.md`, `CONTRIBUTING.md`, `docs/**/*.md` and `.develop/**/*.md`, where a
+variable can be introduced in an
 `export FOO=...` example, a quickstart's `.env` snippet, or a `docker run
 -e FOO=...` line without ever touching either of those two files, and drift
 there is invisible to that gate.
@@ -82,7 +83,7 @@ from contextplane.config import Settings
 
 _REPO_ROOT = repo_root()
 
-_DEFAULT_SCOPE: tuple[str, ...] = ("README.md", "docs")
+_DEFAULT_SCOPE: tuple[str, ...] = ("README.md", "CONTRIBUTING.md", "docs", ".develop")
 
 _EXCLUDE_DIRS: frozenset[str] = frozenset(
     {".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", ".git"}
@@ -377,7 +378,7 @@ def _print_explain() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Verify every environment-variable mention in README.md and docs/**/*.md is real.",
+        description="Verify every environment-variable mention in the docs and .develop/ is real.",
     )
     parser.add_argument(
         "--paths",
