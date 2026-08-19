@@ -1061,6 +1061,149 @@
     "title": "ArtifactFamilyCreate",
     "type": "object"
   },
+  "ArtifactFamilyListResponse": {
+    "$defs": {
+      "ActorRef": {
+        "additionalProperties": false,
+        "description": "Response-only. Never accepted in a request body -- see\n`arc_authoring_enums.RESERVED_ACTOR_FIELDS`.",
+        "properties": {
+          "issuer": {
+            "title": "Issuer",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "issuer",
+          "subject"
+        ],
+        "title": "ActorRef",
+        "type": "object"
+      },
+      "ArtifactFamilyResponse": {
+        "additionalProperties": false,
+        "description": "An artifact family: the stable identity of a versioned artifact.",
+        "properties": {
+          "active_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Active Revision Id"
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "$ref": "#/$defs/ActorRef"
+          },
+          "kind": {
+            "$ref": "#/$defs/ArtifactKind"
+          },
+          "owning_scope": {
+            "$ref": "#/$defs/OwningScope"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "target_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target Tenant Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owning_scope",
+          "artifact_id",
+          "slug",
+          "kind",
+          "title",
+          "created_at",
+          "created_by"
+        ],
+        "title": "ArtifactFamilyResponse",
+        "type": "object"
+      },
+      "ArtifactKind": {
+        "description": "Mirrors the `ck_arc_artifacts_kind` CHECK constraint on\n`arc_artifacts.kind` (`contextplane/storage/migrations/versions/\n0001_baseline_schema.py`) -- today's only source for this vocabulary.\nTranscribed rather than imported: that constraint is a raw SQL string\nin a migration, not an importable Python constant. This phase adds no\nnew kind.",
+        "enum": [
+          "standard",
+          "policy",
+          "adr",
+          "runbook",
+          "capability_contract"
+        ],
+        "title": "ArtifactKind",
+        "type": "string"
+      },
+      "OwningScope": {
+        "description": "Whether a resource is global or bound to one tenant.",
+        "enum": [
+          "global",
+          "tenant"
+        ],
+        "title": "OwningScope",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "Cursor-paginated artifact families visible to the requesting tenant.",
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/$defs/ArtifactFamilyResponse"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "next_cursor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Next Cursor"
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "title": "ArtifactFamilyListResponse",
+    "type": "object"
+  },
   "ArtifactFamilyResponse": {
     "$defs": {
       "ActorRef": {

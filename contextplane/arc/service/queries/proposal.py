@@ -217,6 +217,68 @@ async def load_family_for_update(session: AsyncSession, artifact_id: uuid.UUID) 
     )
 
 
+async def list_families(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    search_query: str | None,
+    kind: str | None,
+    owning_scope: str | None,
+    cursor_created_at: datetime.datetime | None,
+    cursor_artifact_id: uuid.UUID | None,
+    page_size: int,
+) -> list[FamilyRow]:
+    """List only global and requesting-tenant families, newest first."""
+    clauses = ["(tenant_id IS NULL OR tenant_id = :tenant_id)"]
+    params: dict[str, Any] = {"tenant_id": tenant_id, "page_size": page_size}
+    if search_query is not None:
+        clauses.append("(position(:search_query in lower(slug)) > 0 OR position(:search_query in lower(title)) > 0)")
+        params["search_query"] = search_query
+    if kind is not None:
+        clauses.append("kind = :kind")
+        params["kind"] = kind
+    if owning_scope == "global":
+        clauses.append("tenant_id IS NULL")
+    elif owning_scope == "tenant":
+        clauses.append("tenant_id = :tenant_id")
+    if cursor_created_at is not None and cursor_artifact_id is not None:
+        clauses.append(
+            "(created_at < :cursor_created_at "
+            "OR (created_at = :cursor_created_at AND artifact_id < :cursor_artifact_id))"
+        )
+        params["cursor_created_at"] = cursor_created_at
+        params["cursor_artifact_id"] = cursor_artifact_id
+
+    where = " AND ".join(clauses)
+    rows = (
+        await session.execute(
+            text(
+                f"SELECT artifact_id, tenant_id, slug, kind, title, active_revision_id, created_at, "  # noqa: S608 - where is assembled only from fixed clauses; values remain bound parameters
+                "       created_by_issuer, created_by_subject "
+                "FROM arc_artifacts "
+                f"WHERE {where} "
+                "ORDER BY created_at DESC, artifact_id DESC "
+                "LIMIT :page_size"
+            ),
+            params,
+        )
+    ).all()
+    return [
+        FamilyRow(
+            artifact_id=row.artifact_id,
+            tenant_id=row.tenant_id,
+            slug=row.slug,
+            kind=row.kind,
+            title=row.title,
+            active_revision_id=row.active_revision_id,
+            created_at=row.created_at,
+            created_by_issuer=row.created_by_issuer,
+            created_by_subject=row.created_by_subject,
+        )
+        for row in rows
+    ]
+
+
 # ---------------------------------------------------------------------------
 # arc_authoring_proposals -- the thread
 # ---------------------------------------------------------------------------
@@ -522,6 +584,7 @@ __all__ = [
     "get_or_create_thread",
     "insert_family",
     "insert_version",
+    "list_families",
     "list_versions",
     "list_versions_for_thread",
     "load_family",

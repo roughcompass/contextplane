@@ -47,6 +47,7 @@ from contextplane.arc.service.queries import proposal as queries
 from contextplane.arc.types import ArcRequestContext, AuthorityScope
 from contextplane.audit import actions
 from contextplane.exceptions import ConflictError, NotFoundError, RegistryError
+from contextplane.pagination import InvalidCursorError, decode_cursor, encode_cursor
 from contextplane.types import Clock
 
 # ---------------------------------------------------------------------------
@@ -140,6 +141,12 @@ class ArtifactFamily:
 
 
 @dataclasses.dataclass(frozen=True)
+class ArtifactFamilyPage:
+    items: tuple[ArtifactFamily, ...]
+    next_cursor: str | None
+
+
+@dataclasses.dataclass(frozen=True)
 class ProposalVersion:
     proposal_id: uuid.UUID
     proposal_version: int
@@ -184,6 +191,52 @@ def _scope(tenant_id: uuid.UUID | None) -> ArtifactScope:
 
 def _owning_scope(tenant_id: uuid.UUID | None) -> str:
     return "global" if tenant_id is None else "tenant"
+
+
+def _encode_family_cursor(
+    row: queries.FamilyRow,
+    *,
+    query: str | None,
+    kind: str | None,
+    owning_scope: str | None,
+) -> str:
+    return encode_cursor(
+        {
+            "artifact_id": str(row.artifact_id),
+            "created_at": row.created_at.isoformat(),
+            "kind": kind,
+            "owning_scope": owning_scope,
+            "query": query,
+        }
+    )
+
+
+def _decode_family_cursor(
+    cursor: str,
+    *,
+    query: str | None,
+    kind: str | None,
+    owning_scope: str | None,
+) -> tuple[datetime.datetime, uuid.UUID]:
+    try:
+        payload = decode_cursor(cursor, strict=True)
+        created_at = payload["created_at"]
+        artifact_id = payload["artifact_id"]
+        if not isinstance(created_at, str) or not isinstance(artifact_id, str):
+            raise TypeError
+        parsed_created_at = datetime.datetime.fromisoformat(created_at)
+        if parsed_created_at.tzinfo is None:
+            raise ValueError
+        if (
+            not {"query", "kind", "owning_scope"}.issubset(payload)
+            or payload.get("query") != query
+            or payload.get("kind") != kind
+            or payload.get("owning_scope") != owning_scope
+        ):
+            raise ValueError
+        return parsed_created_at, uuid.UUID(artifact_id)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise InvalidCursorError("invalid cursor") from exc
 
 
 def _operational_integrity_state(revision_id: uuid.UUID | None) -> str:
@@ -306,6 +359,56 @@ class ProposalService:
             raise NotFoundError(f"artifact family {artifact_id} not found")
         self._authorization.assert_can_read_artifact(ctx, _scope(family.tenant_id))
         return _family_result(family)
+
+    async def list_families(
+        self,
+        ctx: ArcRequestContext,
+        *,
+        query: str | None = None,
+        kind: str | None = None,
+        owning_scope: str | None = None,
+        cursor: str | None = None,
+        page_size: int = 25,
+    ) -> ArtifactFamilyPage:
+        self._authorization.assert_request_tenant(ctx)
+        search_query = query.strip().lower() if query and query.strip() else None
+        cursor_created_at: datetime.datetime | None = None
+        cursor_artifact_id: uuid.UUID | None = None
+        if cursor is not None:
+            cursor_created_at, cursor_artifact_id = _decode_family_cursor(
+                cursor,
+                query=search_query,
+                kind=kind,
+                owning_scope=owning_scope,
+            )
+
+        async with self._session_factory() as session:
+            rows = await queries.list_families(
+                session,
+                tenant_id=ctx.tenant_id,
+                search_query=search_query,
+                kind=kind,
+                owning_scope=owning_scope,
+                cursor_created_at=cursor_created_at,
+                cursor_artifact_id=cursor_artifact_id,
+                page_size=page_size + 1,
+            )
+
+        has_more = len(rows) > page_size
+        page_rows = rows[:page_size]
+        for row in page_rows:
+            self._authorization.assert_can_read_artifact(ctx, _scope(row.tenant_id))
+        next_cursor = (
+            _encode_family_cursor(
+                page_rows[-1],
+                query=search_query,
+                kind=kind,
+                owning_scope=owning_scope,
+            )
+            if has_more and page_rows
+            else None
+        )
+        return ArtifactFamilyPage(items=tuple(_family_result(row) for row in page_rows), next_cursor=next_cursor)
 
     # -- proposal threads and versions -----------------------------------------
 
@@ -618,6 +721,7 @@ def _version_result(version: queries.VersionRow, *, can_write: bool) -> Proposal
 __all__ = [
     "NONTERMINAL_STATES",
     "ArtifactFamily",
+    "ArtifactFamilyPage",
     "ProposalPage",
     "ProposalService",
     "ProposalStateConflict",

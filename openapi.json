@@ -1223,6 +1223,35 @@
         "title": "ArtifactFamilyCreate",
         "type": "object"
       },
+      "ArtifactFamilyListResponse": {
+        "additionalProperties": false,
+        "description": "Cursor-paginated artifact families visible to the requesting tenant.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactFamilyResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ArtifactFamilyListResponse",
+        "type": "object"
+      },
       "ArtifactFamilyResponse": {
         "additionalProperties": false,
         "description": "An artifact family: the stable identity of a versioned artifact.",
@@ -19565,6 +19594,114 @@
       }
     },
     "/v1/arc/artifacts": {
+      "get": {
+        "operationId": "list_artifact_families_v1_arc_artifacts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ArtifactKind"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "owning_scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OwningScope"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owning Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactFamilyListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Artifact Families",
+        "tags": [
+          "arc: authoring"
+        ]
+      },
       "post": {
         "operationId": "create_artifact_family_v1_arc_artifacts_post",
         "requestBody": {

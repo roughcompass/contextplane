@@ -156,6 +156,7 @@ from contextplane.arc.service.preflight import (
 )
 from contextplane.arc.service.proposal import (
     ArtifactFamily,
+    ArtifactFamilyPage,
     ProposalService,
     ProposalStateConflict,
     ProposalThread,
@@ -299,6 +300,7 @@ __all__ = [
     "ArcServices",
     "ArcVocabularyError",
     "ArtifactFamily",
+    "ArtifactFamilyPage",
     "ArtifactLifecycleError",
     "ArtifactMaterialisationService",
     "ArtifactService",

@@ -31,6 +31,7 @@ from contextplane.arc.service.authorization import ArcAuthorizationError, ArcAut
 from contextplane.arc.service.queries.proposal import FamilyRow, ThreadRow, VersionRow
 from contextplane.arc.types import ArcRequestContext
 from contextplane.exceptions import ConflictError, NotFoundError, RegistryError
+from contextplane.pagination import InvalidCursorError
 from contextplane.types import TenantContext
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
@@ -144,6 +145,32 @@ class FakeQueries:
 
     async def load_family_for_update(self, _session: object, artifact_id: uuid.UUID) -> FamilyRow | None:
         return self.families.get(artifact_id)
+
+    async def list_families(
+        self,
+        _session: object,
+        *,
+        tenant_id: uuid.UUID,
+        search_query: str | None,
+        kind: str | None,
+        owning_scope: str | None,
+        cursor_created_at: datetime.datetime | None,
+        cursor_artifact_id: uuid.UUID | None,
+        page_size: int,
+    ) -> list[FamilyRow]:
+        rows = [row for row in self.families.values() if row.tenant_id is None or row.tenant_id == tenant_id]
+        if search_query is not None:
+            rows = [row for row in rows if search_query in row.slug.lower() or search_query in row.title.lower()]
+        if kind is not None:
+            rows = [row for row in rows if row.kind == kind]
+        if owning_scope == "global":
+            rows = [row for row in rows if row.tenant_id is None]
+        elif owning_scope == "tenant":
+            rows = [row for row in rows if row.tenant_id == tenant_id]
+        rows.sort(key=lambda row: (row.created_at, row.artifact_id), reverse=True)
+        if cursor_created_at is not None and cursor_artifact_id is not None:
+            rows = [row for row in rows if (row.created_at, row.artifact_id) < (cursor_created_at, cursor_artifact_id)]
+        return rows[:page_size]
 
     def seed_family(self, row: FamilyRow) -> None:
         self.families[row.artifact_id] = row
@@ -319,6 +346,29 @@ def _version_row(
         terminal_by_issuer=None,
         terminal_by_subject=None,
         terminalized_at=None,
+    )
+
+
+def _family_row(
+    *,
+    artifact_id: uuid.UUID,
+    tenant_id: uuid.UUID | None,
+    slug: str,
+    title: str,
+    created_at: datetime.datetime,
+    kind: str = "policy",
+    active_revision_id: uuid.UUID | None = None,
+) -> FamilyRow:
+    return FamilyRow(
+        artifact_id=artifact_id,
+        tenant_id=tenant_id,
+        slug=slug,
+        kind=kind,
+        title=title,
+        active_revision_id=active_revision_id,
+        created_at=created_at,
+        created_by_issuer=_ISSUER,
+        created_by_subject=_OPERATOR,
     )
 
 
@@ -697,6 +747,89 @@ async def test_get_family_not_found_and_found_but_unauthorized(monkeypatch: pyte
     same_tenant_ctx = _ctx(tenant_id=tenant_id)
     found = await service.get_family(same_tenant_ctx, artifact_id)
     assert found.artifact_id == artifact_id
+
+
+async def test_list_families_returns_global_and_own_tenant_with_truthful_cursor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = FakeQueries()
+    tenant_id = uuid.uuid4()
+    other_tenant_id = uuid.uuid4()
+    visible_ids: list[uuid.UUID] = []
+    for offset, owner in enumerate((None, tenant_id, None)):
+        artifact_id = uuid.uuid4()
+        visible_ids.append(artifact_id)
+        fake.seed_family(
+            _family_row(
+                artifact_id=artifact_id,
+                tenant_id=owner,
+                slug=f"visible-{offset}",
+                title=f"Visible {offset}",
+                created_at=_NOW - datetime.timedelta(minutes=offset),
+            )
+        )
+    hidden_id = uuid.uuid4()
+    fake.seed_family(
+        _family_row(
+            artifact_id=hidden_id,
+            tenant_id=other_tenant_id,
+            slug="hidden",
+            title="Hidden",
+            created_at=_NOW + datetime.timedelta(minutes=1),
+        )
+    )
+    service = _build_service(monkeypatch, fake)
+    ctx = _ctx(tenant_id=tenant_id)
+
+    first = await service.list_families(ctx, page_size=2)
+    assert [item.artifact_id for item in first.items] == visible_ids[:2]
+    assert first.next_cursor is not None
+
+    second = await service.list_families(ctx, cursor=first.next_cursor, page_size=2)
+    assert [item.artifact_id for item in second.items] == visible_ids[2:]
+    assert second.next_cursor is None
+    assert hidden_id not in {item.artifact_id for item in (*first.items, *second.items)}
+
+    with pytest.raises(InvalidCursorError):
+        await service.list_families(ctx, cursor=first.next_cursor, query="different", page_size=2)
+
+
+async def test_list_families_applies_server_filters_and_rejects_malformed_cursors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = FakeQueries()
+    tenant_id = uuid.uuid4()
+    global_policy_id = uuid.uuid4()
+    tenant_standard_id = uuid.uuid4()
+    fake.seed_family(
+        _family_row(
+            artifact_id=global_policy_id,
+            tenant_id=None,
+            slug="access-policy",
+            title="Access Policy",
+            created_at=_NOW,
+        )
+    )
+    fake.seed_family(
+        _family_row(
+            artifact_id=tenant_standard_id,
+            tenant_id=tenant_id,
+            slug="service-standard",
+            title="Service Standard",
+            created_at=_NOW - datetime.timedelta(minutes=1),
+            kind="standard",
+        )
+    )
+    service = _build_service(monkeypatch, fake)
+    ctx = _ctx(tenant_id=tenant_id)
+
+    searched = await service.list_families(ctx, query="  ACCESS  ")
+    assert [item.artifact_id for item in searched.items] == [global_policy_id]
+    tenant_standards = await service.list_families(ctx, kind="standard", owning_scope="tenant")
+    assert [item.artifact_id for item in tenant_standards.items] == [tenant_standard_id]
+
+    with pytest.raises(InvalidCursorError):
+        await service.list_families(ctx, cursor="not-a-cursor")
 
 
 async def test_get_version_not_found(monkeypatch: pytest.MonkeyPatch) -> None:

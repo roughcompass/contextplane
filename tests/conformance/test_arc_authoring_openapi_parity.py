@@ -225,6 +225,14 @@ def test_expanded_appendix_a_path_set_is_present() -> None:
     assert not missing, f"Appendix A route(s) missing from the exported spec: {missing}"
 
 
+def test_artifact_family_collection_is_published_with_server_side_filters() -> None:
+    operation = _load_openapi()["paths"]["/v1/arc/artifacts"]["get"]
+    parameters = {parameter["name"] for parameter in operation["parameters"]}
+    assert parameters == {"cursor", "q", "kind", "owning_scope", "page_size"}
+    response_schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
+    assert response_schema == {"$ref": "#/components/schemas/ArtifactFamilyListResponse"}
+
+
 def test_the_appendix_a_approval_evidence_route_gap_is_the_only_missing_path() -> None:
     """Names the one Appendix A route that was never built, so a second,
     unrelated route silently going missing cannot hide behind this one

@@ -86,6 +86,26 @@ def test_artifact_family_create_requires_every_declared_field() -> None:
     assert valid.slug == "widget"
 
 
+def test_artifact_family_list_response_defaults_cursor_and_validates_items() -> None:
+    page = aa.ArtifactFamilyListResponse.model_validate(
+        {
+            "items": [
+                {
+                    "artifact_id": _UUID,
+                    "owning_scope": "global",
+                    "slug": "access-policy",
+                    "kind": "policy",
+                    "title": "Access policy",
+                    "created_at": _TS,
+                    "created_by": {"issuer": "iss", "subject": "sub"},
+                }
+            ]
+        }
+    )
+    assert page.next_cursor is None
+    assert page.items[0].slug == "access-policy"
+
+
 def test_activation_eligibility_response_requires_exactly_ten_predicates() -> None:
     status = aa.ActivationPredicateStatus(name=aa.ActivationPredicateName.LATEST_VERSION, satisfied=True)
     with pytest.raises(ValidationError, match="at least 10"):

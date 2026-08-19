@@ -26,7 +26,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Request, status
+from fastapi import APIRouter, Depends, Path, Query, Request, status
 
 from contextplane.api.container import Services
 from contextplane.api.errors import build_error
@@ -34,8 +34,11 @@ from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_
 from contextplane.api.middleware.tenant import get_tenant_context
 from contextplane.api.schemas.arc_authoring import (
     ArtifactFamilyCreate,
+    ArtifactFamilyListResponse,
     ArtifactFamilyResponse,
+    ArtifactKind,
     EmptyRequest,
+    OwningScope,
     ProposalOpenRequest,
     ProposalPatchRequest,
     ProposalSummary,
@@ -73,6 +76,7 @@ from contextplane.arc import (
     SubmissionPrerequisiteUnavailable,
 )
 from contextplane.exceptions import ConflictError, NotFoundError, RegistryError
+from contextplane.pagination import InvalidCursorError
 from contextplane.types import TenantContext
 
 router = APIRouter(tags=["arc: authoring"], prefix="/v1/arc")
@@ -155,6 +159,8 @@ def _translate_error(exc: Exception) -> Exception:
         return build_error(status.HTTP_409_CONFLICT, code="arc_operational_integrity_failed", message=str(exc))
     if isinstance(exc, ArcAuthorizationError):
         return build_error(status.HTTP_403_FORBIDDEN, code="forbidden", message="not permitted")
+    if isinstance(exc, InvalidCursorError):
+        return build_error(status.HTTP_422_UNPROCESSABLE_ENTITY, code="invalid_cursor", message="invalid cursor")
     if isinstance(exc, NotFoundError):
         return build_error(status.HTTP_404_NOT_FOUND, code="not_found", message=str(exc))
     if isinstance(exc, ConflictError):
@@ -253,6 +259,33 @@ async def get_artifact_family(
     except Exception as exc:
         raise _translate_error(exc) from exc
     return _family_response(family)
+
+
+async def list_artifact_families(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    cursor: Annotated[str | None, Query()] = None,
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    kind: Annotated[ArtifactKind | None, Query()] = None,
+    owning_scope: Annotated[OwningScope | None, Query()] = None,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 25,
+) -> ArtifactFamilyListResponse:
+    arc_ctx = _arc_context(request, ctx)
+    try:
+        page = await _proposals(request).list_families(
+            arc_ctx,
+            query=q,
+            kind=kind.value if kind is not None else None,
+            owning_scope=owning_scope.value if owning_scope is not None else None,
+            cursor=cursor,
+            page_size=page_size,
+        )
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+    return ArtifactFamilyListResponse(
+        items=[_family_response(family) for family in page.items],
+        next_cursor=page.next_cursor,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -493,6 +526,12 @@ _mr.add_mutation_route(
     verb="POST",
     response_model=ArtifactFamilyResponse,
     status_code=status.HTTP_201_CREATED,
+)
+_mr.add_read_route(
+    path="/artifacts",
+    handler=list_artifact_families,
+    response_model=ArtifactFamilyListResponse,
+    status_code=status.HTTP_200_OK,
 )
 _mr.add_read_route(
     path="/artifacts/{artifact_id}",

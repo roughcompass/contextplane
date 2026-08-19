@@ -172,6 +172,7 @@ from contextplane.api.schemas.arc_authoring_profiles import (
 )
 from contextplane.api.schemas.arc_authoring_proposals import (
     ArtifactFamilyCreate,
+    ArtifactFamilyListResponse,
     ArtifactFamilyResponse,
     BaselineDiffChange,
     BaselineDiffResponse,
@@ -330,6 +331,7 @@ __all__ = [
     "ArtifactApplicabilityRule",
     "ArtifactDirective",
     "ArtifactFamilyCreate",
+    "ArtifactFamilyListResponse",
     "ArtifactFamilyResponse",
     "ArtifactKind",
     "ArtifactSemantics",

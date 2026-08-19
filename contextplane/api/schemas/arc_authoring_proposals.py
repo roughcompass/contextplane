@@ -61,6 +61,13 @@ class ArtifactFamilyResponse(_ScopeColumnsMixin, _ClosedModel):
     created_by: ActorRef
 
 
+class ArtifactFamilyListResponse(_ClosedModel):
+    """Cursor-paginated artifact families visible to the requesting tenant."""
+
+    items: list[ArtifactFamilyResponse]
+    next_cursor: str | None = None
+
+
 class ProposalOpenRequest(_ClosedModel):
     """Body for `POST /v1/arc/artifacts/{id}/proposals`: opens a new
     proposal version against an admitted source."""
@@ -261,6 +268,7 @@ class ReviewPackageResponse(_ClosedModel):
 
 __all__ = [
     "ArtifactFamilyCreate",
+    "ArtifactFamilyListResponse",
     "ArtifactFamilyResponse",
     "BaselineDiffChange",
     "BaselineDiffResponse",
