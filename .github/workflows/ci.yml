@@ -208,6 +208,14 @@ jobs:
   native-stack:
     runs-on: ubuntu-latest
     needs: unit
+    # Nightly and on-demand, not on every PR. This job proves the
+    # no-container-runtime path still works — a developer-environment
+    # guarantee, not a production one, since deployments run the container
+    # image. It is also the slowest job and the only one depending on an
+    # external apt repository, so gating every merge on it buys little and
+    # costs a stalled mirror. The full suites below were already
+    # schedule-only for the same reason; this extends that to the job.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     env:
       CONTEXTPLANE_TEST_PG: devstack
     steps:

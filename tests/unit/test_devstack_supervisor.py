@@ -23,7 +23,7 @@ import pytest
 from uvicorn.config import Config
 from uvicorn.supervisors.watchfilesreload import FileFilter
 
-from scripts.devstack.config import Ports
+from scripts.devstack.config import Ports, build_env
 from scripts.devstack.pg_provider import PostgresUnavailableError
 from scripts.devstack.supervisor import (
     API_SHUTDOWN_TIMEOUT_S,
@@ -217,3 +217,33 @@ def test_every_reload_dir_the_supervisor_passes_actually_exists() -> None:
                 f"{service.name}: --reload-dir names {argv[index + 1]!r}, "
                 f"which is not a directory under {repo_root}"
             )
+
+
+def test_devstack_entitlement_discriminator_matches_the_canonical_inventory() -> None:
+    """The dev stack must ask for the entitlement the bootstrap actually seeds.
+
+    The grammar is `<tenant_slug>_<DISCRIMINATOR>_<ROLE>`, so if the stack's
+    discriminator and the seeded entitlement disagree the API looks up a row
+    nobody wrote and every authenticated request 403s -- with no error naming
+    the mismatch. That is exactly what happened: this said `REGISTRY` while
+    `.env.example` and `docker-compose.yml` said `CONTEXTPLANE`, missed by the
+    rename because the only job exercising the no-container path was red.
+
+    Compared against `.env.example` rather than a literal, because that file is
+    the canonical env inventory and is already gated by `make env-documented`.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    key = "ENTITLEMENT_SERVICE_DISCRIMINATOR"
+
+    declared = [
+        line.split("=", 1)[1].strip()
+        for line in (repo_root / ".env.example").read_text(encoding="utf-8").splitlines()
+        if line.startswith(f"{key}=")
+    ]
+    assert declared, f"{key} is absent from .env.example"
+
+    assert build_env(Ports())[key] == declared[0], (
+        f"the dev stack sets {key}={build_env(Ports())[key]!r} but .env.example "
+        f"declares {declared[0]!r}; the bootstrap seeds against the declared value, "
+        "so a mismatch 403s every authenticated request"
+    )
