@@ -168,7 +168,13 @@ def services(ports: Ports, python: str | None = None) -> list[Service]:
                 # restarts the API, because the post-watch filter matches on
                 # glob alone and every one of them matches "*.py".
                 "--reload-dir",
-                "registry",
+                # The package directory, which is what uvicorn resolves this
+                # against. It said "registry" until 2026-08-19 -- a leftover of
+                # the package rename that made `make dev-up` fail to start the
+                # API on any checkout, because uvicorn rejects a --reload-dir
+                # that does not exist. It went unseen because the job that runs
+                # dev-up sits behind two gates that were themselves failing.
+                "contextplane",
                 # Note these trees stay *watched*: an exclusion is a filter
                 # applied to changes after the fact, not a narrower watch. A
                 # write under .venv still wakes the reloader; it just no

@@ -191,3 +191,29 @@ class TestReclaim:
         monkeypatch.setattr("builtins.input", lambda: pytest.fail("asked about an unnamed process"))
 
         assert cli._offer_reclaim(Ports(), ["api"], reclaim=True) is False
+
+
+def test_every_reload_dir_the_supervisor_passes_actually_exists() -> None:
+    """A `--reload-dir` naming a directory that is gone stops the API starting.
+
+    uvicorn rejects a non-existent `--reload-dir` outright, so the whole stack
+    fails at `make dev-up` with an error that names uvicorn rather than the
+    stale argument. This held for the package rename: the value stayed
+    `registry` after the directory became `contextplane`, and nothing noticed
+    because the only job that runs `dev-up` sits behind two gates that were
+    themselves red. Asserting against the real tree is the point -- a test that
+    hardcoded the expected string would have kept passing through that rename.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+
+    for service in services(Ports()):
+        argv = service.argv
+        for index, token in enumerate(argv):
+            if token != "--reload-dir":
+                continue
+            assert index + 1 < len(argv), f"{service.name}: --reload-dir has no value"
+            target = repo_root / argv[index + 1]
+            assert target.is_dir(), (
+                f"{service.name}: --reload-dir names {argv[index + 1]!r}, "
+                f"which is not a directory under {repo_root}"
+            )
