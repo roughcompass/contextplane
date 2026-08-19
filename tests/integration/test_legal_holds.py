@@ -130,6 +130,95 @@ async def test_a_hold_beyond_the_approved_ceiling_is_refused_before_it_is_writte
         await _place(hold_fixture, review_in_days=181)
 
 
+#: The constraint is evaluated by the session doing the INSERT, under *that*
+#: session's `TimeZone`. So these set the zone inside the same transaction as the
+#: insert -- `SET LOCAL` in a separate transaction is scoped to that transaction and
+#: reaches nothing, which is how an earlier version of these tests passed against
+#: the very schema they were meant to fail on.
+#:
+#: A zone that observes DST is the whole variable. Under UTC the calendar bound and
+#: the absolute bound are the same 4320 hours by construction, so a UTC-only test
+#: cannot distinguish them and proves nothing about this fix.
+_DST_ZONE = "America/Los_Angeles"
+_HOLD_HOURS = holds.MAX_HOLD_DAYS * 24
+
+
+async def _insert_hold_under_zone(
+    fixture: dict[str, object], *, zone: str, placed_at: datetime.datetime, hours: int
+) -> uuid.UUID:
+    """Insert a hold with `review_date = placed_at + hours`, in one transaction."""
+    factory: async_sessionmaker[object] = fixture["factory"]  # type: ignore[assignment]
+    hold_id = uuid.uuid4()
+    async with factory() as session, session.begin():
+        await session.execute(text(f"SET LOCAL TimeZone = '{zone}'"))
+        await session.execute(
+            text(
+                "INSERT INTO legal_holds (hold_id, tenant_id, record_class, subject_id,"
+                " placed_by, reason, placed_at, review_date, renewal_count)"
+                " VALUES (:h, :t, 'external_signal', :s, 'legal@example.test', 'litigation',"
+                " :placed, :review, 0)"
+            ),
+            {
+                "h": hold_id,
+                "t": fixture["tenant"],
+                "s": uuid.uuid4(),
+                "placed": placed_at,
+                "review": placed_at + datetime.timedelta(hours=hours),
+            },
+        )
+    return hold_id
+
+
+async def test_a_maximum_length_hold_survives_a_spring_forward_inside_its_window(
+    hold_fixture: dict[str, object],
+) -> None:
+    """The product's own default call path, refused by the product's own constraint.
+
+    `place()` computes `review_date` as `placed_at + timedelta(days=180)`, a flat
+    4320 hours. Written as a calendar `INTERVAL '180 days'`, the bound across a
+    spring-forward window is 4319 hours -- one short -- so on a DST-observing server
+    a maximum-length hold could not be placed at all.
+
+    2026-01-01 plus 4320 hours reaches 2026-06-30, and US Pacific springs forward on
+    2026-03-08, inside that window.
+    """
+    placed_at = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+    hold_id = await _insert_hold_under_zone(hold_fixture, zone=_DST_ZONE, placed_at=placed_at, hours=_HOLD_HOURS)
+
+    # Asserted on the stored row rather than on the insert merely not raising, so
+    # the success condition is stated instead of implied by an absent exception.
+    factory: async_sessionmaker[object] = hold_fixture["factory"]  # type: ignore[assignment]
+    async with factory() as session:
+        stored = (
+            await session.execute(
+                text("SELECT placed_at, review_date FROM legal_holds WHERE hold_id = :h"), {"h": hold_id}
+            )
+        ).one()
+    assert stored.review_date - stored.placed_at == datetime.timedelta(hours=_HOLD_HOURS)
+
+
+async def test_a_hold_an_hour_past_the_ceiling_is_refused_across_a_fall_back(
+    hold_fixture: dict[str, object],
+) -> None:
+    """The other half, and the one that matters for retention.
+
+    Across a fall-back window a calendar bound is 4321 hours, so it admitted a
+    review date an hour beyond the approved maximum -- data held longer than anyone
+    approved, which is the compliance-relevant direction. The service refuses an
+    over-ceiling *day count* before writing, so this goes at the constraint
+    directly, which is what operator tooling reaches.
+
+    2026-08-01 plus 180 calendar days crosses the 2026-11-01 fall-back.
+    """
+    with pytest.raises(Exception, match="ck_legal_holds_review_within_ceiling"):
+        await _insert_hold_under_zone(
+            hold_fixture,
+            zone=_DST_ZONE,
+            placed_at=datetime.datetime(2026, 8, 1, tzinfo=datetime.UTC),
+            hours=_HOLD_HOURS + 1,
+        )
+
+
 async def test_a_second_hold_on_one_record_cannot_be_placed(
     hold_fixture: dict[str, object],
 ) -> None:
