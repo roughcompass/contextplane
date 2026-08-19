@@ -138,3 +138,54 @@ endpoints an agent integration must know (target ≤ 6), and deprecated-surface
 count trending to zero. Rule: no consolidation may drop a governance property
 (provenance completeness, receipts, envelope gating) — surfaces shrink, the
 control set does not.
+
+### E14 — Graph/catalog boundary inversion
+
+**Kind:** epic · **Status:** pending · **Blocked by:** E13 · **Hotspot:** yes · **Repo:** contextplane
+
+The graph primitives live inside a package named for one of the views over
+them. `service/catalog/` holds `entity`, `attribute_writes`, `facts`,
+`projections` and `expansions` — entities, attributes, facts and edges, the
+substrate every other subdomain reads and writes — while being named for the
+producer/consumer catalog, which is one projection of that substrate rather
+than its foundation. The dependency arrows follow the name: `service/memory`
+imports it from eight files, and `retrieval`, `workspace` and `notifications`
+each import it too, not because any of them wants a catalog but because that is
+where the graph is. At 25 modules it is the second-largest area in the service
+after `memory`, against 6 for `governance` and 3 for `operations`; its own
+`__init__` describes it as "entities, facts, and everything that governs how
+they are shaped and read"; and `core.py` carries a note saying it is named
+`core` precisely so it does not stutter against the package, which is the
+clearest available signal that the package name had already outgrown its
+contents.
+
+**Why this belongs to this plan.** E1–E12 all write through that substrate, so
+every memory epic inherits the inversion: a hot observation write path (E2) and
+a fused resolve (E3) both reach the graph by importing the catalog. The cost is
+not aesthetic. It is that no import contract can express "memory may depend on
+the graph but not on the catalog's product surface" while the two are the same
+package, so the boundary cannot be enforced and will keep eroding as the
+memory work lands on top of it.
+
+**Explicitly not covered by E13.** E13 counts the agent-facing surface — tool
+count, REST endpoints an integration must know. Relocating `entity.py` into a
+graph package moves neither number, so every E13 metric can go green with this
+inversion fully intact. The two are complementary subtractions, not the same
+one: E13 removes surfaces, this removes a dependency direction.
+
+**Sequencing and footprint.** Blocked by E13 because E13 deletes part of what
+this would otherwise relocate — retiring the legacy capability surface first is
+strictly less work than moving it and then deleting it. Marked hotspot: the
+footprint is ~25 modules imported by 15 routers, the MCP server, ingest, audit,
+wiring and four sibling service areas, so under the derived-footprint rule it
+overlaps essentially any concurrent PR and must run serialized and alone.
+
+**Decomposition requires an ADR first.** The target layout is a decision that
+outlives the tasks implementing it, so it is recorded as an ADR before this
+epic is cut into tasks — at minimum: which modules constitute the graph, where
+the type-schema and vocabulary validators belong given that governing is what
+they do, and whether the catalog keeps a package at all once the substrate
+leaves it. The enforcing gate is `[tool.importlinter]` in `pyproject.toml`,
+which already carries three contracts; a fourth naming the graph as a layer
+below the catalog is what makes this durable rather than a one-time tidy, and
+tasks cut from this epic are expected to land it with their first move.
