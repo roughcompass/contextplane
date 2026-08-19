@@ -206,7 +206,7 @@ Phase-boundary audit compared the cumulative P7 work against the release spec an
 
 **Carry-overs to next phase (workspaces-encryption) — informational, not blocking:**
 
-- Per-tenant seeding of the `integration` capability-type schema. The migration seeds the row under the default system tenant only; for the validation to fire under producer tenants the operator either runs a one-off backfill or wires per-tenant seeding into tenant creation.
+- Per-tenant seeding of the `integration` entity-type schema. The migration seeds the row under the default system tenant only; for the validation to fire under producer tenants the operator either runs a one-off backfill or wires per-tenant seeding into tenant creation.
 - The integration_pairs trigger's data shape stores `(integration_id, member_id)` pairs rather than `(member_a, member_b)` pairs; the lookup endpoint handles this via self-join, but a future revision could refactor the trigger to write member-pair rows directly for cheaper queries.
 
 ---
@@ -432,8 +432,8 @@ Comprehensive surface audit + best-practices pass on the REST + MCP API. Eight t
 - `/v1/whoami` resolves the bearer token to its actor / tenant / roles so UI clients can render permission-gated buttons before any other call.
 
 **Carry-overs (each item small, mechanical):**
-- Apply `X-Idempotency-Key` to remaining POST endpoints (artifacts, concepts, operations, adoptions, subscriptions, admin/tokens, admin/sync-sources/{}:trigger, vocabularies, capability-types, pii-patterns, pii-field-policies, entities/{}/external-ids).
-- Apply `If-Match` to remaining PATCH endpoints (subscriptions, sync-sources, vocabularies, capability-types, pii-patterns, external-id mappings, lifecycle transitions).
+- Apply `X-Idempotency-Key` to remaining POST endpoints (artifacts, concepts, operations, adoptions, subscriptions, admin/tokens, admin/sync-sources/{}:trigger, vocabularies, entity-types, pii-patterns, pii-field-policies, entities/{}/external-ids).
+- Apply `If-Match` to remaining PATCH endpoints (subscriptions, sync-sources, vocabularies, entity-types, pii-patterns, external-id mappings, lifecycle transitions).
 - Migrate offset-paginated list endpoints to cursor (notifications, audit log, capabilities list, artifacts list, sync-runs, search) — the helper is ready; each endpoint is a localised change.
 - Inline pagination on `?include=` (replace the cross-endpoint `next` URL with `?include=components.page=2`).
 - Extract include-expansion logic from `capabilities.py` into a shared module so MCP `get_capability` can offer `include=` parity.

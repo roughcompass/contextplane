@@ -308,16 +308,17 @@ Manages closed-vocabulary kinds: `entity_type`, `edge_rel`, `lifecycle_state`, `
 | `PATCH` | `/v1/admin/vocabularies/{kind}/{value}` | Update a value's metadata (description). |
 | `DELETE` | `/v1/admin/vocabularies/{kind}/{value}` | Soft-delete a value. Idempotent. |
 
-#### Capability types
+#### Entity types
 
-Per-tenant schemas that constrain capability attribute keys and types.
+Per-tenant schemas that constrain an entity's attribute keys and types, one per
+`entity_type`. `entity_type` must already exist in the `entity_type` vocabulary.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/v1/admin/capability-types` | List capability-type schemas. |
-| `POST` | `/v1/admin/capability-types` | Register a new capability-type schema. |
-| `GET` | `/v1/admin/capability-types/{type_name}` | Read a single schema. |
-| `PATCH` | `/v1/admin/capability-types/{type_name}` | Update a schema (additive — breaking changes require a new type). |
+| `GET` | `/v1/admin/entity-types` | List entity-type schemas. |
+| `POST` | `/v1/admin/entity-types` | Register a new entity-type schema. |
+| `GET` | `/v1/admin/entity-types/{entity_type}` | Read a single schema. |
+| `PATCH` | `/v1/admin/entity-types/{entity_type}` | Update a schema (additive — breaking changes require a new type). |
 
 #### Edge property schemas
 
