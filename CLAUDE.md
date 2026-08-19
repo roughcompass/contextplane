@@ -2,45 +2,7 @@
 
 This is the shipping product repo. **Remote: `roughcompass/contextplane`.** Everything in this directory is part of the application; the test pyramid, gates, and runbooks all live here.
 
-Planning artifacts (PRDs, TDDs, ADRs, dev plans) live in a **separate** repo at `../.context/`. That repo has no remote by default. Code in here must never reference paths or labels from there — see the doc-refs rule below.
-
 ---
-
-## No external-doc references in shipped code
-
-**The rule.** Files in this repo must not contain references to documents that live in `../.context/` — those are internal planning docs not visible to a future engineer reading this repo in isolation.
-
-**What "shipped" means in this repo:**
-
-| Path | Shipped? | Rule applies? |
-|---|---|---|
-| `contextplane/**/*.py` | yes | yes |
-| `**/*.md` (operator-facing docs, runbooks) | yes | yes |
-| `eval/EVAL.md` | yes | yes — *except* task IDs of any prefix are allowed in a "Commits" column as git-history anchors |
-| `.env.example` | yes | yes |
-| `README.md` | yes | yes |
-| Past git commit messages | yes, but immutable | no — historical record; rule applies to new commits going forward |
-
-**Forbidden patterns.** Any of these in a tracked file is a violation:
-
-```
-\bADR-\d+\b                           # e.g. ADR-024
-\bF\d+\.\d+\b                         # e.g. F7.12 (PRD feature numbers)
-\bOQ-[A-Za-z0-9-]+                    # e.g. OQ-P7-3 (open-question labels)
-\b[A-Z]{2,5}(-P\d+R?)?-T\d+[a-z]?\b   # e.g. CAP-P7-T20, PP-T03, AAS-T14 (dev-plan task IDs of any prefix, except EVAL.md)
-\bAQ\d+\b                             # e.g. AQ7 (architecture-quality labels)
-PRD §                                 # explicit doc citation
-TDD §                                 # explicit doc citation
-(interfaces|flows|data-model)\.md §   # explicit doc/section citation
-\bPhase \d+\b                         # bare phase labels — say what the change is, not which phase
-\b[A-Z]{2,}-phase\b                   # e.g. ENC-phase — same rule as bare phase labels, spelled as a compound word
-```
-
-This is a shape match, not a fixed list of known prefixes: any two-to-five-letter prefix followed by an optional `-P<phase>` segment and a `-T<number>` gets caught, including a prefix that has never been seen before. A per-project task-ID scheme only has to be invented once for its references to start accumulating in shipped files; matching prefixes one at a time meant a project whose prefix nobody remembered to register slipped past this gate for its entire life, no matter how many references it left behind.
-
-**The principle.** Comments should explain *the rule*, in the code's own vocabulary. Not where the rule was decided.
-
-**Why this rule exists.** Planning docs live in a different repo. A future engineer (or agent) reading the code in isolation cannot resolve `ADR-024` or `F7.12` — those references imply context that has gone missing. The code must carry the rationale itself.
 
 ### Before / after
 
