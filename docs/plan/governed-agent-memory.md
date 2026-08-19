@@ -121,3 +121,20 @@ recorded justification. Never per-actor cells outside the audit role.
 
 Bulk-import API with provenance mapping; Backstage/CMDB/wiki connectors;
 batch-attested "migrated-canonical" disposition class with sampled audit.
+
+### E13 — Surface consolidation and deprecation
+
+**Kind:** epic · **Status:** pending · **Blocked by:** E7 · **Repo:** contextplane
+
+Simplicity is subtraction, not just profiling. Once the two-call
+remember/recall loop (E7) is the served default: consolidate the five
+observational write verbs (assert_claim, record_session_event,
+add_workspace_entry, append_intent_checkpoint, ingest_signal) behind the hot
+write path where their semantics overlap; deprecate redundant per-surface
+variants with a dual-alias window; retire MCP tools that the registry shows
+unused after the default profile ships; collapse read paths that fused resolve
+subsumes. Tracked metrics: default-profile tool count (target ≤ 8), REST
+endpoints an agent integration must know (target ≤ 6), and deprecated-surface
+count trending to zero. Rule: no consolidation may drop a governance property
+(provenance completeness, receipts, envelope gating) — surfaces shrink, the
+control set does not.
