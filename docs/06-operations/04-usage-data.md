@@ -221,10 +221,17 @@ becomes an unbounded personal-data store while every dashboard still looks corre
 ### Partitions
 
 `usage_events` is range-partitioned by month, with 24 partitions pre-created. Use the
-existing `scripts/partition_migrate.py` procedure — the same one documented for
-`audit_log` in [ops.md](01-ops.md) — to add partitions ahead of time or detach and
-archive old ones. Because the rollups are independent of the raw rows, detaching a
-month's partition does not change any aggregate answer.
+same manual `ATTACH`/`DETACH PARTITION` procedure documented for `audit_log` in
+[Audit log partition archival](01-ops.md#audit-log-partition-archival) to add
+partitions ahead of time or detach and archive old ones. Because the rollups are
+independent of the raw rows, detaching a month's partition does not change any
+aggregate answer.
+
+`scripts/partition_migrate.py` deliberately covers only `audit_log`. It is a
+whole-table rebuild-and-swap, and pointing it at `usage_events` would need the
+retention sweep paused for the duration — the sweep deletes from the source while
+the copy reads it, and rows it removes mid-run would fail the script's
+pre-cutover count check.
 
 ---
 

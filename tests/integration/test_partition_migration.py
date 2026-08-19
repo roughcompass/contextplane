@@ -1,11 +1,13 @@
-"""Partition migration idempotency, pruning, and detach integration tests.
+"""Partition cutover, pruning, and detach integration tests.
 
 Covers storage-layer invariants for the hash-partitioned ``audit_log`` and
 ``embeddings`` tables:
 
-- ``test_partition_migrate_idempotent``: runs ``partition_migrate.py`` against a
-  testcontainers DB; verifies audit_log is partitioned; runs again and asserts
-  the second invocation emits a warning-only "cutover already done" message.
+- ``test_partition_migrate_cutover_lifecycle``: the whole cutover as one ordered
+  test (shadow absent → dry-run → real cutover → shape and row assertions →
+  second run is a no-op). One test rather than four because ``pg_container`` is
+  session-scoped and a cutover changes that database once, so each step is only
+  true at one point in the sequence.
 - ``test_partition_pruning_embeddings``: EXPLAIN for WHERE tenant_id = :tid shows
   only 1-of-8 hash partitions scanned (partition pruning active).
 - ``test_audit_partition_detach_procedure``: detaches a synthetic old partition;
@@ -34,14 +36,19 @@ Manual checklist (not automated — document here so the exit gate is explicit):
 
 from __future__ import annotations
 
+import datetime
 import os
+import re
 import subprocess  # noqa: S404 - test-harness invocation of this repo's own scripts (sys.executable + fixed script path), no caller input
 import sys
 import uuid
 from pathlib import Path
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
+
+from contextplane.wiring.jobs import audit_partitions_eligible_for_archival
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -55,15 +62,13 @@ _SCRIPTS = _REPO_ROOT / "scripts"
 # ---------------------------------------------------------------------------
 
 
-def _run_partition_migrate(database_url: str, dry_run: bool = False) -> subprocess.CompletedProcess:
+def _run_partition_migrate(database_url: str, *extra: str) -> subprocess.CompletedProcess:
     """Invoke partition_migrate.py as a subprocess."""
     # Convert asyncpg URL to psycopg2 URL (the script uses synchronous psycopg2)
     sync_url = database_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://").replace(
         "postgresql://", "postgresql+psycopg2://"
     )
-    cmd = [sys.executable, str(_SCRIPTS / "partition_migrate.py"), "--database-url", sync_url]
-    if dry_run:
-        cmd.append("--dry-run")
+    cmd = [sys.executable, str(_SCRIPTS / "partition_migrate.py"), "--database-url", sync_url, *extra]
     return subprocess.run(
         cmd,
         capture_output=True,
@@ -73,36 +78,146 @@ def _run_partition_migrate(database_url: str, dry_run: bool = False) -> subproce
     )
 
 
+async def _seed_audit_rows(engine: object, count: int) -> int:
+    """Insert *count* audit rows across two months; return rows now in audit_log."""
+    async with engine.begin() as conn:  # type: ignore[attr-defined]
+        tenant_id = uuid.uuid4()
+        await conn.execute(
+            sa.text(
+                "INSERT INTO tenants (tenant_id, slug, display_name, created_at, is_active) "
+                "VALUES (:tid, :slug, 'partition-cutover-test', now(), TRUE)"
+            ),
+            {"tid": tenant_id, "slug": f"cutover-{tenant_id.hex[:8]}"},
+        )
+        for n in range(count):
+            # Spread across two pre-created partitions so the copy runs more
+            # than one chunk and the per-chunk verification has work to do.
+            # asyncpg binds timestamptz from a datetime, never from a string.
+            ts = datetime.datetime(2025, 3 if n % 2 == 0 else 4, 15, tzinfo=datetime.UTC)
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO audit_log (tenant_id, actor_id, action, target_type, target_id, ts) "
+                    "VALUES (:tid, NULL, :action, 'capability', gen_random_uuid(), :ts)"
+                ),
+                {"tid": tenant_id, "action": f"seed_{n}", "ts": ts},
+            )
+        result = await conn.execute(sa.text("SELECT COUNT(*) FROM audit_log"))
+        return int(result.scalar_one())
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_partition_migrate_idempotent(pg_container: str) -> None:
-    """Run partition_migrate.py twice; second run must warn-only, not fail.
+async def test_partition_migrate_cutover_lifecycle(pg_container: str) -> None:
+    """The whole cutover, start to finish, as one test.
 
-    Idempotency check: when audit_log_archive already exists the
-    script emits 'cutover already done' and exits 0 without touching the tables.
+    Deliberately one test rather than three. `pg_container` is session-scoped
+    and a cutover is a one-way change to that database -- "the shadow table is
+    absent", "the cutover works" and "a second run is a no-op" are each only
+    true at one point in a fixed sequence, so splitting them would leave three
+    tests that pass or fail depending on the order they happen to run in.
+
+    Asserted, in order:
+      1. `audit_log_new` is absent from the migrated schema (migration 0054),
+         and `--dry-run` reports it would build one without building it.
+      2. A real cutover preserves every row.
+      3. The promoted table gets its own shape back -- canonical index,
+         constraint and *partition* names, and the foreign keys the previously
+         pre-created shadow declared none of and therefore silently dropped.
+      4. A second invocation is a warn-only no-op.
     """
-    # First run — migrates the live schema
-    result1 = _run_partition_migrate(pg_container)
-    assert result1.returncode == 0, (
-        f"partition_migrate.py first run failed (exit {result1.returncode}):\n"
-        f"stdout: {result1.stdout}\nstderr: {result1.stderr}"
-    )
+    engine = create_async_engine(pg_container, connect_args={"prepared_statement_cache_size": 0})
 
-    # Second run — must detect completed cutover and emit a warning, not fail
-    result2 = _run_partition_migrate(pg_container)
-    assert result2.returncode == 0, (
-        f"partition_migrate.py second run failed (exit {result2.returncode}):\n"
-        f"stdout: {result2.stdout}\nstderr: {result2.stderr}"
-    )
-    combined = (result2.stdout + result2.stderr).lower()
-    assert "cutover already done" in combined or "warning" in combined, (
-        "Expected second invocation to emit 'cutover already done' warning; "
-        f"got stdout={result2.stdout!r} stderr={result2.stderr!r}"
-    )
+    # --- 1. the shadow is the script's scratch space, not part of the schema ---
+    async with engine.begin() as conn:
+        exists = await conn.execute(sa.text("SELECT 1 FROM pg_class WHERE relname = 'audit_log_new'"))
+        assert exists.first() is None, "audit_log_new should not exist in the migrated schema"
+
+    dry = _run_partition_migrate(pg_container, "--dry-run")
+    assert dry.returncode == 0, f"dry-run failed:\nstdout: {dry.stdout}\nstderr: {dry.stderr}"
+    assert "CREATE audit_log_new (LIKE audit_log)" in dry.stdout + dry.stderr, dry.stdout + dry.stderr
+
+    async with engine.begin() as conn:
+        still_absent = await conn.execute(sa.text("SELECT 1 FROM pg_class WHERE relname = 'audit_log_new'"))
+        assert still_absent.first() is None, "--dry-run must not create the shadow table"
+
+    # --- 2. a real cutover loses no rows ---
+    seeded = await _seed_audit_rows(engine, 8)
+    assert seeded >= 8
+
+    result = _run_partition_migrate(pg_container)
+    assert result.returncode == 0, f"cutover failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+
+    async with engine.begin() as conn:
+        surviving = await conn.execute(sa.text("SELECT COUNT(*) FROM audit_log"))
+        assert surviving.scalar_one() == seeded, "cutover changed the row count"
+
+        archived = await conn.execute(sa.text("SELECT COUNT(*) FROM audit_log_archive"))
+        assert archived.scalar_one() == seeded, "the archive should still hold the original rows"
+
+        # relkind is a "char" column; asyncpg hands it back as bytes, so cast.
+        partitioned = await conn.execute(sa.text("SELECT relkind::text FROM pg_class WHERE relname = 'audit_log'"))
+        assert partitioned.scalar_one() == "p", "audit_log must still be partitioned after the swap"
+
+        # Canonical index names came back, with no _new left over.
+        indexes = await conn.execute(
+            sa.text("SELECT indexname FROM pg_indexes WHERE tablename = 'audit_log' ORDER BY indexname")
+        )
+        names = {row[0] for row in indexes.fetchall()}
+        assert "idx_audit_tenant_ts" in names, names
+        assert not any(n.endswith("_new") for n in names), f"_new names leaked into the live table: {names}"
+
+        # The foreign keys the old shadow table dropped are present.
+        fks = await conn.execute(
+            sa.text("SELECT conname FROM pg_constraint WHERE conrelid = 'audit_log'::regclass AND contype = 'f'")
+        )
+        fk_names = {row[0] for row in fks.fetchall()}
+        assert len(fk_names) == 2, f"expected tenant_id and actor_id foreign keys, got {fk_names}"
+        assert not any(n.endswith("_new") for n in fk_names), fk_names
+
+        # Every promoted child partition still matches the name pattern
+        # `audit_partitions_eligible_for_archival` anchors on. This is the
+        # assertion that would have caught the archival gauge silently sticking
+        # at 0 after a cutover -- checking only the parent's indexes did not.
+        children = await conn.execute(
+            sa.text(
+                "SELECT c.relname FROM pg_inherits i "
+                "JOIN pg_class c ON c.oid = i.inhrelid JOIN pg_class p ON p.oid = i.inhparent "
+                "WHERE p.relname = 'audit_log' ORDER BY c.relname"
+            )
+        )
+        child_names = [row[0] for row in children.fetchall()]
+        assert child_names, "the promoted table has no partitions"
+        offenders = [n for n in child_names if not re.fullmatch(r"audit_log_\d{4}_\d{2}", n)]
+        assert offenders == [], f"partitions the archival monitor would skip: {offenders}"
+
+        # And the archival predicate really does recognise them.
+        eligible = audit_partitions_eligible_for_archival(child_names, reference_date=datetime.date(2099, 1, 1))
+        assert len(eligible) == len(
+            child_names
+        ), f"archival monitor recognised {len(eligible)} of {len(child_names)} partitions"
+
+        # And the promoted table still rejects a dangling tenant.
+        with pytest.raises(Exception, match="violates foreign key constraint"):
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO audit_log (tenant_id, action, target_type, target_id, ts) "
+                    "VALUES (gen_random_uuid(), 'orphan', 'capability', gen_random_uuid(), now())"
+                )
+            )
+
+    # --- 4. a second invocation is a warn-only no-op ---
+    second = _run_partition_migrate(pg_container)
+    assert (
+        second.returncode == 0
+    ), f"second run failed (exit {second.returncode}):\nstdout: {second.stdout}\nstderr: {second.stderr}"
+    assert (
+        "cutover already done" in (second.stdout + second.stderr).lower()
+    ), f"expected 'cutover already done'; got stdout={second.stdout!r} stderr={second.stderr!r}"
+    await engine.dispose()
 
 
 @pytest.mark.asyncio
@@ -127,11 +242,10 @@ async def test_partition_pruning_embeddings(pg_container: str) -> None:
         # Make sure partition pruning is enabled (PG default is on, but be
         # explicit so the assertion is meaningful in test envs).
         await conn.execute(sa.text("SET enable_partition_pruning = on"))
-        # partition_migrate.py renames embeddings_new → embeddings at cutover
-        # time. If a sibling test already ran the migration script, embeddings
-        # is partitioned and embeddings_new no longer exists. If not,
-        # embeddings is unpartitioned and embeddings_new holds the partitions.
-        # Pick whichever is partitioned.
+        # embeddings is created already-partitioned by its own migration (no
+        # cutover ever renames it), so `embeddings` is the table this always
+        # resolves to; the `embeddings_new` alternative is kept defensively in
+        # case that ever changes. Pick whichever name is partitioned.
         target_table_query = await conn.execute(
             sa.text(
                 "SELECT relname FROM pg_class WHERE relkind = 'p' "

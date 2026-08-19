@@ -2,7 +2,6 @@
 
 Covers:
 - the baseline migration's embeddings DDL emits HNSW indexes for all 8 buckets
-- partition_migrate._ensure_hnsw_indexes: idempotency, dry-run, index creation
 - ORM Embedding model still loads (tablename unchanged, mapping intact)
 """
 
@@ -15,7 +14,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 # ---------------------------------------------------------------------------
-# Bootstrap — stub psycopg2 so partition_migrate can be imported without it
+# Bootstrap — stub psycopg2 in case it's genuinely absent from the environment
 # ---------------------------------------------------------------------------
 
 # Only when the real driver is genuinely absent. `not in sys.modules` was the wrong
@@ -33,9 +32,8 @@ except ImportError:
 
 _REPO_ROOT = Path(__file__).parent.parent.parent
 
-# The per-partition HNSW indexes are built by the migration that creates the table, so
-# there is no cutover helper left to test here -- `scripts/partition_migrate.py` no longer
-# touches embeddings at all.
+# The per-partition HNSW indexes are built by the migration that creates the table --
+# embeddings has no cutover script, so there is no runtime helper to test here.
 # Matches the EMBEDDINGS_PARTITION_COUNT default. The migration reads the env var, so a
 # deployment can change it at creation time; the tests assert the default.
 _EMBEDDINGS_HASH_BUCKETS = 8
@@ -106,22 +104,6 @@ class TestMigrationHnswDdl:
         for n in range(8):
             expected_table = f"embeddings_p{n}"
             assert any(expected_table in s for s in hnsw_stmts), f"No HNSW statement for {expected_table}"
-
-
-# ---------------------------------------------------------------------------
-# partition_migrate._ensure_hnsw_indexes
-# ---------------------------------------------------------------------------
-
-
-def _make_conn(*, index_exists: bool = False) -> MagicMock:
-    """Build a mock psycopg2 connection for HNSW index tests."""
-    conn = MagicMock()
-    cur = MagicMock()
-    conn.cursor.return_value = cur
-    # pg_class check: return a row if index exists, None otherwise
-    cur.fetchone.return_value = (1,) if index_exists else None
-    cur.rowcount = 0
-    return conn
 
 
 class TestEmbeddingModelIntegrity:
