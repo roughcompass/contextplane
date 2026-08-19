@@ -892,11 +892,11 @@ _OUTBOX_FAILED_IDX = (
 # Section 6 — schema registry
 # ---------------------------------------------------------------------------
 
-_CAPABILITY_TYPE_SCHEMAS_DDL = """
-CREATE TABLE capability_type_schemas (
+_ENTITY_TYPE_SCHEMAS_DDL = """
+CREATE TABLE entity_type_schemas (
     schema_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id        UUID NOT NULL REFERENCES tenants(tenant_id),
-    type_name        TEXT NOT NULL,
+    entity_type      TEXT NOT NULL,
     json_schema      JSONB NOT NULL,
     is_advisory      BOOLEAN NOT NULL DEFAULT TRUE,
     t_valid_from     TIMESTAMPTZ NOT NULL,
@@ -907,8 +907,8 @@ CREATE TABLE capability_type_schemas (
 )
 """
 
-_CAPABILITY_TYPE_SCHEMAS_IDX = (
-    "CREATE INDEX idx_captype_tenant_name ON capability_type_schemas (tenant_id, type_name) "
+_ENTITY_TYPE_SCHEMAS_IDX = (
+    "CREATE INDEX idx_enttype_tenant_name ON entity_type_schemas (tenant_id, entity_type) "
     "WHERE t_invalidated_at IS NULL"
 )
 
@@ -3455,11 +3455,11 @@ def upgrade() -> None:
     op.execute(_OUTBOX_FAILED_IDX)
 
     # --- Section 6: schema registry ---
-    op.execute(_CAPABILITY_TYPE_SCHEMAS_DDL)
-    op.execute(_CAPABILITY_TYPE_SCHEMAS_IDX)
+    op.execute(_ENTITY_TYPE_SCHEMAS_DDL)
+    op.execute(_ENTITY_TYPE_SCHEMAS_IDX)
     op.execute(
-        "INSERT INTO capability_type_schemas "  # noqa: S608 - every interpolated value is a hardcoded module constant, never external input; a migration has no request/caller to inject through
-        "(schema_id, tenant_id, type_name, json_schema, is_advisory, t_valid_from, t_ingested_at) "
+        "INSERT INTO entity_type_schemas "  # noqa: S608 - every interpolated value is a hardcoded module constant, never external input; a migration has no request/caller to inject through
+        "(schema_id, tenant_id, entity_type, json_schema, is_advisory, t_valid_from, t_ingested_at) "
         f"VALUES ('{_INTEGRATION_TYPE_SCHEMA_ID}', '{DEFAULT_TENANT_UUID}', 'integration', "
         f"CAST('{_INTEGRATION_TYPE_SCHEMA_JSON}' AS jsonb), FALSE, now(), now()) ON CONFLICT DO NOTHING"
     )
@@ -3762,7 +3762,7 @@ def downgrade() -> None:
         "adoption_events",
         "workspace_entries",
         "workspaces",
-        "capability_type_schemas",
+        "entity_type_schemas",
         "embedding_outbox_failed",
         "embedding_outbox",
         "embeddings",

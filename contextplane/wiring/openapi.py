@@ -220,8 +220,8 @@ _OPENAPI_TAGS: list[dict[str, str]] = [
     {
         "name": "admin: schemas",
         "description": (
-            "Register capability-type schemas (`integration`, custom "
-            "tenant types) used to validate `capability.attributes` on "
+            "Register entity-type schemas (`capability`, `integration`, custom "
+            "tenant types) used to validate an entity's `attributes` on "
             "write."
         ),
     },

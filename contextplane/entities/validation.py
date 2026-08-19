@@ -1,8 +1,8 @@
 """Validate an entity write against the profile its tenant is bound to.
 
 Before this module, an entity's properties were checked against the
-`capability_type_schemas` registry and only when the caller supplied a
-`capability_type`. Everything else — a generic entity, a sync-worker write, a
+`entity_type_schemas` registry and only when the caller supplied a
+capability type. Everything else — a generic entity, a sync-worker write, a
 promotion landing an attribute in the canonical graph — wrote whatever it was
 handed. A profile that declares which types exist and which properties they
 carry is not a governance surface if four of the five ways to write an entity

@@ -6,8 +6,8 @@ entity-level attributes, latest-non-invalidated for bitemporal_attributes),
 and validates the merged state against the schema. Exits non-zero on any
 violation so it can gate CI.
 
-The schema path defaults to seeds/_templates/capability-schema.json — the
-same file the loader registers via the capability_type_schemas section.
+The schema path defaults to seeds/_templates/entity-type-capability.schema.json
+— the same file the loader registers via the entity_type_schemas section.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ import jsonschema
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SEEDS_ROOT = _REPO_ROOT / "seeds"
-_DEFAULT_SCHEMA_PATH = _SEEDS_ROOT / "_templates" / "capability-schema.json"
+_DEFAULT_SCHEMA_PATH = _SEEDS_ROOT / "_templates" / "entity-type-capability.schema.json"
 
 # Mirrors all_bundles() in seed.py: only NN-prefixed directories, sorted lex.
 _BUNDLE_DIR_RE = re.compile(r"^\d{2}-")

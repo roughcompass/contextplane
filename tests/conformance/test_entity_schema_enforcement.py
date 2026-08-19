@@ -2,7 +2,7 @@
 
 The bypass this file guards is not a missing check — it is a check that ran on
 one path and not the others. Property validation used to happen only when a
-caller supplied a `capability_type`, so a generic entity, a sync write and a
+caller named a capability-specific type, so a generic entity, a sync write and a
 promoted claim each wrote whatever they were handed while a capability write
 next to them was refused. A profile that four of five writers ignore is not
 governance, it is documentation.
@@ -364,7 +364,7 @@ async def test_schema_service_refuses_a_profile_violation_for_a_type_with_no_reg
 ) -> None:
     """A schema-free type is not an unchecked type.
 
-    `capability_type_schemas` holds a tenant's own JSON Schema and most types have
+    `entity_type_schemas` holds a tenant's own JSON Schema and most types have
     none. If the profile check sat behind that lookup, every type without a
     registered schema would be exactly as unvalidated as before this existed.
     """
@@ -376,7 +376,7 @@ async def test_schema_service_refuses_a_profile_violation_for_a_type_with_no_reg
     ctx = TenantContext(tenant_id=tenant_id, actor_id=uuid.uuid4(), roles=["admin"])
 
     with pytest.raises(ValidationError, match="profile"):
-        await service.validate_capability(ctx, _WAREHOUSE, {"region": "eu-west", "surprise": "x"})
+        await service.validate_entity_attributes(ctx, _WAREHOUSE, {"region": "eu-west", "surprise": "x"})
 
 
 @pytest.mark.asyncio
@@ -390,7 +390,7 @@ async def test_schema_service_reports_an_advisory_violation_as_a_warning(
     service = SchemaService(factory, _FixedClock(), validator=EntityValidator(factory))
     ctx = TenantContext(tenant_id=tenant_id, actor_id=uuid.uuid4(), roles=["admin"])
 
-    result = await service.validate_capability(ctx, _WAREHOUSE, {"region": "eu-west", "surprise": "x"})
+    result = await service.validate_entity_attributes(ctx, _WAREHOUSE, {"region": "eu-west", "surprise": "x"})
 
     assert result.valid
     assert any("undeclared_property" in warning for warning in result.warnings)
@@ -408,7 +408,7 @@ async def test_schema_service_without_a_validator_still_validates_its_own_regist
     service = SchemaService(factory, _FixedClock())
     ctx = TenantContext(tenant_id=tenant_id, actor_id=uuid.uuid4(), roles=["admin"])
 
-    result = await service.validate_capability(ctx, _WAREHOUSE, {"surprise": "x"})
+    result = await service.validate_entity_attributes(ctx, _WAREHOUSE, {"surprise": "x"})
 
     assert result.valid
     assert result.warnings == []

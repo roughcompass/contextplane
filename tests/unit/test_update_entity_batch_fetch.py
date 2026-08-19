@@ -101,10 +101,10 @@ def _build_service_and_session(
     frozen_clock = MagicMock()
     frozen_clock.now = MagicMock(return_value=_NOW)
 
-    # validate_capability is awaited inside update_entity; it must be an AsyncMock
+    # validate_entity_attributes is awaited inside update_entity; it must be an AsyncMock
     # so MagicMock's default sync callable doesn't break the await expression.
     schema_mock = MagicMock()
-    schema_mock.validate_capability = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
+    schema_mock.validate_entity_attributes = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
 
     svc = EntityService(
         session_factory=session_factory,

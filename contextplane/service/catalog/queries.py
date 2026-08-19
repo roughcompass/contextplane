@@ -1,5 +1,5 @@
 """Query helpers for the admin surfaces over this package: the
-vocabulary/capability-type-schema surface, artifact reads, and the
+vocabulary/entity-type-schema surface, artifact reads, and the
 progression-definition/override surface.
 
 Plain module-level functions, each taking an already-open ``AsyncSession``.
@@ -40,8 +40,8 @@ from contextplane.storage.models import (
     Actor,
     Attribute,
     AuditLog,
-    CapabilityTypeSchema,
     Entity,
+    EntityTypeSchema,
     Fact,
     ProgressionDefinition,
     ProgressionOverride,
@@ -51,21 +51,21 @@ from contextplane.storage.models import (
 __all__ = [
     "add_vocabulary_value",
     "close_active_progression_definitions",
-    "get_capability_type",
-    "get_capability_type_by_id",
-    "get_capability_type_for_update",
     "get_current_stage_progression_attribute",
+    "get_entity_type_schema",
+    "get_entity_type_schema_by_id",
+    "get_entity_type_schema_for_update",
     "get_fact",
     "get_progression_definition",
     "get_progression_override",
     "get_vocabulary_value_for_update",
-    "insert_capability_type",
+    "insert_entity_type_schema",
     "insert_progression_definition",
     "insert_progression_override",
     "list_active_entities_of_type",
     "list_artifacts",
-    "list_capability_types",
     "list_current_attributes",
+    "list_entity_type_schemas",
     "list_progression_definitions",
     "list_progression_overrides",
     "list_vocabulary_values",
@@ -136,43 +136,43 @@ async def get_vocabulary_value_for_update(
 
 
 # ---------------------------------------------------------------------------
-# Capability-type schemas
+# Entity-type schemas
 # ---------------------------------------------------------------------------
 
 
-async def list_capability_types(
+async def list_entity_type_schemas(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
-) -> list[CapabilityTypeSchema]:
-    """Every current (t_invalidated_at IS NULL) capability type schema for the tenant."""
+) -> list[EntityTypeSchema]:
+    """Every current (t_invalidated_at IS NULL) entity type schema for the tenant."""
     result = await session.execute(
-        select(CapabilityTypeSchema).where(
-            CapabilityTypeSchema.tenant_id == tenant_id,
-            CapabilityTypeSchema.t_invalidated_at.is_(None),
+        select(EntityTypeSchema).where(
+            EntityTypeSchema.tenant_id == tenant_id,
+            EntityTypeSchema.t_invalidated_at.is_(None),
         )
     )
     return list(result.scalars().all())
 
 
-async def insert_capability_type(
+async def insert_entity_type_schema(
     session: AsyncSession,
     *,
     schema_id: uuid.UUID,
     tenant_id: uuid.UUID,
-    type_name: str,
+    entity_type: str,
     json_schema: dict[str, Any],
     is_advisory: bool,
     valid_from: datetime.datetime,
     now: datetime.datetime,
     created_by: uuid.UUID | None,
 ) -> None:
-    """Insert a new capability-type schema row. Caller commits."""
+    """Insert a new entity-type schema row. Caller commits."""
     session.add(
-        CapabilityTypeSchema(
+        EntityTypeSchema(
             schema_id=schema_id,
             tenant_id=tenant_id,
-            type_name=type_name,
+            entity_type=entity_type,
             json_schema=json_schema,
             is_advisory=is_advisory,
             t_valid_from=valid_from,
@@ -185,39 +185,39 @@ async def insert_capability_type(
     await session.flush()
 
 
-async def get_capability_type_by_id(session: AsyncSession, schema_id: uuid.UUID) -> CapabilityTypeSchema | None:
-    """Return the capability-type schema row by primary key, or None if absent."""
-    return await session.get(CapabilityTypeSchema, schema_id)
+async def get_entity_type_schema_by_id(session: AsyncSession, schema_id: uuid.UUID) -> EntityTypeSchema | None:
+    """Return the entity-type schema row by primary key, or None if absent."""
+    return await session.get(EntityTypeSchema, schema_id)
 
 
-async def get_capability_type(
+async def get_entity_type_schema(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
-    type_name: str,
-) -> CapabilityTypeSchema | None:
-    """The current (most-recent, not-invalidated) schema row for type_name, or None."""
+    entity_type: str,
+) -> EntityTypeSchema | None:
+    """The current (most-recent, not-invalidated) schema row for entity_type, or None."""
     result = await session.execute(
-        select(CapabilityTypeSchema)
+        select(EntityTypeSchema)
         .where(
-            CapabilityTypeSchema.tenant_id == tenant_id,
-            CapabilityTypeSchema.type_name == type_name,
-            CapabilityTypeSchema.t_invalidated_at.is_(None),
+            EntityTypeSchema.tenant_id == tenant_id,
+            EntityTypeSchema.entity_type == entity_type,
+            EntityTypeSchema.t_invalidated_at.is_(None),
         )
-        .order_by(CapabilityTypeSchema.t_valid_from.desc())
+        .order_by(EntityTypeSchema.t_valid_from.desc())
         .limit(1)
     )
     return result.scalar_one_or_none()
 
 
-async def get_capability_type_for_update(
+async def get_entity_type_schema_for_update(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
-    type_name: str,
-) -> CapabilityTypeSchema | None:
-    """Same lookup as get_capability_type, inside a caller-managed write transaction."""
-    return await get_capability_type(session, tenant_id=tenant_id, type_name=type_name)
+    entity_type: str,
+) -> EntityTypeSchema | None:
+    """Same lookup as get_entity_type_schema, inside a caller-managed write transaction."""
+    return await get_entity_type_schema(session, tenant_id=tenant_id, entity_type=entity_type)
 
 
 # ---------------------------------------------------------------------------

@@ -196,7 +196,6 @@ async def create_capability(
             entity_type="capability",
             name=body.name,
             external_id=body.external_id,
-            capability_type=body.capability_type,
             attributes=body.attributes,
             valid_from=body.valid_from,
         )

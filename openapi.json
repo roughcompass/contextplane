@@ -3557,140 +3557,6 @@
         "title": "CapabilityResponse",
         "type": "object"
       },
-      "CapabilityTypeSchemaCreate": {
-        "description": "Body for POST /capability-types.\n\n`is_advisory` (default true) controls whether validation failures block a write.",
-        "properties": {
-          "is_advisory": {
-            "default": true,
-            "title": "Is Advisory",
-            "type": "boolean"
-          },
-          "json_schema": {
-            "additionalProperties": true,
-            "title": "Json Schema",
-            "type": "object"
-          },
-          "t_valid_from": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "T Valid From"
-          },
-          "type_name": {
-            "title": "Type Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type_name",
-          "json_schema"
-        ],
-        "title": "CapabilityTypeSchemaCreate",
-        "type": "object"
-      },
-      "CapabilityTypeSchemaPatch": {
-        "description": "Body for PATCH /capability-types/{type_name}; today the only supported change is flipping `is_advisory`.",
-        "properties": {
-          "is_advisory": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Advisory"
-          }
-        },
-        "title": "CapabilityTypeSchemaPatch",
-        "type": "object"
-      },
-      "CapabilityTypeSchemaResponse": {
-        "description": "A capability-type's JSON Schema and its bi-temporal validity window.",
-        "properties": {
-          "_links": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Links"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "is_advisory": {
-            "title": "Is Advisory",
-            "type": "boolean"
-          },
-          "json_schema": {
-            "additionalProperties": true,
-            "title": "Json Schema",
-            "type": "object"
-          },
-          "schema_id": {
-            "format": "uuid",
-            "title": "Schema Id",
-            "type": "string"
-          },
-          "t_ingested_at": {
-            "format": "date-time",
-            "title": "T Ingested At",
-            "type": "string"
-          },
-          "t_invalidated_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "T Invalidated At"
-          },
-          "t_valid_from": {
-            "format": "date-time",
-            "title": "T Valid From",
-            "type": "string"
-          },
-          "t_valid_to": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "T Valid To"
-          },
-          "type_name": {
-            "title": "Type Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "schema_id",
-          "type_name",
-          "json_schema",
-          "is_advisory",
-          "t_valid_from",
-          "t_valid_to",
-          "t_ingested_at",
-          "t_invalidated_at"
-        ],
-        "title": "CapabilityTypeSchemaResponse",
-        "type": "object"
-      },
       "CapabilityUsageOut": {
         "additionalProperties": false,
         "description": "One capability's call volume for the window, nested inside CapabilityRankingOut.",
@@ -4861,17 +4727,6 @@
             "additionalProperties": true,
             "title": "Attributes",
             "type": "object"
-          },
-          "capability_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Capability Type"
           },
           "entity_type": {
             "const": "capability",
@@ -6215,6 +6070,140 @@
           "identity"
         ],
         "title": "EntityResolutionV1",
+        "type": "object"
+      },
+      "EntityTypeSchemaCreate": {
+        "description": "Body for POST /entity-types.\n\n`entity_type` must already exist in the `entity_type` vocabulary \u2014 registering\na schema for a type no entity can hold is rejected, not stored.\n`is_advisory` (default true) controls whether validation failures block a write.",
+        "properties": {
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "is_advisory": {
+            "default": true,
+            "title": "Is Advisory",
+            "type": "boolean"
+          },
+          "json_schema": {
+            "additionalProperties": true,
+            "title": "Json Schema",
+            "type": "object"
+          },
+          "t_valid_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T Valid From"
+          }
+        },
+        "required": [
+          "entity_type",
+          "json_schema"
+        ],
+        "title": "EntityTypeSchemaCreate",
+        "type": "object"
+      },
+      "EntityTypeSchemaPatch": {
+        "description": "Body for PATCH /entity-types/{entity_type}; today the only supported change is flipping `is_advisory`.",
+        "properties": {
+          "is_advisory": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Advisory"
+          }
+        },
+        "title": "EntityTypeSchemaPatch",
+        "type": "object"
+      },
+      "EntityTypeSchemaResponse": {
+        "description": "An entity-type's JSON Schema and its bi-temporal validity window.",
+        "properties": {
+          "_links": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Links"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "is_advisory": {
+            "title": "Is Advisory",
+            "type": "boolean"
+          },
+          "json_schema": {
+            "additionalProperties": true,
+            "title": "Json Schema",
+            "type": "object"
+          },
+          "schema_id": {
+            "format": "uuid",
+            "title": "Schema Id",
+            "type": "string"
+          },
+          "t_ingested_at": {
+            "format": "date-time",
+            "title": "T Ingested At",
+            "type": "string"
+          },
+          "t_invalidated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T Invalidated At"
+          },
+          "t_valid_from": {
+            "format": "date-time",
+            "title": "T Valid From",
+            "type": "string"
+          },
+          "t_valid_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T Valid To"
+          }
+        },
+        "required": [
+          "schema_id",
+          "entity_type",
+          "json_schema",
+          "is_advisory",
+          "t_valid_from",
+          "t_valid_to",
+          "t_ingested_at",
+          "t_invalidated_at"
+        ],
+        "title": "EntityTypeSchemaResponse",
         "type": "object"
       },
       "EntityWriteRequestV1": {
@@ -16059,200 +16048,6 @@
         ]
       }
     },
-    "/v1/admin/capability-types": {
-      "get": {
-        "description": "List all capability type schemas (current rows only: t_invalidated_at IS NULL).",
-        "operationId": "list_capability_types_v1_admin_capability_types_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/CapabilityTypeSchemaResponse"
-                  },
-                  "title": "Response List Capability Types V1 Admin Capability Types Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "List Capability Types",
-        "tags": [
-          "admin: schemas"
-        ]
-      },
-      "post": {
-        "description": "Create a new capability type schema.\n\nHonours ``X-Idempotency-Key``: same key + same body replays the\noriginal response; same key + different body returns 409.",
-        "operationId": "create_capability_type_v1_admin_capability_types_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CapabilityTypeSchemaCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CapabilityTypeSchemaResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create Capability Type",
-        "tags": [
-          "admin: schemas"
-        ]
-      }
-    },
-    "/v1/admin/capability-types/{type_name}": {
-      "get": {
-        "description": "Get the current schema for a given type_name.\n\nEmits an ``ETag`` header computed from the schema_id + t_ingested_at.\nClients can echo this value as ``If-Match`` on subsequent PATCH calls\nfor optimistic concurrency.",
-        "operationId": "get_capability_type_v1_admin_capability_types__type_name__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "type_name",
-            "required": true,
-            "schema": {
-              "title": "Type Name",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CapabilityTypeSchemaResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Capability Type",
-        "tags": [
-          "admin: schemas"
-        ]
-      },
-      "patch": {
-        "description": "Update a capability type schema \u2014 currently supports flipping is_advisory.\n\nHonours the ``If-Match`` request header (advisory): if present and stale,\nreturns 412 Precondition Failed; if absent, logs a debug warning and\naccepts the write.  ETag is computed from schema_id + t_ingested_at before\nthe write so a stale precondition fails fast.\n\nRecommended flow: GET /v1/admin/capability-types/{name} \u2192 ETag header\n\u2192 PATCH with If-Match.",
-        "operationId": "patch_capability_type_v1_admin_capability_types__type_name__patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "type_name",
-            "required": true,
-            "schema": {
-              "title": "Type Name",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CapabilityTypeSchemaPatch"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CapabilityTypeSchemaResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Patch Capability Type",
-        "tags": [
-          "admin: schemas"
-        ]
-      }
-    },
     "/v1/admin/edge-property-schemas": {
       "get": {
         "description": "List all active edge property schemas for the tenant.  Edge-property schema management is not yet implemented.",
@@ -16301,7 +16096,7 @@
     },
     "/v1/admin/edge-property-schemas/{schema_id}": {
       "patch": {
-        "description": "Supersede an existing edge property schema (bi-temporal).\n\nFull implementation is pending. Once wired, this endpoint will honour\n``If-Match`` (advisory) using the schema's ``t_ingested_at`` timestamp\nas the ETag source, matching the pattern used by capability-type PATCH.",
+        "description": "Supersede an existing edge property schema (bi-temporal).\n\nFull implementation is pending. Once wired, this endpoint will honour\n``If-Match`` (advisory) using the schema's ``t_ingested_at`` timestamp\nas the ETag source, matching the pattern used by entity-type schema PATCH.",
         "operationId": "_update_edge_property_schema_v1_admin_edge_property_schemas__schema_id__patch",
         "parameters": [
           {
@@ -16342,6 +16137,200 @@
         "summary": " Update Edge Property Schema",
         "tags": [
           "admin: edge-schemas"
+        ]
+      }
+    },
+    "/v1/admin/entity-types": {
+      "get": {
+        "description": "List all entity type schemas (current rows only: t_invalidated_at IS NULL).",
+        "operationId": "list_entity_type_schemas_v1_admin_entity_types_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EntityTypeSchemaResponse"
+                  },
+                  "title": "Response List Entity Type Schemas V1 Admin Entity Types Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Entity Type Schemas",
+        "tags": [
+          "admin: schemas"
+        ]
+      },
+      "post": {
+        "description": "Create a new entity type schema.\n\n``entity_type`` is validated against the ``entity_type`` vocabulary first: a\nschema registered for a type no entity may hold could never fire, so storing\none is a silent no-op dressed as governance. Unknown or deprecated values\nraise ``VocabularyError`` (422), matching what ``create_entity`` already does\nwith the same value.\n\nHonours ``X-Idempotency-Key``: same key + same body replays the\noriginal response; same key + different body returns 409.",
+        "operationId": "create_entity_type_schema_v1_admin_entity_types_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityTypeSchemaCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityTypeSchemaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Entity Type Schema",
+        "tags": [
+          "admin: schemas"
+        ]
+      }
+    },
+    "/v1/admin/entity-types/{entity_type}": {
+      "get": {
+        "description": "Get the current schema for a given entity_type.\n\nEmits an ``ETag`` header computed from the schema_id + t_ingested_at.\nClients can echo this value as ``If-Match`` on subsequent PATCH calls\nfor optimistic concurrency.",
+        "operationId": "get_entity_type_schema_v1_admin_entity_types__entity_type__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_type",
+            "required": true,
+            "schema": {
+              "title": "Entity Type",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityTypeSchemaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Entity Type Schema",
+        "tags": [
+          "admin: schemas"
+        ]
+      },
+      "patch": {
+        "description": "Update an entity type schema \u2014 currently supports flipping is_advisory.\n\nHonours the ``If-Match`` request header (advisory): if present and stale,\nreturns 412 Precondition Failed; if absent, logs a debug warning and\naccepts the write.  ETag is computed from schema_id + t_ingested_at before\nthe write so a stale precondition fails fast.\n\nRecommended flow: GET /v1/admin/entity-types/{entity_type} \u2192 ETag header\n\u2192 PATCH with If-Match.",
+        "operationId": "patch_entity_type_schema_v1_admin_entity_types__entity_type__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_type",
+            "required": true,
+            "schema": {
+              "title": "Entity Type",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityTypeSchemaPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityTypeSchemaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Entity Type Schema",
+        "tags": [
+          "admin: schemas"
         ]
       }
     },
@@ -29457,7 +29446,7 @@
       "name": "admin: vocabulary"
     },
     {
-      "description": "Register capability-type schemas (`integration`, custom tenant types) used to validate `capability.attributes` on write.",
+      "description": "Register entity-type schemas (`capability`, `integration`, custom tenant types) used to validate an entity's `attributes` on write.",
       "name": "admin: schemas"
     },
     {

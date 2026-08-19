@@ -5,7 +5,8 @@
 # `capability.yaml` in your service repo for a sync connector to ingest.
 #
 # Validation: the `attributes` block is validated against
-# seeds/_templates/capability-schema.json by SchemaService.validate_capability
+# seeds/_templates/entity-type-capability.schema.json by
+# SchemaService.validate_entity_attributes
 # at write time. Fields marked REQUIRED block publication. Fields marked
 # OPTIONAL are recommended — they don't fail validation but they're
 # surfaced as 'completeness' on the catalog dashboard, and several
@@ -30,7 +31,7 @@ visibility: public                   # REQUIRED. private | tenant-shared | publi
                                      # is intended for cross-tenant adoption.
 
 # ---------------------------------------------------------------------------
-# Attributes — validated against capability-schema.json
+# Attributes — validated against entity-type-capability.schema.json
 # ---------------------------------------------------------------------------
 
 attributes:

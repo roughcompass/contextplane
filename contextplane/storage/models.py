@@ -310,12 +310,20 @@ class AuditLog(Base, TenantMixin):
 # --- Schema registry additions ---
 
 
-class CapabilityTypeSchema(Base, TenantMixin):
-    __tablename__ = "capability_type_schemas"
+class EntityTypeSchema(Base, TenantMixin):
+    """Tenant-registered JSON Schema validating the `attributes` of one entity type.
+
+    ``entity_type`` draws from the ``entity_type`` vocabulary, the same closed set
+    that ``entities.entity_type`` and ``progression_definitions.entity_type`` use.
+    A type with no row here is not thereby unvalidated — the bound profile still
+    governs it; see `service/catalog/schema.py`.
+    """
+
+    __tablename__ = "entity_type_schemas"
 
     schema_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), nullable=False)
-    type_name: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_type: Mapped[str] = mapped_column(Text, nullable=False)
     json_schema: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     is_advisory: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     t_valid_from: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)

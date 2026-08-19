@@ -103,29 +103,29 @@ def _build_service(
 
 @pytest.mark.asyncio
 async def test_update_entity_valid_attributes_passes() -> None:
-    """update_entity succeeds when validate_capability returns a clean result."""
+    """update_entity succeeds when validate_entity_attributes returns a clean result."""
     ctx = _ctx()
     entity = _entity_row(ctx.tenant_id, entity_type="api-capability")
     existing = [_attr_row(ctx.tenant_id, entity.entity_id, "owner", "team-a")]
 
     schema_mock = MagicMock()
-    schema_mock.validate_capability = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
+    schema_mock.validate_entity_attributes = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
 
     svc, _session = _build_service(entity, existing, schema_mock)
 
     result = await svc.update_entity(ctx, entity.entity_id, {"owner": "team-b"})
 
     assert result.entity_id == entity.entity_id
-    # validate_capability must have been called once with the merged attributes.
-    schema_mock.validate_capability.assert_awaited_once()
-    call_args = schema_mock.validate_capability.call_args
-    assert call_args.args[1] == "api-capability"  # capability_type == entity_type
+    # validate_entity_attributes must have been called once with the merged attributes.
+    schema_mock.validate_entity_attributes.assert_awaited_once()
+    call_args = schema_mock.validate_entity_attributes.call_args
+    assert call_args.args[1] == "api-capability"
     assert call_args.args[2] == {"owner": "team-b"}  # merged: existing overridden by update
 
 
 @pytest.mark.asyncio
 async def test_update_entity_merged_attributes_sent_to_validator() -> None:
-    """Merged attributes (existing + updates) reach validate_capability, not just the delta."""
+    """Merged attributes (existing + updates) reach validate_entity_attributes, not just the delta."""
     ctx = _ctx()
     entity = _entity_row(ctx.tenant_id, entity_type="api-capability")
     existing = [
@@ -134,13 +134,13 @@ async def test_update_entity_merged_attributes_sent_to_validator() -> None:
     ]
 
     schema_mock = MagicMock()
-    schema_mock.validate_capability = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
+    schema_mock.validate_entity_attributes = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
 
     svc, _ = _build_service(entity, existing, schema_mock)
 
     await svc.update_entity(ctx, entity.entity_id, {"owner": "team-b"})
 
-    call_args = schema_mock.validate_capability.call_args
+    call_args = schema_mock.validate_entity_attributes.call_args
     merged = call_args.args[2]
     # The un-updated key must also appear in the merged payload.
     assert merged["version"] == "1.0.0"
@@ -149,13 +149,13 @@ async def test_update_entity_merged_attributes_sent_to_validator() -> None:
 
 @pytest.mark.asyncio
 async def test_update_entity_invalid_attributes_raises_validation_error() -> None:
-    """update_entity raises ValidationError when validate_capability raises one."""
+    """update_entity raises ValidationError when validate_entity_attributes raises one."""
     ctx = _ctx()
     entity = _entity_row(ctx.tenant_id, entity_type="api-capability")
     existing = [_attr_row(ctx.tenant_id, entity.entity_id, "owner", "team-a")]
 
     schema_mock = MagicMock()
-    schema_mock.validate_capability = AsyncMock(
+    schema_mock.validate_entity_attributes = AsyncMock(
         side_effect=ValidationError("capability attributes failed schema validation for type 'api-capability': ...")
     )
 
@@ -170,7 +170,7 @@ async def test_update_entity_invalid_attributes_raises_validation_error() -> Non
 
 @pytest.mark.asyncio
 async def test_update_entity_no_rows_written_on_validation_failure() -> None:
-    """Attribute rows must not be partially written when validate_capability raises."""
+    """Attribute rows must not be partially written when validate_entity_attributes raises."""
     ctx = _ctx()
     entity = _entity_row(ctx.tenant_id, entity_type="api-capability")
     existing = [
@@ -179,7 +179,7 @@ async def test_update_entity_no_rows_written_on_validation_failure() -> None:
     ]
 
     schema_mock = MagicMock()
-    schema_mock.validate_capability = AsyncMock(side_effect=ValidationError("schema violation"))
+    schema_mock.validate_entity_attributes = AsyncMock(side_effect=ValidationError("schema violation"))
 
     svc, session = _build_service(entity, existing, schema_mock)
 
@@ -193,20 +193,20 @@ async def test_update_entity_no_rows_written_on_validation_failure() -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_entity_validate_capability_called_with_entity_type() -> None:
-    """validate_capability receives the entity's entity_type as capability_type."""
+async def test_update_entity_validate_entity_attributes_called_with_entity_type() -> None:
+    """validate_entity_attributes receives the entity's entity_type."""
     ctx = _ctx()
     entity = _entity_row(ctx.tenant_id, entity_type="ml-model")
     existing: list[Attribute] = []
 
     schema_mock = MagicMock()
-    schema_mock.validate_capability = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
+    schema_mock.validate_entity_attributes = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
 
     svc, _ = _build_service(entity, existing, schema_mock)
 
     await svc.update_entity(ctx, entity.entity_id, {"framework": "pytorch"})
 
-    call_args = schema_mock.validate_capability.call_args
+    call_args = schema_mock.validate_entity_attributes.call_args
     assert call_args.args[1] == "ml-model"
 
 
@@ -216,79 +216,29 @@ async def test_update_entity_validate_capability_called_with_entity_type() -> No
 
 
 @pytest.mark.asyncio
-async def test_create_entity_validates_against_entity_type_with_no_capability_type() -> None:
-    """A generic create is validated, not waved through for lacking a capability_type.
+async def test_create_entity_validates_against_its_entity_type() -> None:
+    """Every create is validated against its own entity_type.
 
     This is the bypass the profile-enforcement seam closes. Validation used to run
-    only when the caller supplied a `capability_type`, so an entity created without
-    one carried no property rules at all — while `update_entity` on that same row
-    validated against its `entity_type` and would refuse what the create accepted.
+    only when the caller named a second, capability-specific type, so an entity
+    created without one carried no property rules at all — while `update_entity`
+    on that same row validated against its `entity_type` and would refuse what the
+    create accepted.
     """
     ctx = _ctx()
     entity = _entity_row(ctx.tenant_id, entity_type="api-capability")
 
     schema_mock = MagicMock()
-    schema_mock.validate_capability = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
+    schema_mock.validate_entity_attributes = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
     svc, _session = _build_service(entity, [], schema_mock)
     svc._vocabulary.validate_value = AsyncMock(return_value=None)
 
     await svc.create_entity(ctx, entity_type="api-capability", name="test-cap", attributes={"owner": "team-a"})
 
-    schema_mock.validate_capability.assert_awaited_once()
-    call_args = schema_mock.validate_capability.call_args
+    schema_mock.validate_entity_attributes.assert_awaited_once()
+    call_args = schema_mock.validate_entity_attributes.call_args
     assert call_args.args[1] == "api-capability"
     assert call_args.args[2] == {"owner": "team-a"}
-
-
-@pytest.mark.asyncio
-async def test_create_entity_does_not_validate_the_same_type_twice() -> None:
-    """A capability_type equal to the entity_type is one type, so it is checked once.
-
-    Worth pinning because the obvious way to close the generic bypass — add an
-    unconditional call beside the existing one — makes every capability create do
-    the same work and emit the same warnings twice.
-    """
-    ctx = _ctx()
-    entity = _entity_row(ctx.tenant_id, entity_type="api-capability")
-
-    schema_mock = MagicMock()
-    schema_mock.validate_capability = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
-    svc, _session = _build_service(entity, [], schema_mock)
-    svc._vocabulary.validate_value = AsyncMock(return_value=None)
-
-    await svc.create_entity(
-        ctx,
-        entity_type="api-capability",
-        name="test-cap",
-        capability_type="api-capability",
-        attributes={"owner": "team-a"},
-    )
-
-    schema_mock.validate_capability.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_create_entity_validates_both_types_when_they_differ() -> None:
-    """A distinct capability_type carries its own schema and is checked as well."""
-    ctx = _ctx()
-    entity = _entity_row(ctx.tenant_id, entity_type="service")
-
-    schema_mock = MagicMock()
-    schema_mock.validate_capability = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
-    svc, _session = _build_service(entity, [], schema_mock)
-    svc._vocabulary.validate_value = AsyncMock(return_value=None)
-
-    await svc.create_entity(
-        ctx,
-        entity_type="service",
-        name="test-cap",
-        capability_type="api-capability",
-        attributes={"owner": "team-a"},
-    )
-
-    assert schema_mock.validate_capability.await_count == 2
-    checked = [call.args[1] for call in schema_mock.validate_capability.await_args_list]
-    assert checked == ["service", "api-capability"]
 
 
 @pytest.mark.asyncio
@@ -298,7 +248,7 @@ async def test_create_entity_refuses_when_the_entity_type_validation_raises() ->
     entity = _entity_row(ctx.tenant_id, entity_type="api-capability")
 
     schema_mock = MagicMock()
-    schema_mock.validate_capability = AsyncMock(side_effect=ValidationError("undeclared_property: surprise"))
+    schema_mock.validate_entity_attributes = AsyncMock(side_effect=ValidationError("undeclared_property: surprise"))
     svc, session = _build_service(entity, [], schema_mock)
     svc._vocabulary.validate_value = AsyncMock(return_value=None)
 

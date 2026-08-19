@@ -157,7 +157,7 @@ async def test_create_capability_consumer_forbidden(cpr_clients: _CprClients) ->
     with patch_validator_for_actor(consumer_persona):
         resp = await consumer.post(
             "/v1/capabilities",
-            json={"name": "cpr-should-deny", "capability_type": "component"},
+            json={"name": "cpr-should-deny"},
             headers=bearer_headers(tenant_slug=consumer_persona.slug),
         )
     _assert_forbidden(resp)
@@ -170,7 +170,7 @@ async def test_create_capability_producer_succeeds(cpr_clients: _CprClients) -> 
     with patch_validator_for_actor(producer_persona):
         resp = await producer.post(
             "/v1/capabilities",
-            json={"name": f"cpr-cap-{secrets.token_hex(4)}", "capability_type": "component"},
+            json={"name": f"cpr-cap-{secrets.token_hex(4)}"},
             headers=bearer_headers(tenant_slug=producer_persona.slug),
         )
     assert resp.status_code == 201, f"expected 201: {resp.text}"
@@ -303,7 +303,7 @@ async def test_keyset_pagination_no_overlap(cpr_clients: _CprClients) -> None:
         for i in range(5):
             resp = await producer.post(
                 "/v1/capabilities",
-                json={"name": f"cpr-page-cap-{secrets.token_hex(4)}-{i}", "capability_type": "component"},
+                json={"name": f"cpr-page-cap-{secrets.token_hex(4)}-{i}"},
                 headers=bearer_headers(tenant_slug=producer_persona.slug),
             )
             assert resp.status_code == 201, f"create failed: {resp.text}"
@@ -486,7 +486,6 @@ async def test_rate_limit_write_budget_exhausted(pg_container: str) -> None:
                         headers=bearer_headers(tenant_slug=slug),
                         json={
                             "name": f"cpr-rl-cap-{i}-{secrets.token_hex(4)}",
-                            "capability_type": "component",
                         },
                     )
                 assert resp.status_code == 201, f"request {i + 1} expected 201, got {resp.status_code}: {resp.text}"
@@ -496,7 +495,7 @@ async def test_rate_limit_write_budget_exhausted(pg_container: str) -> None:
                 throttled = await client.post(
                     "/v1/capabilities",
                     headers=bearer_headers(tenant_slug=slug),
-                    json={"name": f"cpr-rl-throttled-{secrets.token_hex(4)}", "capability_type": "component"},
+                    json={"name": f"cpr-rl-throttled-{secrets.token_hex(4)}"},
                 )
 
     assert (
@@ -552,7 +551,6 @@ async def test_rate_limit_reads_not_throttled_by_write_budget(pg_container: str)
                         headers=bearer_headers(tenant_slug=slug),
                         json={
                             "name": f"cpr-ro-cap-{i}-{secrets.token_hex(4)}",
-                            "capability_type": "component",
                         },
                     )
 
@@ -625,7 +623,6 @@ async def test_rate_limit_tenant_isolation(pg_container: str) -> None:
                         headers=bearer_headers(token=token_a, tenant_slug=slug_a),
                         json={
                             "name": f"cpr-iso-a-{i}-{secrets.token_hex(4)}",
-                            "capability_type": "component",
                         },
                     )
 
@@ -636,7 +633,7 @@ async def test_rate_limit_tenant_isolation(pg_container: str) -> None:
                 resp_b = await client.post(
                     "/v1/capabilities",
                     headers=bearer_headers(token=token_b, tenant_slug=slug_b),
-                    json={"name": f"cpr-iso-b-{secrets.token_hex(4)}", "capability_type": "component"},
+                    json={"name": f"cpr-iso-b-{secrets.token_hex(4)}"},
                 )
 
     assert resp_b.status_code == 201, (

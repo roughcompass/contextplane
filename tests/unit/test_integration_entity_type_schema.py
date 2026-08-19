@@ -1,9 +1,9 @@
-"""Unit tests for the integration capability-type schema path.
+"""Unit tests for the integration entity-type schema path.
 
 Locks in the contract that a tenant-scoped
-``capability_type_schemas`` row for ``type_name='integration'`` causes
-``CatalogService.create_entity(capability_type='integration', ...)`` to
-validate attributes via ``SchemaService.validate_capability``.
+``entity_type_schemas`` row for ``entity_type='integration'`` causes
+``CatalogService.create_entity(entity_type='integration', ...)`` to
+validate attributes via ``SchemaService.validate_entity_attributes``.
 
 What this audit found:
 - Migration 0009 seeds the integration schema under the *default system
@@ -82,9 +82,9 @@ _INTEGRATION_SCHEMA: dict[str, Any] = {
 async def test_no_schema_for_tenant_makes_validation_a_noop() -> None:
     """When no schema row exists for the tenant + type, validation passes."""
     svc = SchemaService(_make_factory(schema_row=None), FakeClock(_NOW))
-    result = await svc.validate_capability(
+    result = await svc.validate_entity_attributes(
         ctx=_ctx(),
-        capability_type="integration",
+        entity_type="integration",
         attributes={"runbook_url": 42},  # would fail if a schema were present
     )
     assert isinstance(result, ValidationResult)
@@ -103,9 +103,9 @@ async def test_valid_integration_attributes_pass_schema_validation() -> None:
         _make_factory(schema_row=(_INTEGRATION_SCHEMA, False)),
         FakeClock(_NOW),
     )
-    result = await svc.validate_capability(
+    result = await svc.validate_entity_attributes(
         ctx=_ctx(),
-        capability_type="integration",
+        entity_type="integration",
         attributes={
             "config_template": "yaml-blob",
             "runbook_url": "https://example.com/runbook",
@@ -122,9 +122,9 @@ async def test_runbook_url_wrong_type_fails_validation() -> None:
         FakeClock(_NOW),
     )
     with pytest.raises(ValidationError) as excinfo:
-        await svc.validate_capability(
+        await svc.validate_entity_attributes(
             ctx=_ctx(),
-            capability_type="integration",
+            entity_type="integration",
             attributes={"runbook_url": 42},
         )
     assert "integration" in str(excinfo.value)
@@ -137,9 +137,9 @@ async def test_known_issues_not_an_array_fails_validation() -> None:
         FakeClock(_NOW),
     )
     with pytest.raises(ValidationError):
-        await svc.validate_capability(
+        await svc.validate_entity_attributes(
             ctx=_ctx(),
-            capability_type="integration",
+            entity_type="integration",
             attributes={"known_issues": "not-a-list"},
         )
 
@@ -151,9 +151,9 @@ async def test_advisory_schema_emits_warning_instead_of_raising() -> None:
         _make_factory(schema_row=(_INTEGRATION_SCHEMA, True)),
         FakeClock(_NOW),
     )
-    result = await svc.validate_capability(
+    result = await svc.validate_entity_attributes(
         ctx=_ctx(),
-        capability_type="integration",
+        entity_type="integration",
         attributes={"runbook_url": 42},
     )
     assert result.valid is True

@@ -117,25 +117,20 @@ class EntityService:
         entity_type: str,
         name: str,
         external_id: str | None = None,
-        capability_type: str | None = None,
         attributes: dict[str, Any] | None = None,
         valid_from: datetime.datetime | None = None,
     ) -> EntityRef:
-        """Create an entity with optional attributes; validates entity_type and capability_type before writing."""
+        """Create an entity with optional attributes; validates entity_type before writing."""
         validate_slug(name, field="entity name")
         attributes = attributes or {}
         _validate_semver_attribute(attributes)
         await self._vocabulary.validate_value(ctx, "entity_type", entity_type)
-        # Validated against `entity_type` unconditionally, and against
-        # `capability_type` as well when one is supplied. Running this only for
-        # capability-typed entities is what left every generic entity unchecked:
-        # the profile declares which types exist and what properties they carry
-        # regardless of whether the caller also named a capability type, and
-        # `update_entity` has always validated against `entity_type`, so a create
-        # that skipped it accepted rows its own updates would later refuse.
-        await self._schema.validate_capability(ctx, entity_type, attributes)
-        if capability_type is not None and capability_type != entity_type:
-            await self._schema.validate_capability(ctx, capability_type, attributes)
+        # Validated against `entity_type`, the same value `update_entity`
+        # validates against — a create that skipped it accepted rows its own
+        # updates would later refuse. The profile declares which types exist and
+        # what properties they carry, so this runs for every entity, not just
+        # the capability-shaped ones.
+        await self._schema.validate_entity_attributes(ctx, entity_type, attributes)
 
         now = self._clock.now()
         valid_from = normalize_utc(valid_from) if valid_from is not None else now
@@ -285,7 +280,7 @@ class EntityService:
             # mandatory schema is violated; advisory violations return warnings
             # but do not block the write.
             merged_attributes = {**{k: v.value for k, v in existing_by_key.items()}, **updates}
-            await self._schema.validate_capability(ctx, entity.entity_type, merged_attributes)
+            await self._schema.validate_entity_attributes(ctx, entity.entity_type, merged_attributes)
 
             # Validate stage_progression transition when the attribute is being
             # changed. The check runs after _assert_tenant (above) so tenant

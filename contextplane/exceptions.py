@@ -54,7 +54,7 @@ class VocabularyError(CatalogError):
 
 
 class ValidationError(CatalogError):
-    """Raised when input fails JSON Schema or capability-type validation."""
+    """Raised when input fails JSON Schema or entity-type validation."""
 
 
 class LifecycleError(CatalogError):

@@ -59,7 +59,7 @@ class LoadCounts:
     actors_created: int = 0
     adoptions_created: int = 0
     progression_definitions_created: int = 0
-    capability_type_schemas_created: int = 0
+    entity_type_schemas_created: int = 0
     visibility_changes: int = 0
     per_entity: dict[str, dict[str, Any]] = field(default_factory=dict)
     # Memory-loop counts -- see `apply_memory_loop_section`.
@@ -90,7 +90,7 @@ class SeedBundle:
     edges: list[dict[str, Any]]
     adoptions: list[dict[str, Any]]
     progression_definitions: list[dict[str, Any]]
-    capability_type_schemas: list[dict[str, Any]]
+    entity_type_schemas: list[dict[str, Any]]
     # Memory-loop sections -- see `apply_memory_loop_section`.
     session_events: list[dict[str, Any]]
     staged_claims: list[dict[str, Any]]
@@ -116,7 +116,7 @@ _ALLOWED_TOP_LEVEL: frozenset[str] = frozenset(
         "edges",
         "adoptions",
         "progression_definitions",
-        "capability_type_schemas",
+        "entity_type_schemas",
         # Memory-loop sections. Unlike every section above, these describe
         # rows in tables with exactly one writer each (memory_claims may only
         # be written by ClaimService, and so on) -- so the generic per-bundle
@@ -184,7 +184,7 @@ def load_bundle(path: Path) -> SeedBundle:
         edges=raw.get("edges") or [],
         adoptions=raw.get("adoptions") or [],
         progression_definitions=raw.get("progression_definitions") or [],
-        capability_type_schemas=raw.get("capability_type_schemas") or [],
+        entity_type_schemas=raw.get("entity_type_schemas") or [],
         session_events=raw.get("session_events") or [],
         staged_claims=raw.get("staged_claims") or [],
         promotion_proposals=raw.get("promotion_proposals") or [],
@@ -1052,7 +1052,7 @@ async def _apply_progression_definitions(
         counts.progression_definitions_created += 1
 
 
-async def _apply_capability_type_schemas(
+async def _apply_entity_type_schemas(
     session: AsyncSession,
     rows: list[dict[str, Any]],
     registry: TenantRegistry,
@@ -1061,7 +1061,7 @@ async def _apply_capability_type_schemas(
     counts: LoadCounts,
     now: datetime.datetime,
 ) -> None:
-    """Insert capability_type_schemas rows. One active row per (tenant, type_name).
+    """Insert entity_type_schemas rows. One active row per (tenant, entity_type).
 
     Each row in the bundle either embeds the JSON Schema inline under
     ``json_schema`` or points at a file under ``seeds/`` via ``schema_file``
@@ -1070,7 +1070,7 @@ async def _apply_capability_type_schemas(
     registry both consume the same source.
 
     Idempotency mirrors ``_apply_progression_definitions``: if a live row
-    exists for (tenant, type_name) and the json_schema matches, skip. If
+    exists for (tenant, entity_type) and the json_schema matches, skip. If
     the schema has drifted, invalidate the live row and insert a fresh
     one — bi-temporal supersession.
     """
@@ -1078,14 +1078,14 @@ async def _apply_capability_type_schemas(
     seeds_root = bundle_path.parent.parent
 
     for row in rows:
-        type_name = row["type_name"]
+        entity_type = row["entity_type"]
         is_advisory = bool(row.get("is_advisory", True))
 
         if "schema_file" in row:
             schema_path = (seeds_root / row["schema_file"]).resolve()
             if not schema_path.is_file():
                 raise ValueError(
-                    f"{bundle_path}: capability_type_schemas[{type_name!r}].schema_file "
+                    f"{bundle_path}: entity_type_schemas[{entity_type!r}].schema_file "
                     f"resolves to {schema_path}, which is not a file."
                 )
             json_schema = json.loads(schema_path.read_text(encoding="utf-8"))
@@ -1093,7 +1093,7 @@ async def _apply_capability_type_schemas(
             json_schema = row["json_schema"]
         else:
             raise ValueError(
-                f"{bundle_path}: capability_type_schemas[{type_name!r}] must "
+                f"{bundle_path}: entity_type_schemas[{entity_type!r}] must "
                 f"provide either `schema_file` or `json_schema`."
             )
 
@@ -1101,11 +1101,11 @@ async def _apply_capability_type_schemas(
             await session.execute(
                 text(
                     "SELECT schema_id, json_schema::text, is_advisory "
-                    "FROM capability_type_schemas "
-                    "WHERE tenant_id = :tid AND type_name = :tname "
+                    "FROM entity_type_schemas "
+                    "WHERE tenant_id = :tid AND entity_type = :etype "
                     "AND t_invalidated_at IS NULL"
                 ),
-                {"tid": tenant_id, "tname": type_name},
+                {"tid": tenant_id, "etype": entity_type},
             )
         ).first()
 
@@ -1117,27 +1117,27 @@ async def _apply_capability_type_schemas(
                 continue
             # Schema content or advisory flag drifted — invalidate the live row.
             await session.execute(
-                text("UPDATE capability_type_schemas " "SET t_invalidated_at = :now WHERE schema_id = :sid"),
+                text("UPDATE entity_type_schemas " "SET t_invalidated_at = :now WHERE schema_id = :sid"),
                 {"now": now, "sid": existing[0]},
             )
 
         await session.execute(
             text(
-                "INSERT INTO capability_type_schemas "
-                "(schema_id, tenant_id, type_name, json_schema, is_advisory, "
+                "INSERT INTO entity_type_schemas "
+                "(schema_id, tenant_id, entity_type, json_schema, is_advisory, "
                 " t_valid_from, t_valid_to, t_ingested_at, t_invalidated_at) "
-                "VALUES (gen_random_uuid(), :tid, :tname, CAST(:schema AS JSONB), :adv, "
+                "VALUES (gen_random_uuid(), :tid, :etype, CAST(:schema AS JSONB), :adv, "
                 "        :now, NULL, :now, NULL)"
             ),
             {
                 "tid": tenant_id,
-                "tname": type_name,
+                "etype": entity_type,
                 "schema": new_schema_text,
                 "adv": is_advisory,
                 "now": now,
             },
         )
-        counts.capability_type_schemas_created += 1
+        counts.entity_type_schemas_created += 1
 
 
 # ---------------------------------------------------------------------------
@@ -1539,9 +1539,9 @@ async def apply_bundles(
             await _apply_progression_definitions(
                 session, bundle.progression_definitions, registry, target_slug, counts, now
             )
-        if bundle.capability_type_schemas:
-            await _apply_capability_type_schemas(
-                session, bundle.capability_type_schemas, registry, target_slug, bundle.path, counts, now
+        if bundle.entity_type_schemas:
+            await _apply_entity_type_schemas(
+                session, bundle.entity_type_schemas, registry, target_slug, bundle.path, counts, now
             )
 
     return counts
@@ -1686,9 +1686,9 @@ def _emit_summary(
         print(f"  {dim('Adoptions')}: {counts.adoptions_created} cross-tenant adoption(s)")
     if counts.progression_definitions_created:
         print(f"  {dim('Progression')}: " f"{counts.progression_definitions_created} definition(s) installed")
-    if counts.capability_type_schemas_created:
-        n = counts.capability_type_schemas_created
-        print(f"  {dim('Type schemas')}: {n} capability schema row(s) installed")
+    if counts.entity_type_schemas_created:
+        n = counts.entity_type_schemas_created
+        print(f"  {dim('Type schemas')}: {n} entity type schema row(s) installed")
     if counts.ontology_predicates_created:
         print(f"  {dim('Memory ontology')}: {counts.ontology_predicates_created} predicate(s) installed")
     if counts.session_events_created:

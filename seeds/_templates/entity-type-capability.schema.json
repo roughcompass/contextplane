@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://capability-catalog/schemas/capability.attributes.v1.json",
   "title": "Capability — attributes block",
-  "description": "Validation contract for the `attributes` dict on an Entity row where entity_type='capability'. Register this against capability_type_schemas.type_name='capability' to have SchemaService.validate_capability enforce it. Required fields are the minimum every capability MUST publish; optional fields are recommended and surfaced as 'completeness' on the catalog dashboard. Closed-vocabulary values (lifecycle.state, data_classification) align with seeds/00-core/01-vocabulary.json — the loader will reject values outside vocabulary regardless of what this schema allows.",
+  "description": "Validation contract for the `attributes` dict on an Entity row where entity_type='capability'. Register this against entity_type_schemas.entity_type='capability' to have SchemaService.validate_entity_attributes enforce it. Required fields are the minimum every capability MUST publish; optional fields are recommended and surfaced as 'completeness' on the catalog dashboard. Closed-vocabulary values (lifecycle.state, data_classification) align with seeds/00-core/01-vocabulary.json — the loader will reject values outside vocabulary regardless of what this schema allows.",
   "type": "object",
   "required": ["display_name", "summary", "owner", "lifecycle"],
   "additionalProperties": true,

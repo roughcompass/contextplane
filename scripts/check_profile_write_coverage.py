@@ -61,7 +61,7 @@ _VALIDATION_MODULE = "contextplane.entities.validation"
 #: calling this is validated even though it never names the validation module —
 #: `SchemaService` holds the validator and every entity write in the catalog area
 #: goes through it.
-_VALIDATING_CALL = "validate_capability"
+_VALIDATING_CALL = "validate_entity_attributes"
 
 _SQL_WRITE = re.compile(
     r"\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(" + "|".join(_GOVERNED_TABLES) + r")\b",

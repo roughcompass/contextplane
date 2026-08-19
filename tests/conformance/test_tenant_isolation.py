@@ -92,7 +92,7 @@ async def _create_capability(
     with patch_validator_for_actor(persona):
         resp = await client.post(
             "/v1/capabilities",
-            json={"name": name, "capability_type": "service"},
+            json={"name": name},
             headers=bearer_headers(tenant_slug=persona.slug),
         )
     assert resp.status_code == 201, f"capability create failed: {resp.status_code} {resp.text}"

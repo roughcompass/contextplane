@@ -38,39 +38,39 @@ _MIN_PROPS_SCHEMA: dict[str, Any] = {
 
 
 @pytest.mark.asyncio
-async def test_validate_capability_passes_when_no_schema_registered() -> None:
+async def test_validate_entity_attributes_passes_when_no_schema_registered() -> None:
     factory = _factory_returning_row(None, is_advisory=False)
     clock = FakeClock(datetime.datetime(2026, 5, 6, tzinfo=datetime.UTC))
     service = SchemaService(factory, clock)
-    result = await service.validate_capability(_ctx(), "untyped", {"any": "thing"})
+    result = await service.validate_entity_attributes(_ctx(), "untyped", {"any": "thing"})
     assert result.valid is True
     assert result.warnings == []
 
 
 @pytest.mark.asyncio
-async def test_validate_capability_advisory_returns_warning_on_violation() -> None:
+async def test_validate_entity_attributes_advisory_returns_warning_on_violation() -> None:
     factory = _factory_returning_row(_MIN_PROPS_SCHEMA, is_advisory=True)
     clock = FakeClock(datetime.datetime(2026, 5, 6, tzinfo=datetime.UTC))
     service = SchemaService(factory, clock)
-    result = await service.validate_capability(_ctx(), "api_service", {})
+    result = await service.validate_entity_attributes(_ctx(), "api_service", {})
     assert result.valid is True
     assert result.warnings  # at least one warning
 
 
 @pytest.mark.asyncio
-async def test_validate_capability_mandatory_raises_on_violation() -> None:
+async def test_validate_entity_attributes_mandatory_raises_on_violation() -> None:
     factory = _factory_returning_row(_MIN_PROPS_SCHEMA, is_advisory=False)
     clock = FakeClock(datetime.datetime(2026, 5, 6, tzinfo=datetime.UTC))
     service = SchemaService(factory, clock)
     with pytest.raises(ValidationError):
-        await service.validate_capability(_ctx(), "api_service", {})
+        await service.validate_entity_attributes(_ctx(), "api_service", {})
 
 
 @pytest.mark.asyncio
-async def test_validate_capability_mandatory_passes_on_valid_attributes() -> None:
+async def test_validate_entity_attributes_mandatory_passes_on_valid_attributes() -> None:
     factory = _factory_returning_row(_MIN_PROPS_SCHEMA, is_advisory=False)
     clock = FakeClock(datetime.datetime(2026, 5, 6, tzinfo=datetime.UTC))
     service = SchemaService(factory, clock)
-    result = await service.validate_capability(_ctx(), "api_service", {"version": "1.0.0"})
+    result = await service.validate_entity_attributes(_ctx(), "api_service", {"version": "1.0.0"})
     assert result.valid is True
     assert result.warnings == []

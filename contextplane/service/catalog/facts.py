@@ -560,7 +560,7 @@ class FactService:
     ) -> CapabilityRecord:
         """Load entity + attributes + all facts in one query.
 
-        Includes progression metadata if capability_type matches.
+        Includes progression metadata if the entity_type matches.
         """
         async with self._session_factory() as session:
             entity = await session.get(Entity, entity_id)

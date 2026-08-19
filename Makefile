@@ -513,7 +513,7 @@ dev-seed: ## Seed dev tenant from every bundle under seeds/. Idempotent.
 	$(call with_devstack_env) $(PYTHON) scripts/seed.py
 
 # Validate every capability entity in seeds/ against the capability JSON
-# Schema (seeds/_templates/capability-schema.json). Operates on the merged
+# Schema (seeds/_templates/entity-type-capability.schema.json). Operates on the merged
 # attribute state across bundles — runs without a database so it can gate CI.
 seeds-validate: ## Validate seeds/ capabilities against the capability JSON Schema.
 	$(PYTHON) scripts/validate_seeds.py

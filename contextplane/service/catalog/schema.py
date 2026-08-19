@@ -1,13 +1,13 @@
-"""SchemaService — JSON Schema validation against capability_type and edge_rel registries.
+"""SchemaService — JSON Schema validation against entity_type and edge_rel registries.
 
 Schema records are bi-temporal; this service fetches the current row at write
 time (no caching) so an admin schema change is visible without a process restart.
 
-This service reaches into `capability_type_schemas` and `edge_property_schemas`
+This service reaches into `entity_type_schemas` and `edge_property_schemas`
 via raw SQL so it has no compile-time dependency on ORM models for those tables.
 
 Methods:
-  `validate_capability`    — validate capability attributes against a registered type schema.
+  `validate_entity_attributes` — validate an entity's attributes against its registered type schema.
   `register_edge_schema`   — insert a bi-temporal row into edge_property_schemas.
   `validate_edge_properties` — fetch current schema for an edge_rel and validate.
 
@@ -40,17 +40,17 @@ _DEFAULT_ADVISORY_DAYS = 30
 
 @dataclass
 class ValidationResult:
-    """Capability attribute validation outcome; warnings note non-fatal issues."""
+    """Entity attribute validation outcome; warnings note non-fatal issues."""
 
     valid: bool
     warnings: list[str]
 
 
 class SchemaService:
-    """Validate capability attributes against type-specific schemas and the bound profile.
+    """Validate entity attributes against type-specific schemas and the bound profile.
 
     Two registries answer here, and they answer different questions. The
-    `capability_type_schemas` rows are a tenant's own JSON Schema for a type it
+    `entity_type_schemas` rows are a tenant's own JSON Schema for a type it
     registered. The profile is the governance the tenant is *bound* to, which
     declares which types exist at all and which properties they carry. A type
     with no registered JSON Schema is still governed by the profile, so the
@@ -73,10 +73,10 @@ class SchemaService:
         # quietly relying on the None case.
         self._validator = validator
 
-    async def validate_capability(
+    async def validate_entity_attributes(
         self,
         ctx: TenantContext,
-        capability_type: str,
+        entity_type: str,
         attributes: dict[str, Any],
     ) -> ValidationResult:
         """Validate `attributes` against the registered schema and the bound profile.
@@ -88,16 +88,16 @@ class SchemaService:
         """
         warnings: list[str] = []
 
-        profile = await self._validate_against_profile(ctx, capability_type, attributes)
+        profile = await self._validate_against_profile(ctx, entity_type, attributes)
         if profile is not None and profile.violations:
             if profile.enforced:
                 detail = "; ".join(profile.messages())
-                msg = f"entity type {capability_type!r} violates the profile this tenant is bound to: {detail}"
+                msg = f"entity type {entity_type!r} violates the profile this tenant is bound to: {detail}"
                 raise ValidationError(msg)
             warnings.extend(profile.messages())
 
         async with self._session_factory() as session:
-            row = await self._fetch_current_schema(session, ctx, capability_type)
+            row = await self._fetch_current_schema(session, ctx, entity_type)
 
         if row is None:
             return ValidationResult(valid=True, warnings=warnings)
@@ -109,7 +109,7 @@ class SchemaService:
         except jsonschema.ValidationError as exc:
             if is_advisory:
                 return ValidationResult(valid=True, warnings=[*warnings, str(exc.message)])
-            msg = f"capability attributes failed schema validation for type " f"{capability_type!r}: {exc.message}"
+            msg = f"entity attributes failed schema validation for type " f"{entity_type!r}: {exc.message}"
             raise ValidationError(msg) from exc
 
         return ValidationResult(valid=True, warnings=warnings)
@@ -129,21 +129,21 @@ class SchemaService:
         self,
         session: AsyncSession,
         ctx: TenantContext,
-        capability_type: str,
+        entity_type: str,
     ) -> tuple[dict[str, Any], bool] | None:
         """Bi-temporal current-row fetch via raw SQL."""
         result = await session.execute(
             text(
                 "SELECT json_schema, is_advisory "
-                "FROM capability_type_schemas "
+                "FROM entity_type_schemas "
                 "WHERE tenant_id = :tid "
-                "  AND type_name = :type_name "
+                "  AND entity_type = :entity_type "
                 "  AND t_invalidated_at IS NULL "
                 "  AND (t_valid_to IS NULL OR t_valid_to > :now) "
                 "ORDER BY t_valid_from DESC "
                 "LIMIT 1"
             ),
-            {"tid": ctx.tenant_id, "type_name": capability_type, "now": self._clock.now()},
+            {"tid": ctx.tenant_id, "entity_type": entity_type, "now": self._clock.now()},
         )
         row = result.first()
         if row is None:

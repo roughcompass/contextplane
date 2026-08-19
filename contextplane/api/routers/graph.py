@@ -136,7 +136,7 @@ async def _update_edge_property_schema(
 
     Full implementation is pending. Once wired, this endpoint will honour
     ``If-Match`` (advisory) using the schema's ``t_ingested_at`` timestamp
-    as the ETag source, matching the pattern used by capability-type PATCH.
+    as the ETag source, matching the pattern used by entity-type schema PATCH.
     """
     raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="not implemented")
 

@@ -26,7 +26,6 @@ class CreateCapabilityRequest(BaseModel):
     name: str
     entity_type: Literal["capability"] = "capability"
     external_id: str | None = None
-    capability_type: str | None = None
     attributes: dict[str, Any] = Field(default_factory=dict)
     valid_from: datetime.datetime | None = None
 

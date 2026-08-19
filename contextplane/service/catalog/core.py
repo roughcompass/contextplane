@@ -99,7 +99,6 @@ class CatalogService:
         entity_type: str,
         name: str,
         external_id: str | None = None,
-        capability_type: str | None = None,
         attributes: dict[str, Any] | None = None,
         valid_from: datetime.datetime | None = None,
     ) -> EntityRef:
@@ -109,7 +108,6 @@ class CatalogService:
             entity_type=entity_type,
             name=name,
             external_id=external_id,
-            capability_type=capability_type,
             attributes=attributes,
             valid_from=valid_from,
         )

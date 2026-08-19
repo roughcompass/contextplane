@@ -1,4 +1,4 @@
-"""Admin vocabulary + capability-type schema endpoints.
+"""Admin vocabulary + entity-type schema endpoints.
 
 Vocabulary endpoints:
   GET    /v1/admin/vocabularies/{kind}           — list all values for kind
@@ -6,11 +6,16 @@ Vocabulary endpoints:
   PATCH  /v1/admin/vocabularies/{kind}/{value}   — update (deprecate)
   DELETE /v1/admin/vocabularies/{kind}/{value}   — soft-delete (deprecated_at = now())
 
-Capability-type schema endpoints:
-  GET    /v1/admin/capability-types              — list all type schemas
-  POST   /v1/admin/capability-types             — create (admin)
-  GET    /v1/admin/capability-types/{type_name} — get by name
-  PATCH  /v1/admin/capability-types/{type_name} — update (flip is_advisory)
+Entity-type schema endpoints:
+  GET    /v1/admin/entity-types                 — list all type schemas
+  POST   /v1/admin/entity-types                 — create (admin)
+  GET    /v1/admin/entity-types/{entity_type}   — get by type
+  PATCH  /v1/admin/entity-types/{entity_type}   — update (flip is_advisory)
+
+The two halves of this module are one module for a reason: a schema may only be
+registered for an entity type the `entity_type` vocabulary already declares, so
+the create path here validates through the same VocabularyService the vocabulary
+endpoints administer.
 """
 
 from __future__ import annotations
@@ -30,7 +35,7 @@ from contextplane.api.routers._admin_common import _admin_required
 from contextplane.api.schemas.common import Links
 from contextplane.service.catalog import queries as catalog_queries
 from contextplane.service.catalog.vocabulary import VocabularyService
-from contextplane.storage.models import CapabilityTypeSchema, VocabularyValue
+from contextplane.storage.models import EntityTypeSchema, VocabularyValue
 from contextplane.types import TenantContext
 
 router = APIRouter(prefix="/v1/admin")
@@ -65,15 +70,15 @@ class VocabularyValuePatch(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Pydantic schemas — capability-type schemas
+# Pydantic schemas — entity-type schemas
 # ---------------------------------------------------------------------------
 
 
-class CapabilityTypeSchemaResponse(BaseModel):
-    """A capability-type's JSON Schema and its bi-temporal validity window."""
+class EntityTypeSchemaResponse(BaseModel):
+    """An entity-type's JSON Schema and its bi-temporal validity window."""
 
     schema_id: uuid.UUID
-    type_name: str
+    entity_type: str
     json_schema: dict[str, Any]
     is_advisory: bool
     t_valid_from: datetime.datetime
@@ -85,20 +90,22 @@ class CapabilityTypeSchemaResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-class CapabilityTypeSchemaCreate(BaseModel):
-    """Body for POST /capability-types.
+class EntityTypeSchemaCreate(BaseModel):
+    """Body for POST /entity-types.
 
+    `entity_type` must already exist in the `entity_type` vocabulary — registering
+    a schema for a type no entity can hold is rejected, not stored.
     `is_advisory` (default true) controls whether validation failures block a write.
     """
 
-    type_name: str
+    entity_type: str
     json_schema: dict[str, Any]
     is_advisory: bool = True
     t_valid_from: datetime.datetime | None = None
 
 
-class CapabilityTypeSchemaPatch(BaseModel):
-    """Body for PATCH /capability-types/{type_name}; today the only supported change is flipping `is_advisory`."""
+class EntityTypeSchemaPatch(BaseModel):
+    """Body for PATCH /entity-types/{entity_type}; today the only supported change is flipping `is_advisory`."""
 
     is_advisory: bool | None = None
 
@@ -119,17 +126,17 @@ def _vocab_to_response(v: VocabularyValue) -> VocabularyValueResponse:
     )
 
 
-def _schema_to_response(s: CapabilityTypeSchema, *, include_links: bool = False) -> CapabilityTypeSchemaResponse:
-    return CapabilityTypeSchemaResponse(
+def _schema_to_response(s: EntityTypeSchema, *, include_links: bool = False) -> EntityTypeSchemaResponse:
+    return EntityTypeSchemaResponse(
         schema_id=s.schema_id,
-        type_name=s.type_name,
+        entity_type=s.entity_type,
         json_schema=dict(s.json_schema) if s.json_schema else {},
         is_advisory=s.is_advisory,
         t_valid_from=s.t_valid_from,
         t_valid_to=s.t_valid_to,
         t_ingested_at=s.t_ingested_at,
         t_invalidated_at=s.t_invalidated_at,
-        _links=Links(self=f"/v1/admin/capability-types/{s.type_name}") if include_links else None,
+        _links=Links(self=f"/v1/admin/entity-types/{s.entity_type}") if include_links else None,
     )
 
 
@@ -242,35 +249,41 @@ async def delete_vocabulary_value(
 
 
 # ---------------------------------------------------------------------------
-# Capability-type schema endpoints
+# Entity-type schema endpoints
 # ---------------------------------------------------------------------------
 
 
-@router.get("/capability-types", response_model=list[CapabilityTypeSchemaResponse], tags=["admin: schemas"])
-async def list_capability_types(
+@router.get("/entity-types", response_model=list[EntityTypeSchemaResponse], tags=["admin: schemas"])
+async def list_entity_type_schemas(
     request: Request,
     ctx: TenantContext = Depends(_admin_required),
-) -> list[CapabilityTypeSchemaResponse]:
-    """List all capability type schemas (current rows only: t_invalidated_at IS NULL)."""
+) -> list[EntityTypeSchemaResponse]:
+    """List all entity type schemas (current rows only: t_invalidated_at IS NULL)."""
     factory = request.app.state.session_factory
     async with factory() as session:
-        rows = await catalog_queries.list_capability_types(session, tenant_id=ctx.tenant_id)
+        rows = await catalog_queries.list_entity_type_schemas(session, tenant_id=ctx.tenant_id)
     return [_schema_to_response(s) for s in rows]
 
 
 @router.post(
-    "/capability-types",
-    response_model=CapabilityTypeSchemaResponse,
+    "/entity-types",
+    response_model=EntityTypeSchemaResponse,
     status_code=status.HTTP_201_CREATED,
     tags=["admin: schemas"],
 )
-async def create_capability_type(
-    body: CapabilityTypeSchemaCreate,
+async def create_entity_type_schema(
+    body: EntityTypeSchemaCreate,
     request: Request,
     idem: IdempotencyContext = Depends(get_idempotency_context),
     ctx: TenantContext = Depends(_admin_required),
-) -> CapabilityTypeSchemaResponse:
-    """Create a new capability type schema.
+) -> EntityTypeSchemaResponse:
+    """Create a new entity type schema.
+
+    ``entity_type`` is validated against the ``entity_type`` vocabulary first: a
+    schema registered for a type no entity may hold could never fire, so storing
+    one is a silent no-op dressed as governance. Unknown or deprecated values
+    raise ``VocabularyError`` (422), matching what ``create_entity`` already does
+    with the same value.
 
     Honours ``X-Idempotency-Key``: same key + same body replays the
     original response; same key + different body returns 409.
@@ -279,17 +292,19 @@ async def create_capability_type(
     if hit is not None:
         return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]
 
+    factory = request.app.state.session_factory
+    await VocabularyService(factory).validate_value(ctx, "entity_type", body.entity_type)
+
     now = datetime.datetime.now(tz=datetime.UTC)
     valid_from = body.t_valid_from if body.t_valid_from is not None else now
     schema_id = uuid.uuid4()
 
-    factory = request.app.state.session_factory
     async with factory() as session, session.begin():
-        await catalog_queries.insert_capability_type(
+        await catalog_queries.insert_entity_type_schema(
             session,
             schema_id=schema_id,
             tenant_id=ctx.tenant_id,
-            type_name=body.type_name,
+            entity_type=body.entity_type,
             json_schema=body.json_schema,
             is_advisory=body.is_advisory,
             valid_from=valid_from,
@@ -298,7 +313,7 @@ async def create_capability_type(
         )
 
     async with factory() as session:
-        row = await catalog_queries.get_capability_type_by_id(session, schema_id)
+        row = await catalog_queries.get_entity_type_schema_by_id(session, schema_id)
         if row is None:
             raise HTTPException(status_code=500, detail="schema row missing after insert")
         response = _schema_to_response(row)
@@ -307,18 +322,18 @@ async def create_capability_type(
 
 
 @router.get(
-    "/capability-types/{type_name}",
-    response_model=CapabilityTypeSchemaResponse,
+    "/entity-types/{entity_type}",
+    response_model=EntityTypeSchemaResponse,
     response_model_by_alias=True,
     response_model_exclude_unset=True,
     tags=["admin: schemas"],
 )
-async def get_capability_type(
-    type_name: str,
+async def get_entity_type_schema(
+    entity_type: str,
     request: Request,
     ctx: TenantContext = Depends(_admin_required),
-) -> CapabilityTypeSchemaResponse:
-    """Get the current schema for a given type_name.
+) -> EntityTypeSchemaResponse:
+    """Get the current schema for a given entity_type.
 
     Emits an ``ETag`` header computed from the schema_id + t_ingested_at.
     Clients can echo this value as ``If-Match`` on subsequent PATCH calls
@@ -326,43 +341,43 @@ async def get_capability_type(
     """
     factory = request.app.state.session_factory
     async with factory() as session:
-        row = await catalog_queries.get_capability_type(session, tenant_id=ctx.tenant_id, type_name=type_name)
+        row = await catalog_queries.get_entity_type_schema(session, tenant_id=ctx.tenant_id, entity_type=entity_type)
     if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="capability type not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="entity type schema not found")
     response = _schema_to_response(row, include_links=True)
     etag = compute_etag(row.schema_id, latest_timestamp(row.t_ingested_at))
     body = response.model_dump(by_alias=True, exclude_unset=True, mode="json")
     return JSONResponse(content=body, headers={"ETag": etag})  # type: ignore[return-value]
 
 
-async def patch_capability_type(
-    type_name: str,
-    body: CapabilityTypeSchemaPatch,
+async def patch_entity_type_schema(
+    entity_type: str,
+    body: EntityTypeSchemaPatch,
     request: Request,
     ctx: TenantContext = Depends(_admin_required),
-) -> CapabilityTypeSchemaResponse:
-    """Update a capability type schema — currently supports flipping is_advisory.
+) -> EntityTypeSchemaResponse:
+    """Update an entity type schema — currently supports flipping is_advisory.
 
     Honours the ``If-Match`` request header (advisory): if present and stale,
     returns 412 Precondition Failed; if absent, logs a debug warning and
     accepts the write.  ETag is computed from schema_id + t_ingested_at before
     the write so a stale precondition fails fast.
 
-    Recommended flow: GET /v1/admin/capability-types/{name} → ETag header
+    Recommended flow: GET /v1/admin/entity-types/{entity_type} → ETag header
     → PATCH with If-Match.
     """
     factory = request.app.state.session_factory
     async with factory() as session, session.begin():
-        row = await catalog_queries.get_capability_type_for_update(
-            session, tenant_id=ctx.tenant_id, type_name=type_name
+        row = await catalog_queries.get_entity_type_schema_for_update(
+            session, tenant_id=ctx.tenant_id, entity_type=entity_type
         )
         if row is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="capability type not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="entity type schema not found")
         pre_etag = compute_etag(row.schema_id, latest_timestamp(row.t_ingested_at))
         check_if_match(
             request.headers.get("if-match"),
             pre_etag,
-            resource_kind="capability_type",
+            resource_kind="entity_type_schema",
         )
         if body.is_advisory is not None:
             row.is_advisory = body.is_advisory
@@ -398,11 +413,11 @@ _mutation_mr.add_mutation_route(
 )
 
 _mutation_mr.add_mutation_route(
-    path="/capability-types/{type_name}",
+    path="/entity-types/{entity_type}",
     action="update",
-    handler=patch_capability_type,
+    handler=patch_entity_type_schema,
     verb="PATCH",
-    response_model=CapabilityTypeSchemaResponse,
+    response_model=EntityTypeSchemaResponse,
     tags=["admin: schemas"],
 )
 

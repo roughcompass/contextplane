@@ -51,7 +51,7 @@ write over the entity/edge graph this package defines, which is the subject
 they actually share.
 
 ``queries`` holds the plain, session-taking read/write functions behind the
-admin vocabulary, capability-type-schema, artifact-list, and
+admin vocabulary, entity-type-schema, artifact-list, and
 progression-definition/override endpoints — the SQL those routers used to
 build inline, given one home so it stays next to the tables it touches
 instead of scattered across the API layer.

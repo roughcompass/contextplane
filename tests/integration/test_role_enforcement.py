@@ -195,7 +195,7 @@ async def test_create_capability_consumer_forbidden(
         with patch_validator_for_actor(persona):
             resp = await client.post(
                 "/v1/capabilities",
-                json={"name": "should-be-denied", "capability_type": "component"},
+                json={"name": "should-be-denied"},
                 headers=bearer_headers(tenant_slug=persona.slug),
             )
     _assert_forbidden(resp)
@@ -213,7 +213,7 @@ async def test_create_capability_producer_succeeds(
         with patch_validator_for_actor(persona):
             resp = await client.post(
                 "/v1/capabilities",
-                json={"name": f"producer-cap-{secrets.token_hex(4)}", "capability_type": "component"},
+                json={"name": f"producer-cap-{secrets.token_hex(4)}"},
                 headers=bearer_headers(tenant_slug=persona.slug),
             )
     assert resp.status_code == 201, f"expected 201, got {resp.status_code}: {resp.text}"
