@@ -71,6 +71,16 @@ _DELIBERATE_REST_ONLY: dict[tuple[str, str], str] = {
     ("GET", "/v1/relationships/{relationship_id}"): "a read",
     ("PATCH", "/v1/relationships/{relationship_id}"): "an update, routed as a create is",
     ("POST", "/v1/relationships:query"): "a bounded read",
+    # The POST-tunnelled form of the two PATCHes above, registered by
+    # HttpMethodRouter so `post_only` deployments keep the operation. Same
+    # operation, same reasoning: it is one rule, and a tool per HTTP shape
+    # would be the drift this table exists to prevent.
+    ("POST", "/v1/entities/{entity_id}:update"): (
+        "the POST-tunnelled form of PATCH /v1/entities/{entity_id}; excluded for the same reason"
+    ),
+    ("POST", "/v1/relationships/{relationship_id}:update"): (
+        "the POST-tunnelled form of PATCH /v1/relationships/{relationship_id}; excluded for the same reason"
+    ),
 }
 
 #: Nothing on either transport may take these — the credential scopes the call.
@@ -103,7 +113,11 @@ def rest_operations() -> set[tuple[str, str]]:
 
     found: set[tuple[str, str]] = set()
     for module in (entity_router, relationship_router):
-        for route in module.router.routes:
+        # Both halves: mutation verbs live on `mutation_router` so `post_only`
+        # mode can withhold them, exactly as the capabilities routers do.
+        # Reading only `router` would report a PATCH the app serves as absent.
+        routes = [*module.router.routes, *module.mutation_router.routes]
+        for route in routes:
             path = getattr(route, "path", "")
             for method in getattr(route, "methods", set()) or set():
                 if method in {"HEAD", "OPTIONS"}:

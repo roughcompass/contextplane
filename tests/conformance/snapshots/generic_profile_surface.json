@@ -5,7 +5,9 @@
     "GET /v1/relationships/{relationship_id}",
     "PATCH /v1/entities/{entity_id}",
     "PATCH /v1/relationships/{relationship_id}",
+    "POST /v1/entities/{entity_id}:update",
     "POST /v1/entities/{entity_id}:validate-readiness",
+    "POST /v1/relationships/{relationship_id}:update",
     "POST /v1/relationships:query"
   ],
   "paired_tools": [
@@ -19,8 +21,10 @@
     "PATCH /v1/entities/{entity_id}",
     "PATCH /v1/relationships/{relationship_id}",
     "POST /v1/entities",
+    "POST /v1/entities/{entity_id}:update",
     "POST /v1/entities/{entity_id}:validate-readiness",
     "POST /v1/relationships",
+    "POST /v1/relationships/{relationship_id}:update",
     "POST /v1/relationships:query"
   ]
 }
