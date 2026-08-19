@@ -305,4 +305,4 @@ Things the codebase guarantees, encoded in tests + gates:
 - **Attested context resolution:** [overview/attested-context-resolution.md](../01-overview/11-attested-context-resolution.md)
 - **Memory curation:** [operations/memory-curation.md](../06-operations/05-memory-curation.md)
 - **ARC operations:** [operations/arc-runbook.md](../06-operations/03-arc-runbook.md)
-- **CI pipeline:** [contributing/ci.md](../07-contributing/02-ci.md)
+- **CI pipeline:** [.develop/ci.md](../../.develop/ci.md)

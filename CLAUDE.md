@@ -94,7 +94,7 @@ Four test buckets with very different purposes — pick the right one when addin
 
 When in doubt: write a unit test first. Promote to integration only when the unit version can't exercise the real code path.
 
-**The gates are Make targets.** `make lint`, `make typecheck`, `make doc-refs`, `make test-hygiene`, `make test-coverage`, `make test-conformance` are the contract. CI platforms (GitHub Actions, GitLab CI, Jenkins, Buildkite, …) wire these targets — they don't redefine the commands. See `docs/07-contributing/02-ci.md`.
+**The gates are Make targets.** `make lint`, `make typecheck`, `make doc-refs`, `make test-hygiene`, `make test-coverage`, `make test-conformance` are the contract. CI platforms (GitHub Actions, GitLab CI, Jenkins, Buildkite, …) wire these targets — they don't redefine the commands. See `.develop/ci.md`.
 
 **Coverage ratchet.** `make test-coverage` runs `tests/unit` and `tests/conformance` in one process with `--cov=contextplane --cov-report=term-missing:skip-covered --cov-fail-under=80`, printed straight to the CI job log (no separate artifact or upload step — the `unit` CI job invokes this target and already carries it). `make test-unit` runs the unit tier alone, fast and without a database, and carries no ratchet: it is the inner loop, not the gate.
 

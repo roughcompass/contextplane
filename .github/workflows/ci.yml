@@ -22,6 +22,8 @@ on:
       - 'tests/**'
       - 'seeds/**'
       - 'docs/**'
+      - '.develop/**'
+      - 'CONTRIBUTING.md'
       - 'eval/**'
       - 'deploy/**'
       # `tools/` holds the ARC reference verifier, whose whole job is to
@@ -42,6 +44,8 @@ on:
       - 'tests/**'
       - 'seeds/**'
       - 'docs/**'
+      - '.develop/**'
+      - 'CONTRIBUTING.md'
       - 'eval/**'
       - 'deploy/**'
       # `tools/` holds the ARC reference verifier, whose whole job is to

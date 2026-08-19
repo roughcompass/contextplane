@@ -1,6 +1,6 @@
 # CI and Testing Guide
 
-**Audience:** contributors working on the Context Plane codebase. For operator-facing deployment notes, see [reference/configuration.md](../05-reference/03-configuration.md) and [operations/ops.md](../06-operations/01-ops.md).
+**Audience:** contributors working on the Context Plane codebase. For operator-facing deployment notes, see [reference/configuration.md](../docs/05-reference/03-configuration.md) and [operations/ops.md](../docs/06-operations/01-ops.md).
 
 All gates the project enforces are `make` targets defined in the root `Makefile`. CI platforms wire to those targets — they do not redefine the commands. This means the same gates run identically in local dev, in pre-commit, and in any CI runner. The list below is derived from the `Makefile`'s `all` target; if the two ever disagree, the `Makefile` is right.
 
@@ -96,7 +96,7 @@ Verifies every quarantined memory-curation service (`promotion.py`, `curation_qu
 
 Runs two checks:
 
-- `.env.example` and [`docs/05-reference/03-configuration.md`](../05-reference/03-configuration.md) agree in both directions: every variable in one appears in the other (`scripts/check_env_documented.py`).
+- `.env.example` and [`docs/05-reference/03-configuration.md`](../docs/05-reference/03-configuration.md) agree in both directions: every variable in one appears in the other (`scripts/check_env_documented.py`).
 - Every environment-variable mention *anywhere else* in `README.md` and `docs/**/*.md` is a real `Settings` name or a named exception (`scripts/check_doc_env_mentions.py`). Context-aware rather than a bare all-caps scan: it only matches a shell `export` assignment, a container run's `-e` flag, a fenced code block that is entirely assignment lines (a `.env` snippet), or prose that explicitly calls a backticked token an environment variable — an ID placeholder used in ordinary prose is not a match. A matched token must be a canonical `Settings` field or alias, derived mechanically from `contextplane/config.py` rather than a maintained list, or be named in the script's own small, reasoned exception list (dev-bootstrap output variables, a dynamic credential-reference example, devstack-only tooling). This is the gate that catches a documented variable no running process reads — the class of drift that once put several phantom variables into the authorization guide.
 
 Neither check confirms the code reads the variable through `Settings` at runtime — that is `Settings`' own job as the single env-var reader.

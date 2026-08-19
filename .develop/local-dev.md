@@ -8,7 +8,7 @@
 
 This guide covers setting up a local development environment for the Context Plane codebase — virtual environment, hot reload, pre-commit hooks, and pointing tests at a local database.
 
-For the gate reference and CI platform wiring, see [`ci.md`](02-ci.md). For first-time setup that just gets you to an authenticated `GET /v1/whoami`, see [`quickstart.md`](../02-get-started/01-quickstart.md).
+For the gate reference and CI platform wiring, see [`ci.md`](ci.md). For first-time setup that just gets you to an authenticated `GET /v1/whoami`, see [`quickstart.md`](../docs/02-get-started/01-quickstart.md).
 
 **Preconditions:**
 
@@ -185,7 +185,7 @@ make test-perf          # SLO verification (latency p95s, webhook fan-out) — r
 
 `make test` runs `test-coverage`, which runs the unit and conformance tiers in one process under the coverage ratchet. `make all` adds the lint, format, typecheck, and doc-reference gates — that is the full set a PR has to pass, and none of it needs a container runtime.
 
-For the rationale behind each tier and the gates wired into CI, see [`ci.md`](02-ci.md).
+For the rationale behind each tier and the gates wired into CI, see [`ci.md`](ci.md).
 
 ## Choosing where tests get their database
 
@@ -256,7 +256,7 @@ They cannot run simultaneously — same ports. `make dev-down` or `docker compos
 
 **See also:**
 
-- [`ci.md`](02-ci.md) — gate descriptions, make target reference, CI platform wiring
-- [`../02-get-started/01-quickstart.md`](../02-get-started/01-quickstart.md) — five-minute path to an authenticated API call
-- [`../05-reference/04-architecture.md`](../05-reference/04-architecture.md) — component map and request lifecycle
+- [`ci.md`](ci.md) — gate descriptions, make target reference, CI platform wiring
+- [`../docs/02-get-started/01-quickstart.md`](../docs/02-get-started/01-quickstart.md) — five-minute path to an authenticated API call
+- [`../docs/05-reference/04-architecture.md`](../docs/05-reference/04-architecture.md) — component map and request lifecycle
 - the repository's root `CLAUDE.md` — project-wide conventions every contributor must follow

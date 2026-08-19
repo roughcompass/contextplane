@@ -22,7 +22,7 @@ see [`CLAUDE.md`](CLAUDE.md).
 | **Reporting outcomes**, telling the system what happened after context was used | [`docs/01-overview/12-feedback-and-learning.md`](docs/01-overview/12-feedback-and-learning.md) → [`docs/03-use-cases/10-reporting-outcomes.md`](docs/03-use-cases/10-reporting-outcomes.md) |
 | **Integrating**, building against the API or connecting an agent | [`docs/02-get-started/01-quickstart.md`](docs/02-get-started/01-quickstart.md) → [`docs/05-reference/01-api.md`](docs/05-reference/01-api.md) → [`docs/05-reference/02-mcp-tools.md`](docs/05-reference/02-mcp-tools.md) |
 | **Operating**, deploying and running a production instance | [`docs/05-reference/03-configuration.md`](docs/05-reference/03-configuration.md) → [`docs/06-operations/01-ops.md`](docs/06-operations/01-ops.md) → [`docs/06-operations/07-feedback-and-privacy.md`](docs/06-operations/07-feedback-and-privacy.md) |
-| **Contributing**, working on the Context Plane codebase | [`CONTRIBUTING.md`](CONTRIBUTING.md) → [`docs/07-contributing/02-ci.md`](docs/07-contributing/02-ci.md) |
+| **Contributing**, working on the Context Plane codebase | [`CONTRIBUTING.md`](CONTRIBUTING.md) → [`.develop/ci.md`](.develop/ci.md) |
 
 ---
 
@@ -55,7 +55,7 @@ curl http://localhost:8000/healthz
 an observability viewer, and the API as ordinary local processes — no
 container runtime required. `docker compose up -d` remains fully
 supported and publishes the same ports; see
-[`docs/07-contributing/01-local-dev.md`](docs/07-contributing/01-local-dev.md#using-docker-compose-instead)
+[`.develop/local-dev.md`](.develop/local-dev.md#using-docker-compose-instead)
 for how the two differ.
 
 For the full path — minting a token, seeding demo data, and making an
@@ -99,5 +99,5 @@ detail, see [`docs/05-reference/03-configuration.md`](docs/05-reference/03-confi
 - Read [`CLAUDE.md`](CLAUDE.md) for project-wide conventions.
 - Run `pre-commit install` once after cloning to pick up the lint, type-check,
   and doc-refs gates before each commit.
-- See [`docs/07-contributing/02-ci.md`](docs/07-contributing/02-ci.md) for the full gate
+- See [`.develop/ci.md`](.develop/ci.md) for the full gate
   reference and CI platform wiring.

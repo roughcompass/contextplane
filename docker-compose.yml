@@ -16,7 +16,7 @@
 #
 # `make dev-up` runs the same services as ordinary local processes, on the
 # same ports, for machines without a container runtime. The two cannot run at
-# once. See docs/07-contributing/01-local-dev.md.
+# once. See .develop/local-dev.md.
 #
 # Host ports avoid conflicts with a sibling stack on the default 5432.
 # =============================================================================

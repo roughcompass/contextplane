@@ -152,7 +152,7 @@ typecheck: ## Run mypy --strict on the source tree.
 doc-refs: ## Verify no internal-doc references in shipped code (see CLAUDE.md).
 	$(PYTHON) scripts/check_no_doc_refs.py
 
-doc-links: ## Verify every relative link and anchor in README.md and docs/**/*.md resolves.
+doc-links: ## Verify every relative link and anchor in README.md, CONTRIBUTING.md, docs/ and .develop/ resolves.
 	$(PYTHON) scripts/check_doc_links.py
 
 test-hygiene: ## Verify no phase-named test files, stale phase comments, ungated entity reads, raw state access, unregistered config bypasses, or assertion-less tests.

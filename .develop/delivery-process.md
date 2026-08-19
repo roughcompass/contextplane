@@ -22,7 +22,7 @@ Canonical for both repositories: `contextplane` (service) and `contextplane-ui`
 
 ## Task lifecycle
 
-**Plan → issues.** The implementation plan is a file, `docs/plan/`, holding
+**Plan → issues.** The implementation plan is a file, `.develop/plan/`, holding
 structured task blocks: id, goal, acceptance criteria as runnable commands,
 `Blocked by:` links, and a hotspot flag. Issues are a generated projection of
 that file — an agent syncs them idempotently via `gh issue create/edit`.
@@ -106,7 +106,7 @@ with the label `review-waiver:sole-human` so they are queryable in audit.
 
 ## Decisions (ADRs)
 
-Decisions that outlive their PR are recorded in `docs/adr/` (MADR-lite) and
+Decisions that outlive their PR are recorded in `.develop/adr/` (MADR-lite) and
 merge by PR. The template mandates: context, decision, **assumptions**,
 **rejected alternatives**, consequences, and dissent. For consequential ADRs,
 two reviewers form views **independently**: each writes their full rationale
@@ -146,7 +146,7 @@ consciously crossed, not discovered.
    client-drift check); vendor the pinned `openapi.json`; branch protection as
    above.
 2. `contextplane`: branch protection as above; PR-title check; agent-review
-   job; `stale-claim` and `status:ready` Actions; seed `docs/adr/` and
-   `docs/plan/`; issue/PR templates with the redaction rules.
+   job; `stale-claim` and `status:ready` Actions; seed `.develop/adr/` and
+   `.develop/plan/`; issue/PR templates with the redaction rules.
 3. Sync the implementation plan into issues (one supervised agent task).
 4. Ensure `gh` is installed on every machine agents run on.

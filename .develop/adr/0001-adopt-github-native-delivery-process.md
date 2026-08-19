@@ -14,7 +14,7 @@ where footprints permit, and enforced quality gates on both repositories.
 ## Decision
 
 Adopt the process in
-[docs/07-contributing/03-delivery-process.md](../07-contributing/03-delivery-process.md):
+[.develop/delivery-process.md](../delivery-process.md):
 GitHub Issues/PRs as the only coordination state; trunk-based with short-lived
 branches; claim = assign + pushed branch + draft PR; time-boxed WIP pushes
 independent of test state; stale-claim takeover after 8h; auto-merge with
