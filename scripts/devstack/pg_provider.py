@@ -22,11 +22,16 @@ Every source except the first converges on the same cluster manager in
 ``cluster.py``, so supporting a new one means adding a candidate function
 here and nothing else.
 
-Resolution never guesses about pgvector: a resolved bindir is only
-returned after `vector.control` is confirmed present. Migrations run
-``CREATE EXTENSION vector`` and build an HNSW index, so a Postgres
-without pgvector fails partway through `alembic upgrade head` with an
-error that says nothing about the real problem.
+Resolution never guesses about the extensions the schema needs: a
+resolved bindir is only returned after a control file for every member of
+``REQUIRED_EXTENSIONS`` is confirmed present. Migrations run ``CREATE
+EXTENSION vector`` and build an HNSW index, and ``CREATE EXTENSION
+btree_gist`` for the temporal exclusion constraints on `profile_bindings`
+and `relationship_metadata` (`=` on a uuid inside a gist operator class,
+which core gist does not carry). A Postgres missing either fails partway
+through `alembic upgrade head` with an error that says nothing about the
+real problem -- which is how the `pgserver` wheel, shipping `vector` but
+not `btree_gist`, got as far as revision 0050 before anyone noticed.
 """
 
 from __future__ import annotations
@@ -53,6 +58,12 @@ DEFAULT_PASSWORD = "password"  # noqa: S105 - throwaway credential for a local-o
 # project depends on asyncpg only, so there is no synchronous driver
 # available for bootstrap work that must happen before the app starts.
 REQUIRED_BINARIES = ("initdb", "pg_ctl", "postgres", "psql")
+
+# Extensions the migrations require. `vector` anchors the search because it is
+# the one whose absence used to be checked; `btree_gist` is required from
+# revision 0050 onward and is absent from the `pgserver` wheel, which ships
+# only `plpgsql` and `vector`.
+REQUIRED_EXTENSIONS = ("vector", "btree_gist")
 
 # Postgres major the project targets. Other majors are usable and are
 # accepted with a warning; CI and the container image both run this one.
@@ -109,6 +120,11 @@ PostgresSource = ExternalPostgres | LocalPostgres
 def _redact(url: str) -> str:
     """Strip the password from a connection URL for display."""
     return re.sub(r"://([^:/@]+):[^@]*@", r"://\1:***@", url)
+
+
+def _missing_extensions(extension_dir: Path) -> list[str]:
+    """Required extensions with no control file in *extension_dir*."""
+    return [name for name in REQUIRED_EXTENSIONS if not (extension_dir / f"{name}.control").is_file()]
 
 
 def _extension_dir(bindir: Path) -> Path | None:
@@ -188,6 +204,16 @@ def _inspect(source: str, bindir: Path) -> _Candidate | LocalPostgres:
     extension_dir = _extension_dir(bindir)
     if extension_dir is None:
         return _Candidate(source, bindir, "pgvector not installed (no vector.control)")
+    missing = _missing_extensions(extension_dir)
+    if missing:
+        # Naming the directory matters: the same major can be installed twice,
+        # and "install the contrib package" is only actionable against the one
+        # this bindir actually reads.
+        return _Candidate(
+            source,
+            bindir,
+            f"missing extension(s) {', '.join(missing)} in {extension_dir} " "(install the server's contrib package)",
+        )
     return LocalPostgres(bindir=bindir, source=source, version=version, extension_dir=extension_dir)
 
 

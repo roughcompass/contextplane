@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import text
 
+from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.middleware.tenant import get_tenant_context
 from contextplane.api.schemas.entity_writes import (
     IDENTITY_AMBIGUOUS,
@@ -199,11 +200,6 @@ async def get_entity(
     )
 
 
-@router.patch(
-    "/{entity_id}",
-    response_model=EntityWriteResultV1,
-    summary="Supersede an entity's properties through the generic surface.",
-)
 async def update_entity(
     request: Request,
     entity_id: uuid.UUID,
@@ -449,3 +445,26 @@ _PROVENANCE_SQL = text(
 )
 
 __all__ = ["router"]
+
+
+# ---------------------------------------------------------------------------
+# Mutation router — included separately, so `post_only` mode can withhold the
+# verb. Registering PATCH with `@router.patch` bypasses the mode entirely,
+# which is how these two paths kept a PATCH in a POST-only spec.
+# ---------------------------------------------------------------------------
+
+_mutation_base = APIRouter(prefix="/v1/entities", tags=["entities"])
+_mode, _sep = get_mode_settings()
+_mr = HttpMethodRouter(_mutation_base, mode=_mode, separator=_sep)
+
+_mr.add_mutation_route(
+    path="/{entity_id}",
+    action="update",
+    handler=update_entity,
+    verb="PATCH",
+    operation_id="update_entity",
+    summary="Supersede an entity's properties through the generic surface.",
+    response_model=EntityWriteResultV1,
+)
+
+mutation_router = _mutation_base

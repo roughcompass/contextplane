@@ -112,7 +112,13 @@ def build_env(ports: Ports) -> dict[str, str]:
         "RESOURCE_URI_ALLOWLIST": "registry",
         "ENTITLEMENT_SERVICE_URL": f"http://localhost:{ports.entitlements}",
         "ENTITLEMENT_SERVICE_ENV": "DEV",
-        "ENTITLEMENT_SERVICE_DISCRIMINATOR": "REGISTRY",
+        # Must match what `bootstrap_dev_tenant.py` seeds and what
+        # `.env.example` and `docker-compose.yml` both declare: the grammar is
+        # `<tenant_slug>_<DISCRIMINATOR>_<ROLE>`, so a mismatch here means the
+        # API looks up an entitlement the bootstrap never wrote and every
+        # authenticated request 403s. This said "REGISTRY" until 2026-08-19,
+        # missed by the rename because the only job exercising this path was red.
+        "ENTITLEMENT_SERVICE_DISCRIMINATOR": "CONTEXTPLANE",
         "ENTITLEMENT_ROLE_MAPPING": ("ADMIN:admin,PRODUCER:producer,CONSUMER:consumer,AUDITOR:auditor"),
         # The mock IDP issues 3600s tokens; the production default ceiling
         # (900s) is below that, so dev would reject every JWT for

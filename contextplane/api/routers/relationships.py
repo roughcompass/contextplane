@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import text
 
+from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.middleware.tenant import get_tenant_context
 from contextplane.api.schemas.entity_writes import (
     ProfileAttributionV1,
@@ -181,11 +182,6 @@ async def get_relationship(
     return _read_of_row(dict(row))
 
 
-@router.patch(
-    "/{relationship_id}",
-    response_model=RelationshipWriteResultV1,
-    summary="Supersede a relationship through the generic surface.",
-)
 async def update_relationship(
     request: Request,
     relationship_id: uuid.UUID,
@@ -384,3 +380,26 @@ _READ_ONE_SQL = text(
 )
 
 __all__ = ["router"]
+
+
+# ---------------------------------------------------------------------------
+# Mutation router — included separately, so `post_only` mode can withhold the
+# verb. Registering PATCH with `@router.patch` bypasses the mode entirely,
+# which is how these two paths kept a PATCH in a POST-only spec.
+# ---------------------------------------------------------------------------
+
+_mutation_base = APIRouter(prefix="/v1/relationships", tags=["relationships"])
+_mode, _sep = get_mode_settings()
+_mr = HttpMethodRouter(_mutation_base, mode=_mode, separator=_sep)
+
+_mr.add_mutation_route(
+    path="/{relationship_id}",
+    action="update",
+    handler=update_relationship,
+    verb="PATCH",
+    operation_id="update_relationship",
+    summary="Supersede a relationship through the generic surface.",
+    response_model=RelationshipWriteResultV1,
+)
+
+mutation_router = _mutation_base

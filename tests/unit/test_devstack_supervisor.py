@@ -23,7 +23,7 @@ import pytest
 from uvicorn.config import Config
 from uvicorn.supervisors.watchfilesreload import FileFilter
 
-from scripts.devstack.config import Ports
+from scripts.devstack.config import Ports, build_env
 from scripts.devstack.pg_provider import PostgresUnavailableError
 from scripts.devstack.supervisor import (
     API_SHUTDOWN_TIMEOUT_S,
@@ -191,3 +191,59 @@ class TestReclaim:
         monkeypatch.setattr("builtins.input", lambda: pytest.fail("asked about an unnamed process"))
 
         assert cli._offer_reclaim(Ports(), ["api"], reclaim=True) is False
+
+
+def test_every_reload_dir_the_supervisor_passes_actually_exists() -> None:
+    """A `--reload-dir` naming a directory that is gone stops the API starting.
+
+    uvicorn rejects a non-existent `--reload-dir` outright, so the whole stack
+    fails at `make dev-up` with an error that names uvicorn rather than the
+    stale argument. This held for the package rename: the value stayed
+    `registry` after the directory became `contextplane`, and nothing noticed
+    because the only job that runs `dev-up` sits behind two gates that were
+    themselves red. Asserting against the real tree is the point -- a test that
+    hardcoded the expected string would have kept passing through that rename.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+
+    for service in services(Ports()):
+        argv = service.argv
+        for index, token in enumerate(argv):
+            if token != "--reload-dir":
+                continue
+            assert index + 1 < len(argv), f"{service.name}: --reload-dir has no value"
+            target = repo_root / argv[index + 1]
+            assert target.is_dir(), (
+                f"{service.name}: --reload-dir names {argv[index + 1]!r}, "
+                f"which is not a directory under {repo_root}"
+            )
+
+
+def test_devstack_entitlement_discriminator_matches_the_canonical_inventory() -> None:
+    """The dev stack must ask for the entitlement the bootstrap actually seeds.
+
+    The grammar is `<tenant_slug>_<DISCRIMINATOR>_<ROLE>`, so if the stack's
+    discriminator and the seeded entitlement disagree the API looks up a row
+    nobody wrote and every authenticated request 403s -- with no error naming
+    the mismatch. That is exactly what happened: this said `REGISTRY` while
+    `.env.example` and `docker-compose.yml` said `CONTEXTPLANE`, missed by the
+    rename because the only job exercising the no-container path was red.
+
+    Compared against `.env.example` rather than a literal, because that file is
+    the canonical env inventory and is already gated by `make env-documented`.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    key = "ENTITLEMENT_SERVICE_DISCRIMINATOR"
+
+    declared = [
+        line.split("=", 1)[1].strip()
+        for line in (repo_root / ".env.example").read_text(encoding="utf-8").splitlines()
+        if line.startswith(f"{key}=")
+    ]
+    assert declared, f"{key} is absent from .env.example"
+
+    assert build_env(Ports())[key] == declared[0], (
+        f"the dev stack sets {key}={build_env(Ports())[key]!r} but .env.example "
+        f"declares {declared[0]!r}; the bootstrap seeds against the declared value, "
+        "so a mismatch 403s every authenticated request"
+    )

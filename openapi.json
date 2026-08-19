@@ -23795,7 +23795,7 @@
       },
       "patch": {
         "description": "Update by the same three routes a create takes.\n\nAn update is not a lesser write. An observation that could amend a canonical\nrow directly would be a way around the whole intent split, so the routing here\nis the same one `create_entity` uses and this handler adds nothing to it but\nthe subject.",
-        "operationId": "update_entity_v1_entities__entity_id__patch",
+        "operationId": "update_entity",
         "parameters": [
           {
             "in": "path",
@@ -28250,7 +28250,7 @@
       },
       "patch": {
         "description": "Update by the same three routes a create takes.\n\nAn observation that could amend a canonical edge directly would be a way\naround the intent split, so this adds nothing to the routing but the subject.",
-        "operationId": "update_relationship_v1_relationships__relationship_id__patch",
+        "operationId": "update_relationship",
         "parameters": [
           {
             "in": "path",

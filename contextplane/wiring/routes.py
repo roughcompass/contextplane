@@ -213,6 +213,8 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # Mutation routers — PATCH/DELETE registered via HttpMethodRouter so
     # CONTEXTPLANE_HTTP_METHODS_MODE controls the exposed surface.
     app.include_router(capabilities.mutation_router)
+    app.include_router(entities.mutation_router)
+    app.include_router(relationships.mutation_router)
     app.include_router(concepts.mutation_router)
     app.include_router(operations.mutation_router)
     app.include_router(artifacts.mutation_router)
