@@ -123,6 +123,12 @@ jobs:
   # than after the integration tier.
   unit:
     runs-on: ubuntu-latest
+    # `make test-coverage` runs tests/unit AND tests/conformance, and the
+    # conformance tier reaches a real database. Naming the provider keeps this
+    # job from resolving by whatever the runner happens to have, the same
+    # reason the integration job names it rather than relying on `auto`.
+    env:
+      CONTEXTPLANE_TEST_PG: testcontainers
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

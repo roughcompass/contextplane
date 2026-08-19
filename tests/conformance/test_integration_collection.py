@@ -349,7 +349,12 @@ def test_the_worker_uses_the_database_it_was_assigned(pg_container):
 
 def _provider() -> str:
     """The provider the ambient environment selects, defaulting as the runner does."""
-    return os.environ.get("CONTEXTPLANE_TEST_PG") or "devstack"  # config: intentional - selects the test server
+    # `auto`, not `devstack`: `auto` is what `scripts/pg_provider.selected_mode`
+    # itself defaults to, and the only value that resolves on a machine with a
+    # container runtime but no local cluster. `devstack` names a provider that
+    # needs the `devstack` extra, which `make install-dev` does not install, so
+    # it could never resolve in CI.
+    return os.environ.get("CONTEXTPLANE_TEST_PG") or "auto"  # config: intentional - selects the test server
 
 
 def _bound_control(**overrides: object) -> dict[str, object]:
