@@ -217,6 +217,26 @@ jobs:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: pyproject.toml
+
+      # The `pgserver` wheel ships `plpgsql` and `vector` and nothing else, so
+      # it cannot create `btree_gist` -- which revision 0050 needs for the
+      # temporal exclusion constraints on `profile_bindings` and
+      # `relationship_metadata`. A distro server with contrib can. `initdb` on
+      # PATH outranks the wheel in provider resolution, so installing one here
+      # is all it takes; the wheel stays installed below so that if this step
+      # ever regresses, resolution reports a named missing extension instead of
+      # dying fifty revisions into `alembic upgrade head`.
+      - name: Install PostgreSQL 16 with contrib and pgvector
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-16 postgresql-contrib-16 postgresql-16-pgvector
+          echo /usr/lib/postgresql/16/bin >> "$GITHUB_PATH"
+
       - run: pip install -e ".[dev,devstack]"
 
       # What a PR needs from this job is the answer to "does the no-container path

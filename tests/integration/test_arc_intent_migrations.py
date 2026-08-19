@@ -28,6 +28,14 @@ from sqlalchemy import Engine, create_engine, inspect, text
 
 _PRE_CUTOVER = "0053_ownership_and_grants"
 _CUTOVER = "0049_arc_intent_nomenclature"
+#: What a downgrade must be undone *to*. Deliberately `head` rather than
+#: `_CUTOVER`: the two were the same revision when this file was written, and
+#: `0054`/`0055` landing on top silently turned "come back" into "come back two
+#: revisions short". The shared database was then left below head for every
+#: later test on the worker, and `0054`'s own downgrade had recreated
+#: `audit_log_new` -- which is what failed the partition cutover test 200 nodes
+#: later, naming neither this fixture nor this file.
+_RESTORE = "head"
 
 _KINDS = ["code_change", "deployment"]
 
@@ -179,7 +187,7 @@ def at_pre_cutover(
     try:
         yield seeded
     finally:
-        _alembic(pg_container, "upgrade", _CUTOVER)
+        _alembic(pg_container, "upgrade", _RESTORE)
 
 
 def test_downgrade_restores_the_task_spelling_of_the_column_and_its_values(
@@ -245,7 +253,7 @@ def test_the_cycle_preserves_every_value_it_did_not_set_out_to_change(
     before_snapshot, before_digest = _obligation_row(sync_engine, seeded["obligation"])
 
     _alembic(pg_container, "downgrade", _PRE_CUTOVER)
-    _alembic(pg_container, "upgrade", _CUTOVER)
+    _alembic(pg_container, "upgrade", _RESTORE)
 
     after_scope, after_kinds = _rule_row(sync_engine, seeded["rule"], "intent_kinds")
     after_snapshot, after_digest = _obligation_row(sync_engine, seeded["obligation"])

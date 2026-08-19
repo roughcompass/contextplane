@@ -231,9 +231,9 @@ Integration and conformance tests need a real Postgres 16 with pgvector. Where i
 | `auto` (default) | `DATABASE_URL` if set; else testcontainers if a container runtime answers; else a locally managed cluster. |
 | `external` | Use `DATABASE_URL`. The schema must already be at head. |
 | `testcontainers` | Always testcontainers. Started and stopped automatically. |
-| `devstack` | Always a locally managed cluster. No container runtime needed. |
+| `devstack` | Always a locally managed cluster. No container runtime needed. The server must carry both `pgvector` and `btree_gist`; resolution refuses a bindir missing either, naming it. The `pgserver` wheel ships only `plpgsql` and `vector`, so it cannot serve this schema from revision 0050 onward — use a distro server with its contrib package (`initdb` on `PATH` outranks the wheel). |
 
-A CI runner with a container runtime therefore needs no configuration — `auto` picks testcontainers. A runner without one either sets `DATABASE_URL` to a service container, or installs the `devstack` extra and lets `auto` manage a cluster itself.
+A CI runner with a container runtime therefore needs no configuration — `auto` picks testcontainers. A runner without one either sets `DATABASE_URL` to a service container, or installs a distro PostgreSQL 16 with contrib and pgvector and lets `auto` manage a cluster over it. The `devstack` extra alone is no longer sufficient: its `pgserver` wheel has no `btree_gist`.
 
 Every mode gives each session a freshly created, freshly migrated database that is dropped afterwards.
 

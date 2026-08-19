@@ -384,11 +384,32 @@ async def test_a_direct_update_is_refused_by_the_database(
     publication: dict[str, object], table: str, column: str
 ) -> None:
     """The refusal, observed on the tables that have rows to refuse it for."""
-    await _publish(publication)
+    core = await _publish(publication)
+    service: profile_service.ProfileService = publication["service"]  # type: ignore[assignment]
+    if table == "profile_extensions":
+        # `publish_revision` writes revisions and definitions but never an
+        # extension, so without this the UPDATE below matches zero rows and a
+        # FOR EACH ROW trigger that is present and correct never fires — the
+        # assertion passed vacuously for as long as it was only ever run
+        # against `profile_revisions`.
+        await service.publish_extension(
+            tenant_id=publication["tenant"],  # type: ignore[arg-type]
+            namespace=_NAMESPACE,
+            target_core_revision_id=core.profile_revision_id,
+            entities=(_entity("bonded_warehouse"),),
+            relationships=(),
+            interfaces=(),
+            published_by="tenant@example.test",
+        )
     factory: async_sessionmaker[AsyncSession] = publication["factory"]  # type: ignore[assignment]
 
     with pytest.raises(Exception, match="append-only|is refused"):
         async with factory() as session, session.begin():
+            # The row must exist first: a self-assignment matching zero rows
+            # refuses nothing, and the assertion below would pass without the
+            # trigger ever running.
+            populated = await session.execute(text(f"SELECT count(*) FROM {table}"))
+            assert populated.scalar_one() > 0, f"{table} has no rows; the refusal would be vacuous"
             # Self-assignment: it changes nothing, so only the trigger can refuse it.
             await session.execute(text(f"UPDATE {table} SET {column} = {column}"))
 
