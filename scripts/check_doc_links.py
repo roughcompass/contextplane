@@ -2,7 +2,7 @@
 
 Path resolution only -- this never makes a network call, so it says nothing
 about `https://` links. What it does check, for every `README.md` and
-`docs/**/*.md` link that is *not* an external URL:
+`docs/**/*.md` or `.develop/**/*.md` link that is *not* an external URL:
 
 1. The target path exists, resolved relative to the linking file's own
    directory (the way every Markdown renderer, including GitHub's, resolves
@@ -58,7 +58,7 @@ from checklib import repo_root, require_nonempty, run_guard
 
 _REPO_ROOT = repo_root()
 
-_DEFAULT_SCOPE: tuple[str, ...] = ("README.md", "docs")
+_DEFAULT_SCOPE: tuple[str, ...] = ("README.md", "CONTRIBUTING.md", "docs", ".develop")
 
 _EXCLUDE_DIRS: frozenset[str] = frozenset(
     {".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", ".git"}
@@ -251,7 +251,8 @@ def resolve_targets(scope: list[str], *, repo_root: Path) -> list[Path]:
 
 def _print_explain() -> int:
     print("doc-links gate: what it checks and how to clear a hit.\n")
-    print("For every link in README.md and docs/**/*.md that is not an external URL:")
+    print("For every link in README.md, CONTRIBUTING.md, docs/**/*.md and")
+    print(".develop/**/*.md that is not an external URL:")
     print("  1. The target must exist, resolved relative to the linking file.")
     print("  2. The target must resolve inside the repository root -- a link that")
     print("     only works because of a sibling checkout in this workspace is the")
@@ -267,13 +268,13 @@ def _print_explain() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Verify every relative link and anchor in README.md and docs/**/*.md resolves.",
+        description="Verify every relative link and anchor in the shipped docs and .develop/ resolves.",
     )
     parser.add_argument(
         "--paths",
         nargs="+",
         default=list(_DEFAULT_SCOPE),
-        help="Repo-relative paths to scan (default: README.md and docs/).",
+        help="Repo-relative paths to scan (default: README.md, CONTRIBUTING.md, docs/, .develop/).",
     )
     parser.add_argument("--explain", action="store_true", help="Print the rule and how to clear a hit.")
     args = parser.parse_args(argv)

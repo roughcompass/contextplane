@@ -2,7 +2,7 @@
 
 Get from zero to an authenticated API call in under five minutes.
 
-**Prerequisites:** Python 3.13, `make`, `curl`, and a PostgreSQL 16 with pgvector. No container runtime is needed — see [where Postgres comes from](../07-contributing/01-local-dev.md#where-postgres-comes-from) for the options, the simplest being `pip install -e ".[devstack]"`, which brings its own.
+**Prerequisites:** Python 3.13, `make`, `curl`, and a PostgreSQL 16 with pgvector. No container runtime is needed — see [where Postgres comes from](../../.develop/local-dev.md#where-postgres-comes-from) for the options, the simplest being `pip install -e ".[devstack]"`, which brings its own.
 
 Prefer containers? [Use Docker Compose instead](#alternative--docker-compose) — same ports, same commands from Step 2 onward.
 
