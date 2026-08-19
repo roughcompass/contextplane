@@ -67,6 +67,43 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Whether this change touches anything the heavy tiers can possibly exercise.
+  # A markdown-only change is fully covered by the `lint` job, which runs
+  # doc-links, doc-refs and env-documented; making it also pay ~20 minutes of
+  # unit, integration and image buys nothing. Plain git rather than a
+  # third-party action, so the check has no supply chain of its own.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.probe.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: probe
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+            git fetch -q origin "${{ github.base_ref }}"
+            files=$(git diff --name-only "$base"...HEAD)
+          else
+            files=$(git diff --name-only HEAD~1...HEAD 2>/dev/null || echo "contextplane/forced")
+          fi
+          echo "changed files:"; echo "$files" | sed 's/^/  /'
+          # Compare counts rather than using `grep -v`: -v's exit status is not
+          # portable (ugrep returns 1 where GNU grep returns 0), and a probe that
+          # silently reports "docs only" for a code change would skip every heavy
+          # tier on exactly the change that needed them. -c behaves the same
+          # everywhere. `|| true` because grep exits 1 on a zero count.
+          total=$(printf '%s\n' "$files" | grep -c . || true)
+          docsonly=$(printf '%s\n' "$files" | grep -cE '^(docs/|\.develop/|[^/]*\.md$)' || true)
+          echo "total=$total docs=$docsonly"
+          if [ "${total:-0}" -gt "${docsonly:-0}" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; echo "-> heavy tiers WILL run"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"; echo "-> docs-only, heavy tiers skipped"
+          fi
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -123,6 +160,8 @@ jobs:
   # than after the integration tier.
   unit:
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     # `make test-coverage` runs tests/unit AND tests/conformance, and the
     # conformance tier reaches a real database. Naming the provider keeps this
     # job from resolving by whatever the runner happens to have, the same
