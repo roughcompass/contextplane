@@ -128,6 +128,14 @@ async def resolve_entity(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "code": IDENTITY_AMBIGUOUS,
+                # The candidates, machine-readable. `AmbiguousIdentity` has always
+                # carried them -- "so the caller can requalify without a second
+                # query", as its docstring puts it -- and this handler used to drop
+                # them, leaving a client that must not read `message` (the repo's
+                # own rule) with no way to offer the choice. A caller told only
+                # that something is ambiguous has to guess or query again, which is
+                # the round-trip the exception exists to avoid.
+                "entity_types": list(ambiguous.entity_types),
                 "message": (
                     f"{handle!r} names more than one type; qualify it as `namespace:type/name`. Resolving it "
                     "would attach your next write to whichever type sorted first, and nothing in this response "
