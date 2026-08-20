@@ -748,7 +748,7 @@ Acceptance:
 
 ### E17-T1 — The tenant-resolving accessor beside the profile services
 
-**Kind:** task · **Status:** pending · **Blocked by:** E15-T4 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E15-T4 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: one accessor in the profile layer resolving a scoring magnitude for a
 tenant — active binding's extension value if one exists, else the committed
