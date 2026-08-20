@@ -599,7 +599,7 @@ Acceptance:
 
 ### E16-T3 — Per-predicate churn measurement, fitted and inspected
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: measure each predicate's supersession half-life from the bitemporal
 history and store fitted rates the way calibration mappings are stored — a
