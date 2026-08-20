@@ -317,7 +317,16 @@ after the decision does. Single-tenant deployments pay none of it.
 
 ### E18 — Contract surface coherence
 
-**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane, contextplane-ui
+**Kind:** epic · **Status:** done · **Blocked by:** none · **Repo:** contextplane, contextplane-ui
+
+**Done rather than first-wave-done, and the difference is checkable here in a
+way it is not for E15–E17.** This epic states its scope as three enumerated
+defects, each verified against the committed `openapi.json`. T2 fixed the
+identifier names, T3 the tag vocabulary and its gate, T4 the `GET`/`POST`
+collision, T1 decided how a published surface is renamed at all, and T5 carried
+the three into the UI pin. There is no fourth defect the body names and no task
+left uncut, so closing it records what happened rather than assuming a wave was
+the scope.
 
 One table backs the whole catalog — `Entity`, `__tablename__ = "entities"` in
 `storage/models.py`; there is no `capabilities` table. Four HTTP write surfaces
@@ -363,7 +372,7 @@ and the window is recorded on the alias rather than left to memory.
 
 ### E19 — Catalog authoring in the dashboard
 
-**Kind:** epic · **Status:** done · **Blocked by:** none · **Repo:** contextplane-ui
+**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane-ui
 
 The dashboard can read the canonical graph and cannot write it. `POST
 /v1/relationships`, `PATCH /v1/relationships/{relationship_id}` and `POST
@@ -390,7 +399,16 @@ thing, and capability, concept and operation are its types. The UI adopts that
 regardless of what E18 settles on the wire, because the adapter layer is where
 a contract seam is absorbed rather than mirrored into the IA.
 
-**What this epic cost, and what it found.** Six tasks were cut; nine PRs landed
+**Not done, and #34 was wrong to close it.** Six tasks were cut and all six
+shipped, but a first wave is the claimable frontier rather than the scope — the
+rule this file states two sections down, which the close ignored. What the body
+names and no task covers is `POST /v1/entities`: the generic profile-governed
+entity write still reaches the generated client and stops there, with no adapter
+and no caller, exactly as the paragraph above says. E19-T2 wired concepts and
+operations through their dedicated create routes, which is a different surface.
+That gap is E19-T6, cut below.
+
+**What this epic cost so far, and what it found.** Six tasks were cut; nine PRs landed
 on the UI and six on the service, because five of the six tasks had a premise
 that did not survive contact with the tree:
 
@@ -434,6 +452,16 @@ E18 and E19 join the frontier on the same test the others pass, not by
 exception: neither embeds an envelope, sensitivity-tier, grant-lifetime or
 cold-start value, so neither waits on E1. E18 renames surfaces that already
 ship, and E19 wires clients to endpoints that already ship governed.
+
+**Wave status, 2026-08-20 (second update).** Every first-wave task is now done
+except E19-T5 and E19-T6, both cut *from* first-wave work rather than planned
+into it. E16-T2 turned out to have been satisfied when E16-T1 landed; its entry
+records what covers it.
+
+Only E18 closes as an epic, because it is the only one whose body enumerates its
+scope — three named contract defects, all three fixed. E19 was closed in #34 and
+that was wrong: `POST /v1/entities` is named in its body and had no task, which
+is now E19-T6.
 
 **Wave status, 2026-08-20.** E1, E8, E9, E15 and E17 have every first-wave task
 done; E16 has one left (E16-T2, written and waiting on E16-T1 to land). None of
@@ -761,7 +789,7 @@ Acceptance:
 
 ### E16-T2 — Regression: same-session corroboration counts once
 
-**Kind:** task · **Status:** pending · **Blocked by:** E16-T1 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E16-T1 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the lineage-digest dedup exists in `claim_writer.py`; this pins the
 property the epic warns about with a test that would fail if it regressed —
@@ -769,6 +797,23 @@ two extractions from one originating session event combine to the single-source
 confidence, not the two-source one. A vacuity control asserts the same pair
 from two distinct events does raise it, so the test cannot pass by combining
 nothing.
+
+**Already satisfied when E16-T1 landed, and verified rather than assumed.** The
+unit half is `test_evidence_sharing_an_independence_key_counts_once` and
+`test_duplicate_lineage_scores_as_one_source`; the end-to-end half is
+`test_repetition_through_one_source_does_not_raise_confidence`, which stages a
+claim from four turns of one session and asserts it scores *identically* to one
+turn. Its vacuity control is `test_independent_sources_agreeing_raises_confidence`,
+which raises the score from two distinct sessions, and
+`test_two_runs_of_one_connector_do_not_corroborate` covers the other collapsing
+rule. Nine unit tests and three integration tests pass under this task's own
+acceptance command.
+
+The shipped property is stronger than the task stated. The task asked that two
+extractions from one *event* count once; the independence key is
+`session:{tenant}:{actor}:{session_id}`, so two extractions from two *different
+events in one session* also count once — which is the case the epic actually
+warns about, and the one the integration test exercises.
 
 Acceptance:
     .venv/bin/python -m pytest tests/unit -q -k "lineage or corroborat"
@@ -907,7 +952,7 @@ Acceptance:
 
 ### E18-T2 — One path parameter for one identifier
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — openapi.json · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — openapi.json · **Repo:** contextplane
 
 Goal: `{capability_id}` and `{provider_cap_id}` become `{entity_id}` across the
 five `/v1/capabilities/*` templates that still use them. No URL changes — a
@@ -925,7 +970,7 @@ Acceptance:
 
 ### E18-T3 — One tag vocabulary, and a gate that keeps it
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — openapi.json · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — openapi.json · **Repo:** contextplane
 
 Goal: one delimiter convention across all 49 tags, every operation tagged, no
 path split across subdomains by method, and `task memory` moved to the Intent
@@ -947,7 +992,7 @@ Acceptance:
 
 ### E18-T4 — Split the `/v1/entities` GET and POST collision
 
-**Kind:** task · **Status:** pending · **Blocked by:** E18-T1 · **Hotspot:** yes — openapi.json · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E18-T1 · **Hotspot:** yes — openapi.json · **Repo:** contextplane
 
 Goal: the external-ID lookup moves off the collection path to `GET
 /v1/entities:lookup`, matching the nineteen AIP-136 colon methods the contract
@@ -983,7 +1028,7 @@ Acceptance:
 
 ### E19-T1 — Relationship writes: adapter and edge authoring
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: adapter functions for `POST /v1/relationships`, `PATCH
 /v1/relationships/{relationship_id}` and `POST /v1/relationships:query` in
@@ -1147,6 +1192,39 @@ still absent and still its own issue.
 
 Acceptance:
     pnpm --filter admin-dashboard test -- -t "graph"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E19-T6 — The generic entity write has no client
+
+**Kind:** task · **Status:** pending · **Blocked by:** E19-T5 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: an adapter and a caller for `POST /v1/entities`, the surface E19's own
+body names alongside the three that now have one. It reaches the generated
+client and stops there.
+
+**Not the same surface E19-T2 wired.** That task used `POST /v1/concepts` and
+`POST /v1/operations`, the dedicated create routes, which take a name and
+optional attributes and mint a row. The generic write is the profile-governed
+one: it routes by `intent`, so an ordinary agent's observation stages a claim
+and only an authorized approval writes canon, and it carries the same identity,
+temporal, provenance and validation envelope a relationship write does. An
+operator creating an entity through the Catalog page today gets the ungoverned
+route, which is the correct one for a capability and the wrong one for anything
+whose write should be reviewed.
+
+So the task is not "add a fourth create button". It is deciding which surface
+the Catalog page's create should use, and the honest answer depends on the
+intent the operator has — which means the create dialog grows the same intent
+choice the relationship authoring dialog has, and the dedicated routes stay for
+the case where a producer is registering something they own outright.
+
+Blocked by E19-T5 because a generic write must send `target_revision`, and what
+that field is for is the open question there. Building a second caller against
+an unresolved answer would mean writing it twice, and would double the number
+of places quietly sending a value nothing reads.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "entity write"
     pnpm lint && pnpm type-check && pnpm test && pnpm build
 
 ### E19-T5 — `target_revision` is required and read by nothing
