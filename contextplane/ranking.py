@@ -47,6 +47,8 @@ __all__ = [
     "UngovernedMagnitude",
     "ladder",
     "model_ids",
+    "requires_validated",
+    "validation_status",
     "weights",
 ]
 
@@ -56,6 +58,14 @@ REGISTRY_PATH: Final = pathlib.Path(__file__).with_name("ranking_registry.json")
 #: to this module, not something a feature branch adds in passing: the ceiling on
 #: expressiveness is what keeps the registry reviewable.
 _FORMS: Final = frozenset({"weights", "ladder", "threshold"})
+
+#: What an entry asserts about having been checked. `validated` records a check
+#: that happened, with who ran it and what came out. `grandfathered` records
+#: that none has, which is the honest state for behaviour that predates the
+#: registry: an entry unable to say "nobody checked this" would have to claim
+#: the opposite, and a registry that silently upgrades unexamined numbers to
+#: examined ones is worse than no registry at all.
+_VALIDATION_STATUSES: Final = frozenset({"validated", "grandfathered"})
 
 #: The two shapes a magnitude may hold: a named weight map, or an ordered ladder.
 type Parameters = dict[str, float] | list[str]
@@ -73,12 +83,22 @@ class UngovernedMagnitude(RuntimeError):
 class GovernedMagnitude:
     """One registry entry, frozen after load."""
 
-    __slots__ = ("_parameters", "form", "model_id", "reason")
+    __slots__ = ("_parameters", "form", "model_id", "reason", "requires_validated", "validation_status")
 
-    def __init__(self, model_id: str, form: str, parameters: Parameters, reason: str) -> None:
+    def __init__(
+        self,
+        model_id: str,
+        form: str,
+        parameters: Parameters,
+        reason: str,
+        validation_status: str,
+        requires_validated: bool,
+    ) -> None:
         self.model_id = model_id
         self.form = form
         self.reason = reason
+        self.validation_status = validation_status
+        self.requires_validated = requires_validated
         self._parameters = parameters
 
     def __repr__(self) -> str:
@@ -112,11 +132,41 @@ def _load() -> dict[str, GovernedMagnitude]:
         if model_id in loaded:
             msg = f"{model_id}: declared twice"
             raise UngovernedMagnitude(msg)
+
+        validation = entry.get("validation") or {}
+        status = validation.get("status")
+        if status not in _VALIDATION_STATUSES:
+            # Absent is refused rather than defaulted. Defaulting to
+            # `grandfathered` would let an entry omit the field and be quietly
+            # exempt; defaulting to `validated` would assert a check nobody ran.
+            msg = (
+                f"{model_id}: validation.status is {status!r}; every magnitude declares "
+                f"one of {sorted(_VALIDATION_STATUSES)} -- an entry that cannot say whether "
+                "anybody checked it is the state this field exists to make impossible"
+            )
+            raise UngovernedMagnitude(msg)
+        if status == "grandfathered" and not validation.get("reason", "").strip():
+            msg = f"{model_id}: grandfathered without a stated reason"
+            raise UngovernedMagnitude(msg)
+        if status == "validated" and not all(
+            validation.get(k) for k in ("validated_by", "validated_on", "method", "result")
+        ):
+            # A validated status is a claim about the world. Without who ran the
+            # check, when, how and with what outcome, it is a word rather than
+            # evidence, and the word is what a later reader would trust.
+            msg = (
+                f"{model_id}: validated requires validated_by, validated_on, method and result; "
+                "a status without its evidence is an assertion nobody can check"
+            )
+            raise UngovernedMagnitude(msg)
+
         loaded[model_id] = GovernedMagnitude(
             model_id=model_id,
             form=form,
             parameters=entry["parameters"],
             reason=entry["reason"],
+            validation_status=status,
+            requires_validated=bool(entry.get("requires_validated", False)),
         )
     return loaded
 
@@ -127,6 +177,24 @@ _REGISTRY: Final[dict[str, GovernedMagnitude]] = _load()
 def model_ids() -> tuple[str, ...]:
     """Every governed model id, sorted. The gate reads this to check coverage."""
     return tuple(sorted(_REGISTRY))
+
+
+def validation_status(model_id: str) -> str:
+    """Whether *model_id* has been independently validated, or is grandfathered."""
+    entry = _REGISTRY.get(model_id)
+    if entry is None:
+        msg = f"{model_id!r} is not a governed magnitude"
+        raise UngovernedMagnitude(msg)
+    return entry.validation_status
+
+
+def requires_validated(model_id: str) -> bool:
+    """Whether a consuming feature flag may only activate on a validated value."""
+    entry = _REGISTRY.get(model_id)
+    if entry is None:
+        msg = f"{model_id!r} is not a governed magnitude"
+        raise UngovernedMagnitude(msg)
+    return entry.requires_validated
 
 
 def _entry(model_id: str, expected_form: str) -> GovernedMagnitude:

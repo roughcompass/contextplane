@@ -7,9 +7,11 @@
     "holds its value.",
     "",
     "Read at import by contextplane/ranking.py, which refuses an unknown id and",
-    "refuses to load at all if this list is empty. scripts/check_ranking_registry.py",
-    "asserts the declared consumers still exist and still obtain their numbers",
-    "from here rather than from a literal that crept back.",
+    "refuses to load at all if this list is empty. scripts/check_governed_magnitudes.py",
+    "checks this file directly, without going through that loader -- a gate that",
+    "asked the loader whether the loader was happy would agree with it by",
+    "construction, including on a change that relaxed it. It is wired into",
+    "`make lint`, which is a required check.",
     "",
     "This governs the PARAMETERS, not the act of ordering. Detecting 'code that",
     "ranks' is not mechanically closeable -- any comparison produces an order --",
@@ -23,7 +25,19 @@
     "the suite red rather than changing behaviour. Pinning is used where the",
     "consumer sits on a path whose churn is not worth the coupling -- the",
     "authority ladder feeds claim adjudication -- and it buys the anti-drift",
-    "property without the risk."
+    "property without the risk.",
+    "",
+    "`validation` separates two things a registry entry could be asserting.",
+    "Registration says a number is owned and has a stated reason. Validation",
+    "says somebody checked it predicts, and records who, against what, and with",
+    "what result. `grandfathered` says neither, on purpose: every magnitude here",
+    "is in-production behaviour brought under governance, and marking it",
+    "`validated` would assert a check nobody ran. A registry that cannot express",
+    "the difference quietly upgrades unexamined numbers to examined ones.",
+    "",
+    "`requires_validated` is set true by the epic whose feature flag consumes the",
+    "magnitude. It is the machine-readable half of the safety ordering: a",
+    "consumer that demands validation cannot activate on a grandfathered value."
   ],
   "magnitudes": [
     {
@@ -36,7 +50,16 @@
         "graph": 0.2
       },
       "reason": "Capability search fuses three arms. Semantic leads because the query is natural language and the embedding arm is the only one that answers a paraphrase; lexical is the tiebreaker that keeps an exact name from being outranked by a near-synonym; graph is smallest because adjacency is evidence of relatedness, not of relevance to this query. The three sum to 1.0 so a fused score stays comparable across queries.",
-      "coupling": "consumed"
+      "coupling": "consumed",
+      "validation": {
+        "status": "grandfathered",
+        "reason": "In-production behaviour brought under governance, not a number anybody checked. These weights have ordered capability search since before the registry existed; recording them makes them owned and reviewable, and claiming they were validated would assert a check nobody ran.",
+        "validated_by": null,
+        "validated_on": null,
+        "method": null,
+        "result": null
+      },
+      "requires_validated": false
     },
     {
       "model_id": "claim-serving-hybrid-fusion@1",
@@ -47,7 +70,16 @@
         "lexical": 0.4
       },
       "reason": "Claim serving fuses two arms and weights semantic higher than capability search does, because a claim is a sentence rather than a name: an exact lexical hit on a claim body is weaker evidence of relevance than it is on an entity name. No graph arm exists here, so the two sum to 1.0.",
-      "coupling": "consumed"
+      "coupling": "consumed",
+      "validation": {
+        "status": "grandfathered",
+        "reason": "As above. Governing an existing value is worth doing on its own, and is a different act from establishing that the value predicts well.",
+        "validated_by": null,
+        "validated_on": null,
+        "method": null,
+        "result": null
+      },
+      "requires_validated": false
     },
     {
       "model_id": "source-authority-ladder@1",
@@ -63,7 +95,16 @@
         "unattributed"
       ],
       "reason": "Strongest first. Ownership outranks observation because an owner asserting about their own subject is accountable for it; within each, a human assertion outranks an extraction and an extraction outranks an inference, because each step adds a derivation whose error the previous one did not carry. Unattributed is last rather than absent so an unsourced claim still orders deterministically instead of sorting arbitrarily.",
-      "coupling": "pinned"
+      "coupling": "pinned",
+      "validation": {
+        "status": "grandfathered",
+        "reason": "An ordering derived from an argument about accountability rather than fitted to outcomes, so there is no held-out result to record. Validating it would mean measuring whether higher-ranked sources are in fact more often right, which is worth doing and has not been done.",
+        "validated_by": null,
+        "validated_on": null,
+        "method": null,
+        "result": null
+      },
+      "requires_validated": false
     }
   ]
 }
