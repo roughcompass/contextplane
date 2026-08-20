@@ -63,7 +63,7 @@ TEST_ROOT   := tests
 # Default target — print help.
 .DEFAULT_GOAL := help
 
-.PHONY: help install-dev lint format format-check typecheck doc-refs doc-links test-hygiene \
+.PHONY: help install-dev lint governed-magnitudes format format-check typecheck doc-refs doc-links test-hygiene \
         privileged-writes usage-boundary env-documented helm-env calibration-report coverage-exemptions \
 		auth-consolidation-gate reachability-audit \
         test-unit test-coverage test-integration test-conformance test-native-provider arc-vectors test-perf test-airgap test-smoke test all \
@@ -135,11 +135,15 @@ install-dev: ## Install the project + dev extras into the current Python env.
 # Lint, format, type-check, doc-refs (PR gates — fast)
 # -----------------------------------------------------------------------------
 
-lint: ## Run ruff, the file-size and approval-writer guards, and the module-boundary contract.
+lint: ## Run ruff, the file-size, approval-writer and magnitude guards, and the module-boundary contract.
 	$(RUFF) check .
 	$(PYTHON) scripts/check_file_sizes.py
 	$(PYTHON) scripts/check_arc_approval_writers.py
+	$(MAKE) --no-print-directory governed-magnitudes
 	PYTHONPATH=$(CURDIR) $(LINT_IMPORTS)
+
+governed-magnitudes: ## Verify no validation-gated magnitude rides a grandfathered value.
+	$(PYTHON) scripts/check_governed_magnitudes.py
 
 format: ## Apply ruff format to the whole tree (writes).
 	$(RUFF) format .
@@ -338,10 +342,13 @@ test-lifecycle-pilot: ## Run the delivery-lifecycle pilot corpus and exit gates 
 arc-vectors: ## Verify the ARC authoring-surface canonical vectors against the Node reference implementation.
 	node tools/arc-reference-verifier/verify.mjs tests/fixtures/arc_authoring
 
-eval: ## Measure memory quality: retrieval recall, time-travel correctness, ARC selection.
+eval: ## Measure memory quality: retrieval recall, time-travel correctness, ARC selection, extraction ground truth.
 	@set -e; \
 	echo "eval: ARC selection gate (no database)"; \
 	$(PYTEST) $(TEST_ROOT)/unit/test_arc_selection_eval_gate.py -q --timeout=120; \
+	echo "eval: extraction ground truth — fixture contract and scoring arithmetic"; \
+	echo "      (the quality measurement itself needs CLAUDE_API_KEY and skips without one)"; \
+	$(PYTEST) $(TEST_ROOT)/integration/test_extraction_ground_truth.py -q --timeout=600 -rs; \
 	echo "eval: retrieval recall@10 and time-travel correctness (needs a DB)"; \
 	$(PYTEST) $(TEST_ROOT)/integration/test_retrieval_embedding.py -q --timeout=600 \
 	  -k "recall_at_10 or time_travel_scenarios"; \
