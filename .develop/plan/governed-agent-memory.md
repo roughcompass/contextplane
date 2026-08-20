@@ -1229,56 +1229,101 @@ Acceptance:
 
 ### E19-T5 — `target_revision` is required and read by nothing
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — `openapi.json` if the field moves · **Repo:** contextplane
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
-Found while building E19-T1c's authoring UI, which has to put something in the
-field and found nothing true to put there.
-
-Every generic write — `POST /v1/entities`, `POST /v1/relationships` and both
-their updates — requires `target_revision.profile_revision`. `TargetRevisionV1`
-says why in its own docstring:
+Every generic write requires `target_revision` on `ProfileWriteRequestV1`
+(`contextplane/api/schemas/profile_writes.py:170`). `TargetRevisionV1` says why:
 
 > Sent by the caller rather than assumed from whatever is currently bound,
 > because a body composed against one revision and validated against another
 > passes or fails for reasons the caller cannot see.
 
-Nothing reads it. `grep -rn target_revision contextplane/ --include='*.py'`
-returns the declaration on `ProfileWriteRequest` and a same-named `code=`
-constant in four profile schemas, and no handler, service or validator anywhere
-compares the value to the revision the tenant is bound to. The field is a
-required argument whose stated purpose is unimplemented, so a caller composing
-against a stale revision gets exactly the outcome the docstring says the field
-exists to prevent.
+**Both of its fields are unread.** `profile_revision` is compared to nothing, and
+`binding_revision` (`profile_writes.py:109`) appears exactly once in the tree —
+its own declaration. `profile_bindings` has no revision column, so
+`binding_revision` names a concept that does not exist.
 
-**The UI cannot even supply a plausible value.** The only revision identifier a
-client can read is `BindingResponse.profile_revision_id`, a UUID.
-`target_revision.profile_revision` is an unconstrained non-blank string that the
-integration suite fills with `"1.0.0"` — a semantic version. A caller has no
-route from what it can read to what the field appears to want, which is further
-evidence nothing consumes it: an unread field cannot fail a caller who guesses.
+#### The decision
 
-Three shapes, and the choice is a governance decision rather than a cleanup:
+**The value is the binding identity a caller can actually read, checked inside
+the validator, and reported as a violation rather than refused.**
 
-1. **Enforce it.** Compare against the binding and refuse a mismatch with
-   `incompatible_target_revision`, the code four profile schemas already define.
-   This is what the docstring promises and it will start refusing writes that
-   succeed today, so it needs a rollout posture — advisory first, like the
-   binding modes — rather than flipping on.
-2. **Make it optional and enforce when present.** Cheaper, and honest: a caller
-   that can attest to a revision gets the check, one that cannot is no worse off
-   than today. Costs the guarantee for every caller that omits it.
-3. **Remove it.** A required field nobody reads is a required field every client
-   must fabricate, and fabricating one is how the ecosystem learns the value does
-   not matter. Removing it is an `openapi.json` break and admits the property was
-   never had.
+1. `profile_revision` carries `profile_revision_id`, the UUID. It is the only
+   candidate a caller can both read (`BindingResponse.profile_revision_id`,
+   already published) and receive back from every prior write
+   (`ProfileAttributionV1.profile_revision_id`). No new field is exposed.
+2. `binding_revision` carries `extension_set_digest`, or is deleted. It is the
+   slot for the half of the governing vocabulary a revision id does not cover: a
+   tenant can rebind to a different extension set at the *same*
+   `profile_revision_id`, and migration `0060_binding_extension_members` names
+   that rollback case as the one the binding lifecycle exists for. Leaving one
+   field unread while fixing the other reproduces the defect.
+3. **The comparison lives in `validate_entity_write` and its relationship twin,
+   not in the routers.** `contextplane/entities/validation.py` states that it is
+   the seam, and `scripts/check_profile_write_coverage.py` fails the build when a
+   writer bypasses it. A check in the two routers is invisible to `SchemaService`,
+   to the promotion writer, and to MCP — whose module header calls itself "the
+   agent-facing twin … same services, same routing, same refusals".
+4. **A mismatch emits a `Violation`, not a refusal.** The binding then decides:
+   refused under `mandatory`, reported under `advisory`, absent under `unbound`.
+   `ValidationOutcomeV1` already carries violations on a *successful* write for
+   exactly this. A router-level refusal keyed to a caller-supplied string would
+   invert that module's own first rule — "the binding decides the mode, not the
+   caller. A caller that chose its own enforcement level would be a caller that
+   could opt out."
+5. **A new code, `stale_target_revision`.** `incompatible_target_revision` is
+   live: a publication-time compile conflict emitted from three modules, with
+   `tests/conformance/test_profile_schema_entity.py` asserting
+   `emitted == set(CONFLICT_CODES)`. Overloading it would give one code two
+   meanings on two surfaces.
 
-Not decided here. What is decided is that E19-T1c does not get to invent an
-answer: its authoring UI sends the bound `profile_revision_id` with a comment
-naming this task, because that is the only value a client can truthfully attest
-to, and a UI shipping `"1.0.0"` because the tests do would be manufacturing
-agreement with a check that does not run.
+#### What was tried first, and why it was wrong
 
-Acceptance depends on the shape chosen and is written when it is.
+The proposal was to compare against `profile_revisions.semantic_version` and
+expose that on `BindingResponse`. Two independent adversarial reviews refuted it.
+The refutation is recorded because the mistake is instructive rather than
+embarrassing.
+
+**The strongest evidence for it was evidence against it.** The claim was that
+`tests/integration/test_generic_relationship_writes.py` seeds
+`semantic_version='1.0.0'` and sends `"1.0.0"`, so enforcement would be
+non-breaking. That fixture also seeds
+`profile_name = f"rel-{revision_id.hex[:12]}"` — a *different profile every run*,
+at the same version string. Uniqueness is
+`(profile_family, profile_name, semantic_version)`, so a bare `"1.0.0"`
+identifies nothing. The suite continuing to pass would have demonstrated that the
+comparand is not an identifier, not that the change was safe.
+
+It also failed the case the field exists for. `semantic_version` does not move
+when a rebind changes only the extension set, so the check would return green in
+exactly the scenario `TargetRevisionV1` describes.
+
+Four shapes were in play across two repos before this decision — `"1.0.0"`,
+`"core-3"`, `"relationship.v3"` and the bound UUID the E19-T1c dialog sends —
+which is what a required field nobody reads produces: every client invents one.
+
+#### Two things the task must still settle
+
+- **A `validating` tenant cannot read what to send.** `active_binding()`
+  (`contextplane/profile/bindings.py:375`) filters `state = 'active'`, while the
+  validator governs on `('active', 'validating')`. A tenant bound only for
+  validation is governed in advisory mode and reads `bound: false`, so it has
+  nothing to attest to. Either the conformance read widens, or the check exempts
+  that state and says so.
+- **The guarantee is route-shaped, not tenant-shaped.** `POST /v1/concepts` and
+  `/v1/operations` write the same entities through `_entity_crud` with no
+  `target_revision` field at all, so anything refusable on the generic surface is
+  achievable on the dedicated one. Better stated in the task than discovered
+  after it ships.
+
+The eventual `mandatory` bite changes what the service refuses, so it carries
+ADR-0005's pre-flight obligation — offender scan, dry run, refusal with the
+offender list, force only with a written migration plan — and needs its own
+record. This task lands the violation; it does not land a flag day.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit -q -k "target_revision or stale"
+    make lint && make test-coverage
 
 ### E19-T4 — Entity resolution in global search
 
