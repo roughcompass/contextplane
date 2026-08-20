@@ -413,7 +413,7 @@ Acceptance:
 
 ### E8-T3 — Wilson-bound promotion gate, built before its consumer
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the pure function the eval_score gate rests on: given incumbent and
 candidate pass counts, promote only when the candidate's Wilson lower bound at
