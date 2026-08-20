@@ -315,14 +315,95 @@ weights needs its own reliability curve, since a global one describes a
 population no tenant matches. That is the real cost of this epic and it lands
 after the decision does. Single-tenant deployments pay none of it.
 
+### E18 — Contract surface coherence
+
+**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane, contextplane-ui
+
+One table backs the whole catalog — `Entity`, `__tablename__ = "entities"` in
+`storage/models.py`; there is no `capabilities` table. Four HTTP write surfaces
+sit on it (`POST /v1/capabilities`, `/v1/concepts`, `/v1/operations`, and the
+generic `POST /v1/entities`), discriminated by `entity_type`. That much is
+ordinary single-table inheritance and is not the problem. The problem is that
+the surfaces disagree with each other about names, and in one place about
+semantics. Three defects, each verified against the committed `openapi.json`:
+
+- **`GET` and `POST /v1/entities` are unrelated operations.** `POST` asserts an
+  entity through the generic profile-governed surface (tag `entities`). `GET`
+  is an external-ID lookup requiring both `external_system` and `external_id`,
+  and 404s when unmapped (tag `external-ids`). A `GET` on a collection path
+  that cannot list the collection is the one item here that misleads an
+  integrator rather than merely annoying them.
+- **One resource, three names for its identifier.**
+  `/v1/capabilities/{capability_id}/interface`,
+  `/v1/capabilities/{entity_id}/artifacts` and
+  `/v1/capabilities/{provider_cap_id}/adoptions` all take the same UUID.
+- **The tag vocabulary stopped grouping.** 49 tags over 189 operations, three
+  operations untagged, three delimiter conventions in use (`arc: admin`,
+  `memory curation`, `external-ids`), and three paths whose methods are tagged
+  into different subdomains — `/v1/capabilities` is `retrieval` on GET and
+  `capabilities` on POST. `task memory` also survives the Intent rename that
+  IDR-T04 already applied to the fixtures.
+
+What is *not* wrong, recorded so a later pass does not "fix" it: the nineteen
+colon custom methods (`:resolve`, `:query`, `:adjudicate`) are AIP-136 and are
+applied consistently, and typed surfaces over a single-table discriminator is
+the normal shape. The naming discipline slipped, not the architecture — and it
+slipped because five renames each landed cleanly in code while the HTTP surface
+accumulated the sediment.
+
+This is not E13. That epic is subtraction — retiring surfaces the two-call loop
+subsumes — and waits on E2, E3 and E7. This one removes no capability and waits
+on nothing. Doing it first is also what keeps E13 measurable, because a target
+of "≤ 6 endpoints an agent integration must know" cannot be counted while one
+endpoint means two things.
+
+The supersession rule applies with a wire-compatibility caveat: a renamed path
+is removed, but only after the dual-alias window E18-T1 defines has expired,
+and the window is recorded on the alias rather than left to memory.
+
+### E19 — Catalog authoring in the dashboard
+
+**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane-ui
+
+The dashboard can read the canonical graph and cannot write it. `POST
+/v1/relationships`, `PATCH /v1/relationships/{relationship_id}` and `POST
+/v1/relationships:query` reach the generated client and stop there — no adapter
+function, no caller. So do `POST /v1/entities`, `GET /v1/entities:resolve`,
+`/v1/concepts` and `/v1/operations`. `shared/api/catalog.ts` exports twenty
+capability operations and nothing for any other entity type. An operator can
+therefore traverse a dependency they have no way to create, and the Catalog
+page presents capabilities as though they were the only entity type the service
+has had since `02a1d07`.
+
+The Catalog page stays a list, and that is recorded here because the opposite
+was proposed and rejected on the design standard's own terms: `.develop/DESIGN.md`
+in the UI repo says graphs "never replace discovery or impact lists" and
+requires every graph be paired with a searchable table. `GET /v1/capabilities`
+also returns a flat cursor page carrying no edges, so a canvas over it would
+need one traversal per node against a service that publishes no graph total —
+the browser would be inferring a shape the service declines to state. The
+visual surface belongs on `/relationships`, beside the table, over the
+traversal already running there.
+
+Vocabulary follows storage: **Catalog** is the section, **entity** is the
+thing, and capability, concept and operation are its types. The UI adopts that
+regardless of what E18 settles on the wire, because the adapter layer is where
+a contract seam is absorbed rather than mirrored into the IA.
+
 ---
 
 ## Task decomposition — first wave (the unblocked frontier)
 
-Tasks for E1, E8, E9, E15, E16 and E17 only. The remaining epics decompose
-after E1's decision tasks land, because their contracts would otherwise embed
-values nobody has decided — the failure the earlier decomposition audit found
-eight times in one pass. E1's claimable frontier *is* its decisions.
+Tasks for E1, E8, E9, E15, E16, E17, E18 and E19 only. The remaining epics
+decompose after E1's decision tasks land, because their contracts would
+otherwise embed values nobody has decided — the failure the earlier
+decomposition audit found eight times in one pass. E1's claimable frontier *is*
+its decisions.
+
+E18 and E19 join the frontier on the same test the others pass, not by
+exception: neither embeds an envelope, sensitivity-tier, grant-lifetime or
+cold-start value, so neither waits on E1. E18 renames surfaces that already
+ship, and E19 wires clients to endpoints that already ship governed.
 
 ### E1-T1 — ADR 0005: envelope rollout is advisory before it is enforcing
 
