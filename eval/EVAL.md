@@ -1692,3 +1692,91 @@ today, the same gate reports **0.940** through direct search and **0.960**
 through the resolve path. Retrieval improved and nobody updated the number.
 Recorded here rather than edited above, because that table is a per-phase
 history and rewriting a phase row would lose what was true then.
+
+## Salience reliability
+
+**Report:** `tests/integration/test_salience_reliability_report.py`, wired into
+`make eval`. Buckets stored `memory_claims.salience` into ten bins and reports
+the retrieval rate per bin, plus a Brier score and whether the rate rises with
+salience at all.
+
+**The label is weaker than the one salience is for, and every line of output says
+so.** Salience is about whether a claim will be *used*. This measures whether it
+was *served* — joinable today, because receipts record the claims each resolution
+returned. Serving is necessary for use and nowhere near sufficient, so a claim
+scoring well here has cleared a lower bar than the one the weights are about. The
+stronger label (cited on a succeeding turn within thirty days) needs a
+citation-to-outcome join that does not exist; when it does, this report gains a
+second curve rather than replacing its first.
+
+### Measurement
+
+**None yet, and that is the correct output.** No deployment has scored claims:
+`salience` lands on claims written by extraction, and the column arrived with
+`0057`. The report renders
+
+```
+salience reliability — label: served in at least one resolution
+  observations: 0
+  no scored claims and no receipts to join them against; there is no curve to draw
+```
+
+rather than a flat curve at zero. A reliability diagram over an empty population
+is not a finding about salience; returning zeros would put a shape on a table
+nobody measured, and a flat curve reads as "salience predicts nothing" — the
+opposite of "nothing has been measured".
+
+The figure appears the moment there is one. What to record when it does: the
+per-bucket table, the Brier score, and whether the curve rises. A flat or
+inverted curve is the finding that the weighting orders claims by something
+retrieval does not care about, and it would mean the weights need refitting
+before any threshold consumes them.
+
+### How to read it when there is data
+
+- **A bucket showing `n/a` is below the observation floor of 20, not a bucket
+  where nothing was retrieved.** Those are opposite facts and the table says
+  which is which on every render.
+- **Brier is beside the curve, not instead of it.** One number cannot tell a
+  uniformly mediocre weighting from one that is excellent at the top of the range
+  and useless at the bottom — and for a retention decision only the top matters.
+  0.25 is the score of predicting 0.5 about everything, so anything above it is
+  worse than hedging.
+- **"Rises with salience" needs at least two measurable buckets.** With one it
+  reports that it cannot say, rather than reporting success from a single point.
+
+**No threshold consumes salience.** Nothing reads the column yet; it is written
+and reported. That order is deliberate — a weighting whose reliability was
+measured after something started depending on it is a measurement nobody can act
+on.
+
+### Per-tenant split
+
+Once a tenant can reweight salience — which E17 made possible — one global
+reliability curve describes a population no overriding tenant matches. That is
+the cost ADR 0004 recorded as arriving late, and it is paid where it has arrived:
+
+- **Tenants on the committed defaults pool.** Their scores mean the same thing,
+  and pooling them is what makes a shared curve worth having.
+- **A tenant running its own weights is measured on its own.** Its observations
+  leave the shared pool entirely, so the curve it was split out of is not
+  contaminated by it either.
+- **Below 100 observations, an overriding tenant reports "assurance not
+  earned".** It is not given the shared curve. Borrowing would attach a figure
+  measured under one weighting to scores produced under another, which is how a
+  calibration number becomes worse than no number. The message names the count
+  and the floor, so "not earned" comes with a distance rather than only a
+  refusal. Same discipline as the k-anonymity floors on the learning reads.
+- **A tenant that adopted an override mid-corpus has both kinds counted apart.**
+  The flag travels per observation rather than per tenant, because pooling a
+  mixed corpus would measure neither weighting.
+
+Provider calibration (`calibration.py`) gains a scope segment in its mapping key
+for the same reason, and the condition is stated rather than assumed: it applies
+where a tenant overrides a magnitude that feeds the numbers being calibrated. **No
+shipped override does** — salience decides what is remembered and does not enter
+`confidence.score` — so every fit this deployment writes carries the `shared`
+scope and the pooled mapping is correct for all of them. The key is in place so
+that the day a tenant overrides a confidence magnitude, their fit separates
+without anybody remembering to make it, and two overriding tenants cannot read
+each other's.

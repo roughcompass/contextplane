@@ -149,7 +149,7 @@ def _assert_auditable(stored: dict[str, object]) -> None:
         authority=payload["authority"],
         base=payload["base"],
         corroborating_classes=payload["corroborating_classes"],
-        corroborating_mass=payload["corroborating_mass"],
+        corroboration_probability=payload["corroboration_probability"],
         is_contested=payload["is_contested"],
         is_confirmed=payload["is_confirmed"],
         provider_confidence=payload["provider_confidence"],

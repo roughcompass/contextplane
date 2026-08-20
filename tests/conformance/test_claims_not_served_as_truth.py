@@ -101,6 +101,12 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # Finds claims that need reconciling and hands each to consolidation. Reads ids
         # and nothing a consumer would see.
         "workers/consolidation_sweep.py",
+        # Counts how often claims of one predicate were superseded, to fit that
+        # predicate's decay half-life. Reads two columns -- the predicate and whether
+        # a supersession happened -- and never the asserted value, so no claim's
+        # content passes through it. Its output is a rate per predicate, and even that
+        # is not selected until a human has inspected it.
+        "service/memory/predicate_churn.py",
         # Reads a claim to decide whether it may become canonical, and records where
         # it stands afterwards. The promotion state write goes through the claim
         # service, so the one-writer rule holds. This is the module that *stops* a

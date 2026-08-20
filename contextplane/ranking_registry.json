@@ -105,6 +105,30 @@
         "result": null
       },
       "requires_validated": false
+    },
+    {
+      "model_id": "salience-weights@1",
+      "form": "weights",
+      "consumer": "contextplane/extraction/salience.py",
+      "parameters": {
+        "state_change": 0.3,
+        "outcome_decisive": 0.25,
+        "human_engagement": 0.2,
+        "novelty": 0.1,
+        "entity_density": 0.1,
+        "tool_diversity": 0.05
+      },
+      "reason": "What an episode is worth keeping, ordered by how hard the signal is to fake. State change leads because a tool that wrote something changed the world outside the transcript, which no amount of discussion does. Outcome decisiveness is next: an episode that ended in a resolution is the one a later reader needs, and it is read only from the last few events so a long argument cannot inflate it. Human engagement is third and deliberately below both -- a person correcting an agent is strong evidence, but a person being present is not, and the signal cannot tell them apart well enough to outrank an act. Novelty is fourth and is the only term that is not computable at write; it is weighted low because a first observation of a thing that never recurs is noise as often as it is news. Entity density and tool diversity are last because both are proxies for activity rather than for consequence, and a busy session that settled nothing should not outscore a short one that did. The six sum to 1.0, so a salience stays comparable across episodes and across tenants.",
+      "coupling": "consumed",
+      "validation": {
+        "status": "grandfathered",
+        "reason": "Nothing has checked that these weights predict what they claim to. The label they would be validated against -- whether a claim was later retrieved and cited on a succeeding turn -- requires a citation-to-outcome join that does not exist yet, so the honest status is that this is a reasoned ordering and not a measured one. E15-T5 builds the weaker report (retrieval rate per salience bucket) from receipts, which is what a first validation would rest on.",
+        "validated_by": null,
+        "validated_on": null,
+        "method": null,
+        "result": null
+      },
+      "requires_validated": false
     }
   ]
 }

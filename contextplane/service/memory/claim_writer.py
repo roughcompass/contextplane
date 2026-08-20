@@ -88,6 +88,7 @@ from contextplane.service.memory.confidence import (
 from contextplane.service.memory.confidence_decay import half_life_days
 from contextplane.service.memory.confidence_read import subject_change_profile
 from contextplane.service.memory.contest import ContestOutcome, detect_for_claim
+from contextplane.service.memory.predicate_churn import inspected_half_lives
 from contextplane.service.retrieval.embedding_index import project_claim
 from contextplane.types import Clock, JSONValue, TenantContext
 
@@ -139,6 +140,14 @@ class ClaimService(_ClaimResolutionMixin, _ClaimCuratorActionsMixin):
         provider_confidence: float | None = None,
         namespace: str | None = None,
         strategy_id: str | None = None,
+        # How much the episode this claim came from is worth keeping, and the
+        # per-signal values it was computed from. A property of the window
+        # rather than of the claim, so the caller that has the window computes
+        # it once and passes the same number to every claim staged from it.
+        # None for a connector's or a curator's claim: those have no episode.
+        salience: float | None = None,
+        salience_signals: dict[str, float] | None = None,
+        salience_weights_id: str | None = None,
     ) -> StagedClaim:
         """Validate, resolve, and stage one claim.
 
@@ -148,6 +157,13 @@ class ClaimService(_ClaimResolutionMixin, _ClaimCuratorActionsMixin):
         """
         if not evidence:
             msg = "a claim requires provenance; an assertion nobody can check is not evidence"
+            raise ValidationError(msg)
+        if (salience is None) != (salience_signals is None) or (salience is None) != (salience_weights_id is None):
+            msg = (
+                "salience, its signals and the weights that produced it are written together or not at all; "
+                f"got salience={salience!r}, signals={'set' if salience_signals else None!r}, "
+                f"weights_id={salience_weights_id!r}. A score nobody can explain is worse than no score."
+            )
             raise ValidationError(msg)
 
         now = self._clock.now()
@@ -201,6 +217,14 @@ class ClaimService(_ClaimResolutionMixin, _ClaimCuratorActionsMixin):
                 )
             half_life = half_life_days(
                 declared.claim_category,
+                predicate=predicate,
+                # Inspected per-predicate rates where they exist, the authored
+                # category figure everywhere else. Read here rather than inside
+                # the decay function, which stays pure so a stored score remains
+                # re-derivable from stored inputs. Empty on every deployment
+                # until somebody inspects a fit, and empty means today's
+                # behaviour exactly.
+                fitted_half_lives=await inspected_half_lives(session),
                 subject_median_change_days=median_change,
                 subject_change_observations=observations,
                 tenant_multiplier=policy.decay_multiplier,
@@ -215,13 +239,15 @@ class ClaimService(_ClaimResolutionMixin, _ClaimCuratorActionsMixin):
                     "  tokenizer_id, namespace, strategy_id, value_cardinality,"
                     "  value_entity_id, confidence, confidence_scored_at,"
                     "  confidence_inputs, scorer_version, calibration_version,"
-                    "  decay_half_life_days, provider_confidence, created_at"
+                    "  decay_half_life_days, provider_confidence,"
+                    "  salience, salience_signals, salience_weights_id, created_at"
                     ") VALUES (:cid, :owner, :author, :actor, :subject, :ref, :pred, :vtype,"
                     "          :cat, CAST(:val AS JSONB), :vfrom, :vto, :status, :vis, :auth,"
                     "          :size, :tokens, :tokenizer, :ns, :strat, :card, :ventity,"
                     "          CAST(:conf AS NUMERIC), :conf_at, CAST(:conf_in AS JSONB),"
                     "          :scorer, :calib, CAST(:half_life AS NUMERIC),"
-                    "          CAST(:prov_conf AS NUMERIC), :now)"
+                    "          CAST(:prov_conf AS NUMERIC), CAST(:sal AS NUMERIC),"
+                    "          CAST(:sal_signals AS JSONB), :sal_weights, :now)"
                 ),
                 {
                     "cid": claim_id,
@@ -265,6 +291,13 @@ class ClaimService(_ClaimResolutionMixin, _ClaimCuratorActionsMixin):
                     "calib": UNCALIBRATED if initial is not None else None,
                     "half_life": half_life if initial is not None else None,
                     "prov_conf": provider_confidence,
+                    # All three or none. A salience with no signals cannot be
+                    # explained and a weights id with no salience names nothing,
+                    # so the writer refuses to write a partial set rather than
+                    # leaving a reader to work out which half is missing.
+                    "sal": salience,
+                    "sal_signals": (json.dumps(salience_signals, sort_keys=True) if salience is not None else None),
+                    "sal_weights": salience_weights_id if salience is not None else None,
                     "now": now,
                 },
             )

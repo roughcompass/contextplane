@@ -24,9 +24,11 @@ import uuid
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from contextplane.api.middleware.etag import check_if_match, compute_etag, latest_timestamp
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.middleware.tenant import get_tenant_context
 from contextplane.api.schemas.entity_writes import (
@@ -165,13 +167,34 @@ async def query_relationships(
     "/{relationship_id}",
     response_model=RelationshipReadV1,
     summary="Read one governed relationship with the governance that accepted it.",
+    responses={
+        200: {
+            "headers": {
+                "ETag": {
+                    "description": (
+                        "Weak validator for this row's current version. Echo it as `If-Match` on a "
+                        "subsequent update to be refused with 412 rather than superseding a row that "
+                        "changed after it was read."
+                    ),
+                    "schema": {"type": "string"},
+                }
+            }
+        }
+    },
 )
 async def get_relationship(
     request: Request,
     relationship_id: uuid.UUID,
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
 ) -> RelationshipReadV1:
-    """Return the stored row together with its profile, provenance and readiness."""
+    """Return the stored row together with its profile, provenance and readiness.
+
+    Emits an `ETag` over the row id and the later of its `recorded_at` and
+    `effective_to`. `effective_to` is in the inputs because a supersession does
+    not touch the row it ends except to close it: an ETag over the transaction
+    time alone would be unchanged by the one event a concurrent editor most
+    needs to hear about.
+    """
     services = _services(request)
     async with services.session_factory() as session:
         row = (
@@ -179,7 +202,14 @@ async def get_relationship(
         )
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="relationship not found")
-    return _read_of_row(dict(row))
+    fields = dict(row)
+    body = _read_of_row(fields).model_dump(mode="json")
+    return JSONResponse(content=body, headers={"ETag": _etag_of(fields)})  # type: ignore[return-value]
+
+
+def _etag_of(row: Mapping[str, Any]) -> str:
+    """The row's weak validator, over its id and the last thing that changed it."""
+    return compute_etag(row["relationship_id"], latest_timestamp(row["recorded_at"], row["effective_to"]))
 
 
 async def update_relationship(
@@ -187,18 +217,38 @@ async def update_relationship(
     relationship_id: uuid.UUID,
     body: RelationshipWriteRequestV1,
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    if_match: Annotated[
+        str | None,
+        Header(
+            alias="If-Match",
+            description=(
+                "The `ETag` from this relationship's detail read. When present and stale the update is "
+                "refused with 412; when absent the update proceeds, which is the advisory mode the rest "
+                "of this API uses."
+            ),
+        ),
+    ] = None,
 ) -> RelationshipWriteResultV1:
-    """Update by the same three routes a create takes.
+    """Supersede the named assertion, by the same three routes a create takes.
 
     An observation that could amend a canonical edge directly would be a way
     around the intent split, so this adds nothing to the routing but the subject.
+
+    Only the canonical route supersedes. The staged routes mint a claim id and
+    a review-entry id and persist neither — they are placeholders for a staging
+    surface that does not exist yet — so an observation or a request against
+    this path records nothing that names the edge it was about. That is the
+    behaviour a create already has, unchanged here rather than quietly widened.
     """
     services = _services(request)
     async with services.session_factory() as session:
-        exists = (await session.execute(_EXISTS_SQL, {"tenant": ctx.tenant_id, "rid": relationship_id})).first()
-    if exists is None:
+        row = (
+            (await session.execute(_READ_ONE_SQL, {"tenant": ctx.tenant_id, "rid": relationship_id})).mappings().first()
+        )
+    if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="relationship not found")
-    return await _routed_write(request, body, ctx)
+    check_if_match(if_match, _etag_of(dict(row)), resource_kind="relationship")
+    return await _routed_write(request, body, ctx, supersedes=relationship_id)
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +260,8 @@ async def _routed_write(
     request: Request,
     body: RelationshipWriteRequestV1,
     ctx: TenantContext,
+    *,
+    supersedes: uuid.UUID | None = None,
 ) -> RelationshipWriteResultV1:
     services = _services(request)
     try:
@@ -232,7 +284,7 @@ async def _routed_write(
     )
 
     if routed.effect == EFFECT_CANONICAL_ASSERTION_WRITE:
-        return await _canonical(services, ctx, body, routed, validation)
+        return await _canonical(services, ctx, body, routed, validation, supersedes=supersedes)
     if routed.effect == EFFECT_STAGED_CLAIM:
         return RelationshipWriteResultV1(
             intent=routed.intent,
@@ -256,6 +308,8 @@ async def _canonical(
     body: RelationshipWriteRequestV1,
     routed: RoutedProfileWrite,
     validation: RelationshipValidationResult,
+    *,
+    supersedes: uuid.UUID | None = None,
 ) -> RelationshipWriteResultV1:
     """Write through the transactional relationship service, which owns the lock.
 
@@ -266,16 +320,29 @@ async def _canonical(
     service = RelationshipWriteService(endpoints=_CatalogEndpointResolver(services, ctx))
     try:
         async with services.session_factory() as session, session.begin():
-            asserted = await service.assert_relationship(
-                session,
-                tenant_id=ctx.tenant_id,
-                actor_id=ctx.actor_id,
-                relationship_type=body.subject_type,
-                source_entity_id=body.endpoints.source_entity_id,
-                destination_entity_id=body.endpoints.destination_entity_id,
-                properties=dict(body.properties),
-                now=services.clock.now(),
-            )
+            if supersedes is None:
+                asserted = await service.assert_relationship(
+                    session,
+                    tenant_id=ctx.tenant_id,
+                    actor_id=ctx.actor_id,
+                    relationship_type=body.subject_type,
+                    source_entity_id=body.endpoints.source_entity_id,
+                    destination_entity_id=body.endpoints.destination_entity_id,
+                    properties=dict(body.properties),
+                    now=services.clock.now(),
+                )
+            else:
+                asserted = await service.supersede_relationship(
+                    session,
+                    tenant_id=ctx.tenant_id,
+                    actor_id=ctx.actor_id,
+                    relationship_id=supersedes,
+                    relationship_type=body.subject_type,
+                    source_entity_id=body.endpoints.source_entity_id,
+                    destination_entity_id=body.endpoints.destination_entity_id,
+                    properties=dict(body.properties),
+                    now=services.clock.now(),
+                )
     except RelationshipWriteRefused as refused:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -365,8 +432,6 @@ def _services(request: Request) -> Services:
     services: Services = request.app.state.services
     return services
 
-
-_EXISTS_SQL = text("SELECT 1 FROM relationship_metadata WHERE tenant_id = :tenant AND relationship_id = :rid")
 
 _READ_ONE_SQL = text(
     "SELECT m.relationship_id, m.relationship_type, m.source_entity_id, m.destination_entity_id,"
