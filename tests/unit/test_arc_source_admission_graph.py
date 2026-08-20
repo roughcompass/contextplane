@@ -28,7 +28,11 @@ import pytest
 from contextplane.arc.service import source_admission_graph as sag
 from contextplane.arc.service.authorization import ArcAuthorizationService
 from contextplane.arc.service.queries.source_admission_graph import PromotedClaimRow, ProvenanceRow
-from contextplane.arc.service.source_admission import SourceAdmissionRefused
+from contextplane.arc.service.source_admission import (
+    ApprovalProof,
+    SourceAdmissionRefused,
+    _proof_signature_or_attestation,
+)
 from contextplane.arc.types import ArcRequestContext
 from contextplane.types import TenantContext
 
@@ -291,3 +295,33 @@ class TestProjectionDeterminism:
             promoted_by_subject="rina",
         )
         assert base != moved
+
+
+class TestProofRepresentation:
+    """`ck_arc_source_evidence_representation` requires both columns NULL for
+    this method. An earlier signature-or-else branch produced an attestation
+    dict of three nulls instead, which the database rejected -- caught by the
+    integration suite, guarded here so the unit tier fails first next time.
+    """
+
+    def test_graph_promotion_carries_neither_representation(self) -> None:
+        signature, attestation = _proof_signature_or_attestation(ApprovalProof(verification_method="graph_promotion"))
+        assert signature is None
+        assert attestation is None
+
+    def test_the_other_two_methods_still_carry_theirs(self) -> None:
+        signed, no_attestation = _proof_signature_or_attestation(
+            ApprovalProof(verification_method="detached_signature", signature_base64="c2ln")
+        )
+        assert (signed, no_attestation) == ("c2ln", None)
+
+        no_signature, attested = _proof_signature_or_attestation(
+            ApprovalProof(
+                verification_method="verifier_attestation",
+                provider_id="p",
+                assertion_format="jwt",
+                assertion_base64="YQ==",
+            )
+        )
+        assert no_signature is None
+        assert attested == {"provider_id": "p", "assertion_format": "jwt", "assertion_base64": "YQ=="}

@@ -314,8 +314,16 @@ def _canonical_claim_bytes(claim: Mapping[str, Any]) -> bytes:
 
 
 def _proof_signature_or_attestation(proof: ApprovalProof) -> tuple[str | None, dict[str, Any] | None]:
+    # Dispatched on each method rather than signature-or-else. A trailing
+    # `else` meant every non-signature method built an attestation dict, so
+    # `graph_promotion` -- which carries no proof at all -- produced one with
+    # three null fields instead of NULL, and
+    # `ck_arc_source_evidence_representation` rejected the insert. A third
+    # method is exactly the case an else-branch cannot describe.
     if proof.verification_method == "detached_signature":
         return proof.signature_base64, None
+    if proof.verification_method == "graph_promotion":
+        return None, None
     return None, {
         "provider_id": proof.provider_id,
         "assertion_format": proof.assertion_format,
