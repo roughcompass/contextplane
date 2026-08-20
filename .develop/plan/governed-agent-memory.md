@@ -400,12 +400,29 @@ Acceptance:
 
 ### E8-T2 — Retrieval relevance judged against receipts
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a relevance-judgment fixture over the existing 50 search questions —
 for each, the entity ids a correct answer contains — and a report joining what
 receipts say was served against those judgments, yielding precision@k
 alongside the existing recall@10. Wired into `make eval`.
+
+**precision@k is not receipt-derivable, and finding that out was the task's
+real yield.** `context_receipt_items` carries the item's identity, block, source
+and trust and has no rank, score or position column, so a receipt records which
+items were served and not in what order. The envelope's item order is not rank
+order either — `ordered_items` sorts a block by the receipt-item digest so that
+two resolutions over unchanged data agree, which is a hash of the entity id. The
+gate therefore reports two reads and names which is auditable: a set precision
+from the receipt, and R-precision and precision@1 reconstructed from each item's
+`payload["score"]`. Two follow-on consequences are recorded and not fixed: the
+assembler's item cap truncates a block by that hash rather than by rank, and an
+auditor cannot ask a receipt what the agent saw first.
+
+Two missing tiebreakers were found and fixed in the same change, because the
+measurement would not reproduce without them: the semantic and lexical arms both
+ordered without a second key, so a tied `LIMIT` kept different rows on different
+runs.
 
 Acceptance:
     make eval
