@@ -1527,3 +1527,82 @@ simultaneous optional degradation (with both reason buckets populated
 independently of the final status); multiple blocked reasons reported
 together, sorted; and a capability-scoped rule matching on overlap rather
 than exact-set equality.
+
+## Extraction ground truth
+
+**Fixture:** `fixtures/extraction_ground_truth.json` — 30 transcript excerpts
+labeled with the claims a correct extraction over the `capability_observation`
+strategy yields. 43 claims, 6 excerpts whose correct answer is silence, and 22
+of the strategy's 23 permitted predicates exercised (`depends_on_version` is
+uncovered). Loaded, sized and scored by
+`tests/integration/test_extraction_ground_truth.py`, which asserts the file holds
+exactly 30 cases before measuring anything. **Frozen after the first measurement
+below**, on the same rule the retrieval fixtures follow: a fixture edited after
+the fact measures nothing, because the number it produces can always be improved
+by moving the target.
+
+### How the labels were produced
+
+Six independent authors wrote five cases each over disjoint predicate slices,
+then a seventh through twelfth labeler re-labeled each slice **blind** — given
+the excerpts and the ontology, never the first labeler's answers. Agreement was
+27 of 30 cases exact; the fixture keeps only claims both labelers produced, so a
+disputed claim never became ground truth. Recorded because a ground truth whose
+inter-annotator agreement nobody measured is one nobody can calibrate against.
+
+Six cases were marked *arguable* by the second labeler. Every concern reduced to
+one thing: **the ontology types a value but does not constrain its shape.**
+`POST /v1/sends` and `/v1/sends` are the same operation and different strings, and
+`escalation_contact` is single-valued while real escalation is a ladder. Matching
+therefore normalises case and whitespace and nothing else, so a differently-shaped
+value counts as a miss and appears in the report as one. That is a stated limit of
+this fixture, not a defect it hides.
+
+### The first measurement was wrong, and why
+
+The first run reported precision 0.148 / recall 0.186. It was a fixture defect,
+not a model result. Eighteen of the thirty excerpts discussed a service in prose
+(`ledger-sync`) while the label named it by reference (`service:ledger-sync`), and
+the strategy instructs a provider to use the reference *exactly as it appeared in
+the data* and never to invent one — so those labels were unreachable by any correct
+extraction. Every case now opens with a `catalog_lookup` tool result naming the
+entities in scope by canonical reference, added to all thirty rather than the
+eighteen that needed it so its presence correlates with nothing. It reveals no
+predicate and no value.
+
+`test_every_labelled_subject_appears_verbatim_in_its_excerpt` is the gate that
+would have caught this, and it is in the suite now. The episode is the argument for
+report-first: a threshold set alongside that first number would have been set
+against a measurement of the fixture's own bug.
+
+### Measurement
+
+| Date | Model | Cases | Precision | Recall | tp/fp/fn |
+|------|-------|-------|-----------|--------|----------|
+| 2026-08-19 | `claude-haiku-4-5-20251001` | 30 | 0.788 | 0.953 | 41/11/2 |
+
+Per-predicate precision is 1.000 on `owned_by_team`, `on_call_rotation`,
+`composes`, `provides_to`, `conflicts_with`, `decision_status`,
+`deployment_environment`, `deprecated_after`, `interface_version`,
+`request_timeout_seconds`, `recovery_time_objective_seconds` and
+`target_availability`, and 0.500–0.667 on `depends_on`, `lifecycle_state`,
+`decided_at`, `interface_specification_url`, `max_request_bytes`,
+`is_publicly_callable`, `runbook_url`, `decision_record_url` and
+`exposes_operation`. The shape of the error is over-extraction: 11 inventions
+against 2 misses. Recall is high because the excerpts state their facts; precision
+is the number to move, and the cases it fails on are the ones where something was
+discussed without being settled.
+
+**No threshold is asserted.** What to demand of extraction is a decision to make
+after seeing what it does, and a threshold chosen in the same commit as the first
+measurement is a threshold chosen to pass.
+
+### What is not measured here
+
+Not run against the `local-rules` provider. That module's own docstring says a
+benchmark against it measures the regexes, and a precision figure derived from the
+demo patterns filed under "extraction quality" would be exactly the kind of
+self-consistent non-measurement this fixture exists to replace. The measurement is
+opt-in on a real credential, following `test_extraction_live_provider.py`: no key,
+no run. CI runs the fixture contract and the scoring arithmetic, which need
+neither a database nor a provider.
