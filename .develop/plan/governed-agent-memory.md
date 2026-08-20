@@ -81,17 +81,31 @@ class; non-self-starving trust decay (frozen materiality at decay time; decay
 is a trust-class transition, not supersession). Cockpit UI is the first-class
 disposition surface.
 
-### E9 — Model governance of allocator components ⚙
+### E9 — Governed magnitudes ⚙
 
-**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane
+**Kind:** epic · **Status:** partly shipped · **Blocked by:** none · **Repo:** contextplane
 
-Ranker and tier function (E5), sampling designs (E5), and retrieval fusion
-weights (E3) registered and independently validated BEFORE any score-consuming
-feature activates. Score-consuming means an epic that computes ranked, fused,
-tiered or sampled output — currently E3 and E5; epics that only render
-already-governed scores (E10, E11) are out of scope. Encoded
-as a required check: guarded paths flag-off until a committed
-validation-evidence artifact exists and passes schema check.
+Restated, because the original property could not be built. It read "no
+ungoverned score orders anything a user sees", enforced automatically. Three
+independent designs were attempted and each was defeated the same way: the
+arithmetic sits in one function and the ordering elsewhere on a bare
+attribute, so a detector watching either half sees nothing. Ranking is not a
+syntactic act — any comparison produces an order — so a mechanical closure over
+"code that ranks" degenerates into one over all code. A gate believed
+exhaustive but defeated in a few lines is worse than none, because a reviewer
+who finds it trusts nothing else it reports.
+
+What is closeable is the **parameters**. A float in a weights position is a
+syntactic fact; "this comparison is semantically a ranking" is not. Shipped:
+`contextplane/ranking.py` on the bottom import layer, refusing an unknown id, a
+form disagreeing with its payload, a reason under twenty words, and an empty
+population; three magnitudes governed, the artifact recording whether each
+consumer is `consumed` (reads at import) or `pinned` (a test asserts
+agreement). The boundary is stated in the module rather than implied.
+
+Remaining: bring each new scoring magnitude under it as E15–E17 land, and cover
+what the closure cannot — semantic ranking, UI-side reordering — by periodic
+review of new ordering sites rather than a gate pretending to be exhaustive.
 
 ### E6 — Tamper-evident spine + records management
 
@@ -116,10 +130,25 @@ quickstart.
 
 **Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane
 
-Ground-truth labeled sets; extraction precision/recall per predicate;
-retrieval relevance judged against receipts; multi-session recall; wired as a
-release gate and published as buyer-facing evidence. Absorbs the speed
-benchmark suite.
+Not greenfield, and the earlier claim that the core product claim was
+unfalsifiable was wrong. `eval/fixtures/` already holds 50 pre-authored
+retrieval questions and 20 bitemporal scenarios, `recall@10` is measured
+against a live embedder, and `make eval` now runs those plus the 24 ARC
+selection cases in about five seconds — they were measured but not *askable*,
+which is the part that shipped.
+
+What remains: extraction precision/recall per predicate; retrieval relevance
+judged against receipts; multi-session recall; and `eval_score` — an empirical
+pass rate on a **held-out** replay suite, never a model's judgement of itself.
+Held-out is the whole constraint: a procedure mined from episodes scores well
+on those episodes and can be worse than nothing in production.
+
+Promotion gates on a **delta against the incumbent**, not an absolute
+threshold, and on the **lower bound** of the interval rather than the point
+estimate — 19/20 carries a 95% interval of roughly 0.75 to 0.99, so promoting
+on 0.95 is overconfident. That buys slower promotion or a larger replay suite;
+the choice is recorded, not defaulted. The gate waits on procedural memory
+existing to promote; the harness does not, and comes first.
 
 ### E10 — UI/IA workstream
 
@@ -173,3 +202,85 @@ endpoints an agent integration must know (target ≤ 6), and deprecated-surface
 count trending to zero. Rule: no consolidation may drop a governance property
 (provenance completeness, receipts, envelope gating) — surfaces shrink, the
 control set does not.
+
+### E15 — Salience: deciding what is worth keeping
+
+**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane
+
+Nothing today decides what is worth remembering, so everything is kept — which
+is the assumption that fails first at machine write volume. Salience is a
+linear combination of observable signals, deterministic and cheap, and
+auditable in the way a decision about what to remember has to be: state change,
+outcome decisiveness, novelty against existing episodes, human engagement,
+entity density, tool diversity. Computed at write, because every input depends
+only on the episode itself.
+
+Ships behind the naming rule first (ADR-0002): `SearchResult.score` is renamed
+before three more scores arrive, because a bare `score` is the precedent that
+teaches the next author one is acceptable. Eighteen call sites, no UI
+references, two contract occurrences.
+
+Weights are a governed magnitude in `contextplane/ranking_registry.json`, so
+they carry a stated reason and change by PR. Learned weights are deliberately
+**not** in scope: the label is "retrieved, cited, and present on a turn that
+succeeded, within 30 days", and nothing currently joins citation to turn
+outcome — receipts record what was served and feedback records ratings, but not
+the join. Until that exists a learned model has nothing to train on, and
+shipping one would mean inventing the label.
+
+Calibration is not optional and is what makes the number mean something: 0.7
+should mean roughly seven in ten such episodes get retrieved at least once,
+tracked by reliability diagram and Brier score. The retention threshold is a
+precision/recall operating point chosen from the same label data, not a
+constant — it moves when storage or precision economics move.
+
+### E16 — Truth confidence: corroboration and measured volatility
+
+**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane
+
+Refines a built system rather than building one. Source-tier base scores,
+lineage-digested corroboration and bin-based calibration all ship today;
+`service/memory/calibration.py` already refuses an identity mapping and stores
+a fit that misses target without selecting it.
+
+Two additions. Corroborating sources combine by **noisy-OR** — `1 − Π(1 − pᵢ)` —
+rather than addition, over sources deduplicated by **originating event** rather
+than by record. Two extractions from one session are one observation counted
+twice, and getting that wrong inflates confidence exactly where honesty matters
+most; the lineage digest that makes this possible already exists.
+
+Decay moves to **per-predicate**, from measured supersession churn rather than
+authored figures (ADR-0003, which reverses the recorded model). The assumption
+carrying it is stated there and is the thing most likely to be wrong: if
+supersession tracks correction rather than genuine change, the rate measures
+extraction quality instead of volatility. The first fit is inspected for that
+before it may select, reusing the rule calibration.py already applies.
+
+Confidence is never averaged with salience or eval_score (ADR-0002). They are
+three quantities that happen to share a scale.
+
+### E17 — Tenant-scoped scoring configuration
+
+**Kind:** epic · **Status:** pending · **Blocked by:** E15 ⚙ · **Repo:** contextplane
+
+Per ADR-0004: the committed registry holds the core default, and a tenant
+overrides by publishing a profile **extension** activated through the existing
+`plan → validate → activate → rollback` lifecycle. Core plus extension, never
+replacement — the composition the profile system was built for, applied to
+scoring rather than entity schemas. No environment variable and no `Settings`
+field may set any of these: a weight deciding what an agent remembers is not
+deployment configuration.
+
+Two consequences the ADR records rather than discovers later. Every consumer
+must resolve through one accessor, because that accessor is where tenant
+resolution happens and a consumer reading the registry directly silently
+ignores overrides. And that accessor cannot live in `contextplane/ranking.py`,
+which sits at the bottom import layer and cannot reach the profile system — it
+belongs beside the profile services, with `ranking.py` remaining the
+core-default reader.
+
+Per-tenant weights imply **per-tenant calibration**: a tenant on its own
+weights needs its own reliability curve, since a global one describes a
+population no tenant matches. That is the real cost of this epic and it lands
+after the decision does. Single-tenant deployments pay none of it.
+
