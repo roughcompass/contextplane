@@ -542,7 +542,7 @@ Acceptance:
 
 ### E16-T1 — Noisy-OR replaces the saturating corroboration curve
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: corroborating sources combine by `1 − Π(1 − pᵢ)` in
 `service/memory/confidence.py`, and the superseded saturating curve — the
@@ -555,9 +555,31 @@ never selected against post-change scores. Unit tests updated to the new
 arithmetic, including the property that N duplicate-lineage sources combine as
 one.
 
+Two corrections found while implementing, recorded here rather than left as a
+disagreement between the plan and the tree:
+
+- **The knobs are also columns**, so removing them is a migration and this task
+  is a `storage/migrations/` hotspot, not the non-hotspot it was cut as. The
+  acceptance grep below is scoped past `migrations/` accordingly: the baseline
+  revision that created the columns is history and cannot stop naming them, and
+  the revision that drops them has to name them to drop them.
+- **The per-source probabilities are the base table**, read by authority rank,
+  rather than the separate weight table the curve used. Noisy-OR needs a
+  probability per source and the base table already states one; a second table
+  would be a second ordering over one ladder. Corroboration is also capped one
+  rounding step below the confirmed bucket, because that bucket means a human
+  looked at the claim — the superseded curve did not hold that and let an
+  owner-human claim with two corroborators read as confirmed.
+
+`memory_confidence_policy` is now within two columns of being entirely dead:
+nothing reads any of it, because `ConfidencePolicy` is constructed with shipped
+defaults at every call site. E17 should retire the table rather than extend it,
+since tenant-scoped scoring lands on the profile-binding system instead.
+
 Acceptance:
     .venv/bin/python -m pytest tests/unit -q -k "confidence"
-    sh -c '! grep -rn "corroboration_headroom\|corroboration_scale" contextplane/'
+    sh -c '! grep -rn "corroboration_headroom\|corroboration_scale" contextplane/ --exclude-dir=migrations --exclude-dir=__pycache__'
+    .venv/bin/python -m pytest tests/integration/test_confidence_policy_migrations.py -q
     make test-unit && make lint && make typecheck
 
 ### E16-T2 — Regression: same-session corroboration counts once
