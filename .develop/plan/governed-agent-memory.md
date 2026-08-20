@@ -464,7 +464,7 @@ Acceptance:
 
 ### E15-T1 — Rename SearchResult.score to fused_rank_score
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — openapi.json · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — openapi.json · **Repo:** contextplane
 
 Goal: per ADR-0002, no bare `score` field survives where the three scoring
 quantities can reach. Rename the dataclass field and every call site, export
@@ -478,20 +478,33 @@ Acceptance:
 
 ### E15-T2 — UI contract pin bump for the rename
 
-**Kind:** task · **Status:** pending · **Blocked by:** E15-T1 · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
+**Kind:** task · **Status:** deferred — nothing to do · **Blocked by:** E15-T1 · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
 
 Goal: one PR updating the vendored contract pin and the regenerated client
 together, per the contract-bump procedure in `contracts/README.md`. No UI code
 reads `.score` today, so the change is the pin, the client, and the pin-hash
 note.
 
-Acceptance:
-    pnpm generate:api && git diff --exit-code -- apps/admin-dashboard/src/shared/api/generated/
-    pnpm lint && pnpm type-check && pnpm test && pnpm build
+**Closed without work: the rename did not move the wire contract.** The task was
+cut on the assumption that renaming `SearchResult.score` changes what the API
+emits. It does not. `contextplane.types.SearchResult` is an internal dataclass,
+and the API maps it onto `SearchResultItem.score` in the response model — a
+different class that did not change. `openapi.json` is byte-identical before and
+after E15-T1, verified by the drift gate at the time, so there is no pin to bump
+and regenerating the client would produce no diff.
+
+This is recorded rather than deleted because "we decided not to" and "nobody got
+to it" look the same in a task list a month later, and because the assumption
+that an internal rename reaches the contract is one the next reader is likely to
+make again.
+
+Acceptance: none. The check that this stays true is the existing `openapi.json`
+drift gate in the service repo's conformance tier, which fails if the rename
+ever does reach the wire.
 
 ### E15-T3 — The five write-time salience signals
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: pure functions computing five of the six signals from a session's event
 window at extraction time — state_change, outcome_decisive, human_engagement,
