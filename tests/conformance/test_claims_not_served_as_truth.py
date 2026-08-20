@@ -124,6 +124,15 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # impact. Writes nothing at all. The output is a classification a reviewer
         # sees, never a response a consumer sees.
         "service/memory/promotion_eligibility.py",
+        # ARC's third source-admission authority reads a claim to turn a completed
+        # promotion into citable source evidence. It cannot reach a staged claim at
+        # all: its one claim query INNER JOINs `memory_promotion_journal`, so a claim
+        # nobody promoted returns no row, and a promotion that was later reversed is
+        # refused by the service above it. That is the rule this gate states, not an
+        # exception to it -- what becomes ARC evidence is the promotion decision, and
+        # the claim content it carries is already canonical by the time it is read.
+        # Writes nothing: every function in the module is a SELECT.
+        "arc/service/queries/source_admission_graph.py",
         # The curator's read surface. Lists claims that need a human precisely because
         # they are *not* canonical -- unlinked, contested, below floor, or awaiting an
         # owner. Serving those as truth is what it exists to prevent.
