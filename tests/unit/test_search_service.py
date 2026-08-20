@@ -187,7 +187,7 @@ async def test_score_normalisation_single_arm() -> None:
     ):
         results = await svc.search(_ctx(), "q", top_k=10, temporal_filter=_tf())
 
-    scores = {r.entity.entity_id: r.score for r in results}
+    scores = {r.entity.entity_id: r.fused_rank_score for r in results}
     # semantic weight = 0.5; rank-based: rank 0 → 1.0, rank 1 → 0.5
     assert scores[eid_a] == pytest.approx(0.5 * 1.0)
     assert scores[eid_b] == pytest.approx(0.5 * 0.5)
@@ -218,7 +218,7 @@ async def test_score_normalisation_two_arms() -> None:
 
     assert len(results) == 1
     # semantic 0.5*1.0 + lexical 0.3*1.0 = 0.8 (graph is empty, not failed)
-    assert results[0].score == pytest.approx(0.8)
+    assert results[0].fused_rank_score == pytest.approx(0.8)
 
 
 # ---------------------------------------------------------------------------
@@ -252,7 +252,7 @@ async def test_arm_failure_does_not_propagate() -> None:
     assert len(results) == 1
     assert results[0].entity.entity_id == eid
     # lexical redistributed weight = 0.3/0.5 = 0.6
-    assert results[0].score == pytest.approx(0.6)
+    assert results[0].fused_rank_score == pytest.approx(0.6)
 
 
 @pytest.mark.asyncio
@@ -273,7 +273,7 @@ async def test_two_arm_failures_still_returns_results() -> None:
         results = await svc.search(_ctx(), "q", top_k=10, temporal_filter=_tf())
 
     assert len(results) == 1
-    assert results[0].score == pytest.approx(1.0)
+    assert results[0].fused_rank_score == pytest.approx(1.0)
 
 
 @pytest.mark.asyncio
@@ -322,7 +322,7 @@ async def test_empty_graph_arm_weight_redistribution() -> None:
     ):
         results = await svc.search(_ctx(), "q", top_k=10, temporal_filter=_tf())
 
-    scores = {r.entity.entity_id: r.score for r in results}
+    scores = {r.entity.entity_id: r.fused_rank_score for r in results}
     # Empty graph arm retains its weight slot (0.2) but contributes nothing to fusion
     assert scores[eid_a] == pytest.approx(0.5)
     assert scores[eid_b] == pytest.approx(0.3)
@@ -351,7 +351,7 @@ async def test_failing_graph_arm_weight_redistribution_to_625_375() -> None:
     ):
         results = await svc.search(_ctx(), "q", top_k=10, temporal_filter=_tf())
 
-    scores = {r.entity.entity_id: r.score for r in results}
+    scores = {r.entity.entity_id: r.fused_rank_score for r in results}
     # graph failed → weights redistribute: semantic 0.5/0.8=0.625, lexical 0.3/0.8=0.375
     assert scores[eid_a] == pytest.approx(0.625)
     assert scores[eid_b] == pytest.approx(0.375)
@@ -388,7 +388,7 @@ async def test_dedup_by_entity_id_max_score_wins() -> None:
     assert len(results) == 1
     assert results[0].entity.entity_id == shared_eid
     # Additive: semantic(0.5)*1.0 + lexical(0.3)*1.0 = 0.8
-    assert results[0].score == pytest.approx(0.8)
+    assert results[0].fused_rank_score == pytest.approx(0.8)
 
 
 @pytest.mark.asyncio
@@ -417,8 +417,8 @@ async def test_dedup_higher_ranked_in_first_arm_dominates_ordering() -> None:
 
     assert results[0].entity.entity_id == eid_a
     assert results[1].entity.entity_id == eid_b
-    assert results[0].score == pytest.approx(0.5)
-    assert results[1].score == pytest.approx(0.3)
+    assert results[0].fused_rank_score == pytest.approx(0.5)
+    assert results[1].fused_rank_score == pytest.approx(0.3)
 
 
 # ---------------------------------------------------------------------------

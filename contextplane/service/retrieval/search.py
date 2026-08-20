@@ -170,7 +170,7 @@ async def fuse_hybrid_arms(
     -------
     A ``(fused, failed_arms)`` pair. ``fused`` maps each row's dedup key to
     its winning row, accumulated score, and per-arm score breakdown. Rows are
-    unordered; callers sort by ``.score`` themselves so they can apply their
+    unordered; callers sort by ``.fused_rank_score`` themselves so they can apply their
     own tie-break.
     """
     names = list(arms.keys())
@@ -278,7 +278,7 @@ class _SearchMethods(_RetrievalState):
                     SearchResult(
                         entity=entity_ref,
                         matching_facts=facts,
-                        score=fused_row.score,
+                        fused_rank_score=fused_row.score,
                         retrieval_arms=fused_row.arm_scores,
                     )
                 )
@@ -298,12 +298,12 @@ class _SearchMethods(_RetrievalState):
                     SearchResult(
                         entity=entity_ref,
                         matching_facts=facts,
-                        score=fused_row.score,
+                        fused_rank_score=fused_row.score,
                         retrieval_arms=fused_row.arm_scores,
                     )
                 )
 
-        results.sort(key=lambda r: r.score, reverse=True)
+        results.sort(key=lambda r: r.fused_rank_score, reverse=True)
         return results[:top_k]
 
     async def _semantic_arm(
