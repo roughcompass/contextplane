@@ -962,7 +962,40 @@ capability's detail dialog and from the Relationships page, edit or retire one
 from a traversal result. The repo's own contract rules carry the detail rather
 than being restated here: a fresh idempotency key per create, `If-Match` from
 the detail `ETag` on update, a `412` that keeps the draft and refetches, and
-branching on `errors[].code` never on message text. Colocated tests cover the
+branching on `errors[].code` never on message text.
+
+**Two of those four are unbuildable against the service as it stands, and the
+task splits because of it.**
+
+`GET /v1/relationships/{relationship_id}` emits no `ETag` and `PATCH` reads no
+`If-Match`. Entities do — `contextplane/api/routers/_entity_crud.py` computes one
+and returns it on the detail read — and relationships were never given the same
+treatment. Nothing in the contract advertises an `ETag` response header on any of
+its 242 operations, so the omission is uniform rather than specific, and it means
+the UI cannot send a concurrency token it is never handed, nor test a `412` that
+never arrives.
+
+`ContextplaneClient.request` also returns only the parsed body and discards
+response headers, so even once the service emits an `ETag` the adapter has no way
+to read it. That is a UI-repo prerequisite and a small one.
+
+So:
+
+- **E19-T1a** (contextplane-ui): the three relationship adapters, `errors[].code`
+  branching, a fresh idempotency key per create, and an additive client method
+  that surfaces the response `ETag` alongside the body. Colocated tests cover
+  create and permission-denied. No optimistic concurrency, because there is
+  nothing to be optimistic against.
+- **E19-T1b** (contextplane): `ETag` on the relationship detail read and
+  `If-Match` on its update, matching what `_entity_crud` already does for
+  entities. An `openapi.json` hotspot.
+- **E19-T1c** (contextplane-ui): the authoring UI, plus the `412` handling once
+  T1b makes a `412` possible. Blocked by T1a and T1b.
+
+Recorded rather than worked around because the alternative shapes are both worse:
+shipping the adapter with an `If-Match` header derived from nothing would look
+like concurrency control and be none, and skipping the concurrency test would
+leave the task's own acceptance list describing a case nobody exercises. Colocated tests cover the
 create, the concurrency conflict, and the permission-denied path, because those
 are the three the adapter can get wrong silently.
 
