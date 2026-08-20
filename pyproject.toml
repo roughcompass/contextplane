@@ -159,6 +159,7 @@ contextplane = [
     "service/catalog/progression_definition_schema.json",
     "embedding/model_manifest.json",
     "context/workspace_recall_decision.json",
+    "ranking_registry.json",
 ]
 
 # `omit` is the one setting here that can raise the reported coverage without a
@@ -551,6 +552,12 @@ layers = [
     "auth | embedding | logging_config",
     "config | pagination | usage",
     "config_grammar | exceptions | metrics | types",
+    # Governed magnitudes are read from `service` (fusion weights) and from
+    # `service/governance` (authority ladder). Only the bottom layer is
+    # reachable from every consumer, so `ranking` imports nothing from
+    # `contextplane` at all -- a constraint this contract imposes, not a
+    # preference.
+    "ranking",
 ]
 
 # Every entry below is an upward import this phase deliberately left standing,
@@ -701,6 +708,7 @@ source_modules = [
     "contextplane.ownership",
     "contextplane.pagination",
     "contextplane.profile",
+    "contextplane.ranking",
     "contextplane.relationships",
     "contextplane.retention",
     "contextplane.security",

@@ -67,6 +67,7 @@ TEST_ROOT   := tests
         privileged-writes usage-boundary env-documented helm-env calibration-report coverage-exemptions \
 		auth-consolidation-gate reachability-audit \
         test-unit test-coverage test-integration test-conformance test-native-provider arc-vectors test-perf test-airgap test-smoke test all \
+        eval \
         migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean \
         build-docker helm-package \
         dev-up dev-down dev-status dev-reset dev-logs dev-url
@@ -336,6 +337,17 @@ test-lifecycle-pilot: ## Run the delivery-lifecycle pilot corpus and exit gates 
 # rather than folded into `test-conformance`.
 arc-vectors: ## Verify the ARC authoring-surface canonical vectors against the Node reference implementation.
 	node tools/arc-reference-verifier/verify.mjs tests/fixtures/arc_authoring
+
+eval: ## Measure memory quality: retrieval recall, time-travel correctness, ARC selection.
+	@set -e; \
+	echo "eval: ARC selection gate (no database)"; \
+	$(PYTEST) $(TEST_ROOT)/unit/test_arc_selection_eval_gate.py -q --timeout=120; \
+	echo "eval: retrieval recall@10 and time-travel correctness (needs a DB)"; \
+	$(PYTEST) $(TEST_ROOT)/integration/test_retrieval_embedding.py -q --timeout=600 \
+	  -k "recall_at_10 or time_travel_scenarios"; \
+	echo ""; \
+	echo "eval: measured. Record the figures in eval/EVAL.md — the table is the"; \
+	echo "      record, this target only produces the numbers."
 
 test-perf: ## Run perf tests (SLO p95 verification; marked @slow).
 	$(PYTEST) $(TEST_ROOT)/perf -q --timeout=300 -m perf

@@ -39,6 +39,7 @@ from typing import Any, Final
 from sqlalchemy import RowMapping, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from contextplane import ranking
 from contextplane.exceptions import ValidationError
 from contextplane.service.memory.confidence_decay import half_life_days
 from contextplane.service.memory.confidence_read import serve as serve_confidence
@@ -639,7 +640,10 @@ _BY_ID_SQL = f"""
 """
 
 
-_ARM_WEIGHTS: Final[dict[str, float]] = {"semantic": 0.6, "lexical": 0.4}
+#: Governed magnitude; the value and its reason live in
+#: `contextplane/ranking_registry.json`.
+_FUSION_MODEL_ID: Final = "claim-serving-hybrid-fusion@1"
+_ARM_WEIGHTS: Final[dict[str, float]] = ranking.weights(_FUSION_MODEL_ID)
 
 # Fusion reorders, so each arm is read deeper than the answer needs. Cutting an arm
 # at top_k would drop rows the reordering would have promoted.

@@ -44,10 +44,11 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
+from typing import Any, Final, Generic, TypeVar
 
 from sqlalchemy import RowMapping, text
 
+from contextplane import ranking
 from contextplane.embedding.targets import TARGET_FACT
 from contextplane.service.retrieval._query_primitives import (
     _GRAPH_EDGE_TYPES,
@@ -68,6 +69,11 @@ def _cache_key(query_text: str, model_version: str) -> str:
     """SHA-256 digest of query_text + model_version used as LRU cache key."""
     payload = (query_text + model_version).encode()
     return hashlib.sha256(payload).hexdigest()
+
+
+#: The governed magnitude this module fuses with. Its value, and the reason it
+#: holds that value, live in `contextplane/ranking_registry.json`.
+_FUSION_MODEL_ID: Final = "entity-search-hybrid-fusion@1"
 
 
 def rank_decay_weights(n: int) -> list[float]:
@@ -243,14 +249,10 @@ class _SearchMethods(_RetrievalState):
         """Three-arm hybrid search.
 
         Arms run concurrently; a failing arm is excluded without raising.
-        Weights: 0.5 semantic + 0.3 lexical + 0.2 graph.
+        Weights come from the governed registry, not from a literal here.
         Dedup by entity_id (max fused score wins). Final tenant assertion applied.
         """
-        base_weights: dict[str, float] = {
-            "semantic": 0.5,
-            "lexical": 0.3,
-            "graph": 0.2,
-        }
+        base_weights = ranking.weights(_FUSION_MODEL_ID)
 
         fused, _failed_arms = await fuse_hybrid_arms(
             arms={

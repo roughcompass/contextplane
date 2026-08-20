@@ -1,0 +1,69 @@
+{
+  "artifact_version": 1,
+  "_comment": [
+    "Every magnitude that decides an order. A weight, a floor or a ladder",
+    "position held as a literal in the module that uses it has no owner and no",
+    "recorded reason; here the set is enumerable and each entry says why it",
+    "holds its value.",
+    "",
+    "Read at import by contextplane/ranking.py, which refuses an unknown id and",
+    "refuses to load at all if this list is empty. scripts/check_ranking_registry.py",
+    "asserts the declared consumers still exist and still obtain their numbers",
+    "from here rather than from a literal that crept back.",
+    "",
+    "This governs the PARAMETERS, not the act of ordering. Detecting 'code that",
+    "ranks' is not mechanically closeable -- any comparison produces an order --",
+    "so the boundary is stated in contextplane/ranking.py rather than implied.",
+    "",
+    "`coupling` records HOW the consumer is bound to its value, because the two",
+    "are not equally strong and pretending otherwise would overstate the",
+    "guarantee. `consumed` means the module reads the value from here at import;",
+    "changing this file changes behaviour. `pinned` means the module still holds",
+    "the value and a test asserts the two agree; changing this file alone turns",
+    "the suite red rather than changing behaviour. Pinning is used where the",
+    "consumer sits on a path whose churn is not worth the coupling -- the",
+    "authority ladder feeds claim adjudication -- and it buys the anti-drift",
+    "property without the risk."
+  ],
+  "magnitudes": [
+    {
+      "model_id": "entity-search-hybrid-fusion@1",
+      "form": "weights",
+      "consumer": "contextplane/service/retrieval/search.py",
+      "parameters": {
+        "semantic": 0.5,
+        "lexical": 0.3,
+        "graph": 0.2
+      },
+      "reason": "Capability search fuses three arms. Semantic leads because the query is natural language and the embedding arm is the only one that answers a paraphrase; lexical is the tiebreaker that keeps an exact name from being outranked by a near-synonym; graph is smallest because adjacency is evidence of relatedness, not of relevance to this query. The three sum to 1.0 so a fused score stays comparable across queries.",
+      "coupling": "consumed"
+    },
+    {
+      "model_id": "claim-serving-hybrid-fusion@1",
+      "form": "weights",
+      "consumer": "contextplane/service/memory/claim_serving.py",
+      "parameters": {
+        "semantic": 0.6,
+        "lexical": 0.4
+      },
+      "reason": "Claim serving fuses two arms and weights semantic higher than capability search does, because a claim is a sentence rather than a name: an exact lexical hit on a claim body is weaker evidence of relevance than it is on an entity name. No graph arm exists here, so the two sum to 1.0.",
+      "coupling": "consumed"
+    },
+    {
+      "model_id": "source-authority-ladder@1",
+      "form": "ladder",
+      "consumer": "contextplane/service/governance/authority.py",
+      "parameters": [
+        "owner_human",
+        "owner_extraction",
+        "owner_inference",
+        "observer_human",
+        "observer_extraction",
+        "observer_inference",
+        "unattributed"
+      ],
+      "reason": "Strongest first. Ownership outranks observation because an owner asserting about their own subject is accountable for it; within each, a human assertion outranks an extraction and an extraction outranks an inference, because each step adds a derivation whose error the previous one did not carry. Unattributed is last rather than absent so an unsourced claim still orders deterministically instead of sorting arbitrarily.",
+      "coupling": "pinned"
+    }
+  ]
+}

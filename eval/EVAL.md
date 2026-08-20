@@ -9,6 +9,21 @@ One row per phase × metric. Phase rows are filled at phase exit.
 
 After the first recall@10 measurement these files are **frozen**. Subsequent work extends with new files rather than editing these in place — `fixtures/arc_selection_cases.json` (see the "ARC Context Selection" section near the end of this file) is the worked example: it is loaded, sized, and evaluated by its own gate without ever touching the two files above.
 
+## Running the measurements
+
+```bash
+make eval
+```
+
+Runs the ARC selection gate (no database) and, against a database, retrieval
+`recall@10` and time-travel correctness. Roughly five seconds, against the nine
+minutes of `make test-integration` that these metrics previously hid inside —
+they were measured but not *askable*, so "is the memory any good" had an answer
+nobody could reach cheaply.
+
+The target produces figures; it does not record them. This file is the record,
+and the table below is filled at phase exit.
+
 ## Metrics
 
 | Phase | recall@10 | time-travel correctness | retrieval p95 | sync full-pass | notes |
