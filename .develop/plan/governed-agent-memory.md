@@ -363,7 +363,7 @@ and the window is recorded on the alias rather than left to memory.
 
 ### E19 — Catalog authoring in the dashboard
 
-**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane-ui
+**Kind:** epic · **Status:** done · **Blocked by:** none · **Repo:** contextplane-ui
 
 The dashboard can read the canonical graph and cannot write it. `POST
 /v1/relationships`, `PATCH /v1/relationships/{relationship_id}` and `POST
@@ -389,6 +389,36 @@ Vocabulary follows storage: **Catalog** is the section, **entity** is the
 thing, and capability, concept and operation are its types. The UI adopts that
 regardless of what E18 settles on the wire, because the adapter layer is where
 a contract seam is absorbed rather than mirrored into the IA.
+
+**What this epic cost, and what it found.** Six tasks were cut; nine PRs landed
+on the UI and six on the service, because five of the six tasks had a premise
+that did not survive contact with the tree:
+
+- **T1b** was "add an `ETag` and an `If-Match`". Underneath it, relationship
+  writes were validating `subject_type` against the *entity* family and so
+  returned `unknown_entity_type` for every type a profile did declare, and
+  `PATCH /v1/relationships/{X}` used its path id only as a 404 gate before
+  asserting whatever the body described — returning `200` with a *different*
+  `relationship_id` and leaving X untouched. The endpoint named "supersede"
+  superseded nothing, on every request, and no test covered it.
+- **T2** was "the page lists concepts and operations". It already did:
+  `GET /v1/capabilities` is a general entity list whose `entity_type` is a
+  filter, so the page was mislabelling rows it had already fetched.
+- **T3** was to choose a graph library against the keyboard requirement. No
+  library was needed: every clause of the standard's graph requirement comes
+  free from focusable elements in the accessibility tree.
+- **T4** was "behind the shell's global search". There is no global search, and
+  the refusal it was meant to present could not offer the qualifying types
+  because the handler dropped them.
+- **T1c** hit the fifth: `target_revision` is required by every generic write
+  and read by nothing, which is now E19-T5.
+
+The common shape is that **the decomposition described the service the plan
+believed existed.** What made these findable rather than shipped-over is that
+each task was grounded against the handler before it was built — and what let
+them survive this long is that no test asserted the effect: not the PATCH's,
+not `validation.valid` on a relationship write, not what the ambiguity refusal
+carried. The tree agreed with the plan by not looking.
 
 ---
 
@@ -986,9 +1016,12 @@ So:
   Colocated tests cover create and permission-denied. No optimistic concurrency,
   because there is nothing to be optimistic against.
 - **E19-T1b** (contextplane) — **split into three, all done**; see below.
-- **E19-T1c** (contextplane-ui): the `GET` detail adapter, the client's
-  `ETag`-reading method, the authoring UI, and the `412` handling — all once T1b
-  makes an `ETag` and a `412` possible. Blocked by T1a and T1b.
+- **E19-T1c** (contextplane-ui) — **done, in two parts.** The client's
+  `ETag`-reading method, the 24 test doubles it broke, the second pin bump and
+  the two adapters landed first; the authoring UI and its `412` recovery
+  followed. Split because the first part touches every test file in the app and
+  the second touches one feature, and reviewing them together would have buried
+  a 24-file mechanical migration under a new surface.
 
 **T1b split again, because grounding it found two defects underneath it.** The
 task read "add an `ETag` to the detail read and an `If-Match` to the update".
