@@ -171,14 +171,14 @@ async def validate_entity_write(
     attributes: Mapping[str, Any],
 ) -> EntityValidationResult:
     """Check one entity write against its tenant's governing profile, on a caller's session."""
-    governing = await _governing_profile(session, tenant_id)
+    governing = await governing_profile(session, tenant_id)
     if governing is None:
         return EntityValidationResult(mode=UNBOUND, entity_type=entity_type, profile_revision_id=None)
 
     revision_id, state, document = governing
     mode = MANDATORY if state == "active" else ADVISORY
 
-    declared = _entity_types(document)
+    declared = declared_types(document, ENTITY_FAMILY)
     found = declared.get(entity_type)
     if found is None:
         return _bounded(
@@ -198,10 +198,10 @@ async def validate_entity_write(
             ],
         )
 
-    return _bounded(mode, entity_type, revision_id, _property_violations(found, attributes))
+    return _bounded(mode, entity_type, revision_id, property_violations(found, attributes))
 
 
-async def _governing_profile(session: AsyncSession, tenant_id: uuid.UUID) -> tuple[uuid.UUID, str, str] | None:
+async def governing_profile(session: AsyncSession, tenant_id: uuid.UUID) -> tuple[uuid.UUID, str, str] | None:
     """The revision, binding state and canonical document governing this tenant.
 
     One query rather than a binding read followed by a revision read: the two
@@ -234,17 +234,17 @@ async def _governing_profile(session: AsyncSession, tenant_id: uuid.UUID) -> tup
     return row[0], row[1], document
 
 
-def _entity_types(document: str) -> Mapping[str, Mapping[str, Any]]:
-    """Every entity type the document declares, keyed by qualified name.
+def declared_types(document: str, family: str) -> Mapping[str, Mapping[str, Any]]:
+    """Every type the document declares in one family, keyed by qualified name.
 
-    A document that cannot be read yields no types, which surfaces as
-    `unknown_entity_type` rather than as an exception from inside a write path.
+    A document that cannot be read yields no types, which surfaces as an
+    unknown-type violation rather than as an exception from inside a write path.
     A profile nobody can parse governs nothing, and refusing every write against
     it is the safe direction: the alternative is accepting every write against it.
     """
     try:
         families = json.loads(document)
-        parsed: Sequence[Mapping[str, Any]] = json.loads(families[ENTITY_FAMILY])
+        parsed: Sequence[Mapping[str, Any]] = json.loads(families[family])
     except (KeyError, TypeError, json.JSONDecodeError):
         return {}
     return {f"{entry['namespace']}:{entry['type_name']}": entry for entry in parsed if _is_named(entry)}
@@ -254,7 +254,7 @@ def _is_named(entry: Mapping[str, Any]) -> bool:
     return "namespace" in entry and "type_name" in entry
 
 
-def _property_violations(declared: Mapping[str, Any], attributes: Mapping[str, Any]) -> list[Violation]:
+def property_violations(declared: Mapping[str, Any], attributes: Mapping[str, Any]) -> list[Violation]:
     """Every way the supplied properties disagree with the declared type.
 
     Collected rather than raised one at a time: an author who fixes violations a
