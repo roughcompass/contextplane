@@ -1607,6 +1607,92 @@ opt-in on a real credential, following `test_extraction_live_provider.py`: no ke
 no run. CI runs the fixture contract and the scoring arithmetic, which need
 neither a database nor a provider.
 
+## Retrieval precision, joined through receipts
+
+**Fixture:** `fixtures/retrieval_relevance.json` — for each of the 50 search
+questions, the **complete** set of relevant entity ids. Distinct from
+`search_questions.json`'s `expected_entity_ids`, which is an any-one-of set: the
+right shape for recall, and the wrong shape for precision, which needs to know
+what counts as a false positive. 77 relevant across 50 questions, plus 4 marked
+borderline and excluded from scoring. Loaded and sized by
+`tests/integration/test_retrieval_relevance.py`.
+
+Judged twice independently over five blocks of ten, with agreement of 50/50
+exact. That figure is weaker evidence than it looks: both passes were the same
+model under the same prompt, so it measures prompt stability more than it
+measures whether the judgments are right. The four borderline entries are the
+ones the judges flagged themselves; disputed entries were moved to borderline
+rather than kept as relevant, because a wrongly-relevant entity inflates
+precision while a borderline one costs nothing either way.
+
+The judged sets added four entities beyond the recall sets and dropped none.
+
+### The finding, which is worth more than the numbers
+
+**A receipt records which items were served, not the order they were served in.**
+`context_receipt_items` has columns for the item's identity, block, source and
+trust, and none for rank, score or position. So precision@k is not
+receipt-derivable for any k below the served count — computing it requires an
+order the audit record does not have.
+
+**The envelope's item order is not rank order either.** `ordered_items` sorts a
+block by the receipt-item digest, deliberately, so that two resolutions over
+unchanged data produce the same order — which it does, and which is a hash of the
+entity id. A consumer reading the canonical block top-down is reading a hash. The
+fused rank survives only inside each item's `payload["score"]`.
+
+Two consequences follow. The assembler's `DEFAULT_ITEM_CAP` truncates a block by
+that hash rather than by rank, so an over-full arm drops arbitrary items rather
+than its worst ones. And an auditor holding a receipt can answer "was this
+entity in the answer" but not "what did the agent see first".
+
+Neither is fixed here. Both are recorded so the next person to read a precision
+figure knows which question it answers.
+
+### Two orderings were missing a tiebreaker, and that is fixed
+
+Found while establishing that the measurement reproduces: the same query against
+unchanged data returned different results between runs. The semantic arm ordered
+by `emb.vector <=> query` and the lexical arm by `rank DESC`, neither with a
+second key, so a tied `LIMIT` kept different rows on different runs — and ties
+are the common case here, because `StubEmbedder` returns zero vectors and makes
+every distance identical. Both now tiebreak on `lower(name)` then `fact_id`, and
+the fusion sort does the same. Name before id deliberately: both give a total
+order, but an id is a random UUID, so ordering by it is fixed for one dataset and
+arbitrary across any two.
+
+Verified: same corpus queried twice, identical; two independent seedings, 50/50
+questions in identical order; the figures below repeat exactly across runs.
+
+### Measurement
+
+Against `StubEmbedder` (zero vectors, lexical-dominant), 2026-08-19:
+
+| Read | Metric | Value |
+|------|--------|-------|
+| receipt (set) | precision | 0.129 (64 relevant of 498 served) |
+| receipt (set) | recall@10 | 0.960 (48/50) |
+| envelope (rank) | R-precision | 0.325 (25 of 77) |
+| envelope (rank) | precision@1 | 0.220 (11 of 50) |
+
+Set precision is capped by the corpus and should be read with that in mind: 50
+questions with 77 relevant entities between them cannot fill 500 slots, so 0.129
+mostly measures that the canonical arm returns a full page whatever the query.
+R-precision and precision@1 are the comparable figures, and 0.220 means the top
+result is right about one time in five with the semantic arm dead.
+
+**No precision threshold is asserted.** The only assertion is the existing
+recall floor of 0.70, recomputed here from the receipt so that a receipt which
+stops recording what was served fails a quality gate and not only an audit one.
+
+### The recorded recall figure was stale
+
+The table at the top of this file records recall@10 = 0.840 from P2. Measured
+today, the same gate reports **0.940** through direct search and **0.960**
+through the resolve path. Retrieval improved and nobody updated the number.
+Recorded here rather than edited above, because that table is a per-phase
+history and rewriting a phase row would lose what was true then.
+
 ## Salience reliability
 
 **Report:** `tests/integration/test_salience_reliability_report.py`, wired into

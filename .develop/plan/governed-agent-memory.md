@@ -405,6 +405,20 @@ exception: neither embeds an envelope, sensitivity-tier, grant-lifetime or
 cold-start value, so neither waits on E1. E18 renames surfaces that already
 ship, and E19 wires clients to endpoints that already ship governed.
 
+**Wave status, 2026-08-20.** E1, E8, E9, E15 and E17 have every first-wave task
+done; E16 has one left (E16-T2, written and waiting on E16-T1 to land). None of
+those epics is itself done, and their headers still read `pending` for that
+reason: a first wave is the claimable frontier, not the scope. E1's four ADRs
+decide how an Autonomy Envelope rolls out and nothing builds one; E15–E17 shipped
+salience, its governance and its reporting without anything yet *consuming* a
+salience score. Flipping an epic because its first wave closed would record work
+as done that was never started, which is the failure this file's own
+supersession rule is written against.
+
+What the closed waves unblock is the second decomposition: E2 through E13 were
+held because their contracts would otherwise embed values nobody had decided, and
+ADRs 0005–0008 have now decided four of them.
+
 ### E1-T1 — ADR 0005: envelope rollout is advisory before it is enforcing
 
 **Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
@@ -503,12 +517,29 @@ Acceptance:
 
 ### E8-T2 — Retrieval relevance judged against receipts
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a relevance-judgment fixture over the existing 50 search questions —
 for each, the entity ids a correct answer contains — and a report joining what
 receipts say was served against those judgments, yielding precision@k
 alongside the existing recall@10. Wired into `make eval`.
+
+**precision@k is not receipt-derivable, and finding that out was the task's
+real yield.** `context_receipt_items` carries the item's identity, block, source
+and trust and has no rank, score or position column, so a receipt records which
+items were served and not in what order. The envelope's item order is not rank
+order either — `ordered_items` sorts a block by the receipt-item digest so that
+two resolutions over unchanged data agree, which is a hash of the entity id. The
+gate therefore reports two reads and names which is auditable: a set precision
+from the receipt, and R-precision and precision@1 reconstructed from each item's
+`payload["score"]`. Two follow-on consequences are recorded and not fixed: the
+assembler's item cap truncates a block by that hash rather than by rank, and an
+auditor cannot ask a receipt what the agent saw first.
+
+Two missing tiebreakers were found and fixed in the same change, because the
+measurement would not reproduce without them: the semantic and lexical arms both
+ordered without a second key, so a tied `LIMIT` kept different rows on different
+runs.
 
 Acceptance:
     make eval
@@ -532,7 +563,7 @@ Acceptance:
 
 ### E9-T1 — Validation evidence fields on the magnitude registry
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: extend `ranking_registry.json` entries with a validation block —
 `status` (`validated` | `grandfathered`), `validated_by`, `validated_on`,
