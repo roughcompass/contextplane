@@ -507,7 +507,7 @@ Acceptance:
 
 ### E15-T4 — Salience stored on extracted claims, weights governed
 
-**Kind:** task · **Status:** pending · **Blocked by:** E15-T3, E9-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E15-T3, E9-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: a `salience` column on the claims table (additive migration), a
 `salience-weights@1` registry entry (form `weights`, the six signals, reasons

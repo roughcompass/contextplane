@@ -30,11 +30,15 @@ import re
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Final
 
+from contextplane import ranking
+
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard, not behaviour
     from contextplane.service.memory.session_events import SessionEvent
 
 __all__ = [
     "SIGNAL_NAMES",
+    "WEIGHTS_MODEL_ID",
+    "combine",
     "entity_density",
     "human_engagement",
     "outcome_decisive",
@@ -219,3 +223,52 @@ def signal_vector(events: Sequence[SessionEvent]) -> dict[str, float]:
         "entity_density": entity_density(events),
         "tool_diversity": tool_diversity(events),
     }
+
+
+#: The governed magnitude this module's output is weighted by. Its values, and
+#: the reason each holds the value it does, live in the committed registry.
+WEIGHTS_MODEL_ID: Final = "salience-weights@1"
+
+#: The one signal that cannot be computed here. Named rather than inferred from
+#: "whichever weight has no matching function", because that inference would
+#: silently absorb a typo in a new signal's name as a deliberate omission.
+NOVELTY: Final = "novelty"
+
+
+def combine(signals: dict[str, float], *, novelty: float | None = None) -> float:
+    """The weighted sum, in `[0, 1]`, of everything known about an episode.
+
+    An absent novelty contributes **zero**, and its weight is not redistributed
+    across the other five. Redistributing would mean a claim's salience *falls*
+    when its embedding lands and novelty turns out low, which is the opposite of
+    what a reader expects from a number that is being filled in. Contributing
+    zero makes the later arrival monotone: salience can only rise, by at most the
+    novelty weight, and until then the score is honestly missing that much.
+
+    Raises on a signal the weights do not name, and on a weight no signal
+    supplies. Either is a rename that half-landed, and the failure mode without
+    this is a silently lower score that still looks like a score.
+    """
+    weights = ranking.weights(WEIGHTS_MODEL_ID)
+
+    supplied = dict(signals)
+    if novelty is not None:
+        supplied[NOVELTY] = novelty
+
+    unknown = sorted(set(supplied) - set(weights))
+    if unknown:
+        msg = f"{unknown} have no weight in {WEIGHTS_MODEL_ID}; a signal nobody weights contributes nothing silently"
+        raise ranking.UngovernedMagnitude(msg)
+
+    # Novelty is the only weight allowed to have no value yet.
+    missing = sorted(set(weights) - set(supplied) - {NOVELTY})
+    if missing:
+        msg = f"{WEIGHTS_MODEL_ID} weights {missing}, which nothing supplied; a dropped signal lowers every score"
+        raise ranking.UngovernedMagnitude(msg)
+
+    total = sum(weights[name] * value for name, value in supplied.items())
+    # Clamped rather than trusted. Weights summing to one over signals in [0,1]
+    # cannot exceed one, so a value outside the range means the artifact and this
+    # function disagree -- and the database CHECK would then reject the write
+    # with a constraint name instead of a reason.
+    return round(min(1.0, max(0.0, total)), 3)

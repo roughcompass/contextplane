@@ -15,6 +15,7 @@ from collections.abc import Callable
 
 import pytest
 
+from contextplane import ranking
 from contextplane.extraction import salience
 from contextplane.service.memory.session_events import SessionEvent
 
@@ -166,3 +167,67 @@ class TestSignalVector:
         idle = salience.signal_vector([_event("agent_action", "thinking about it", seq=1)])
         assert all(substantive[name] >= idle[name] for name in salience.SIGNAL_NAMES)
         assert sum(substantive.values()) > sum(idle.values())
+
+
+# --- the weighted sum ------------------------------------------------------------
+
+
+def test_the_weights_come_from_the_registry_and_sum_to_one() -> None:
+    """A weighted sum whose weights do not sum to one produces a number that is
+    not comparable between episodes, which is the only thing it is for."""
+    weights = ranking.weights(salience.WEIGHTS_MODEL_ID)
+    assert sum(weights.values()) == pytest.approx(1.0)
+    assert set(weights) == set(salience.SIGNAL_NAMES) | {salience.NOVELTY}
+
+
+def test_an_empty_window_is_not_salient() -> None:
+    assert salience.combine(salience.signal_vector([])) == 0.0
+
+
+def test_a_missing_novelty_costs_exactly_its_weight_and_no_more() -> None:
+    """Novelty arrives later than the rest, so its absence has to be a bounded,
+    stated cost rather than a redistribution nobody can see."""
+    everything = dict.fromkeys(salience.SIGNAL_NAMES, 1.0)
+    novelty_weight = ranking.weights(salience.WEIGHTS_MODEL_ID)[salience.NOVELTY]
+    assert salience.combine(everything) == pytest.approx(1.0 - novelty_weight)
+    assert salience.combine(everything, novelty=1.0) == pytest.approx(1.0)
+
+
+def test_novelty_landing_can_only_raise_a_score() -> None:
+    """The property that makes the two-phase fill legible. Redistributing the
+    novelty weight across the other five would let a score fall when a signal
+    arrives, which reads as a bug however it is documented."""
+    signals = {"state_change": 1.0, "outcome_decisive": 0.5, "human_engagement": 0.0}
+    signals |= {"entity_density": 0.25, "tool_diversity": 0.0}
+    before = salience.combine(signals)
+    for novelty in (0.0, 0.5, 1.0):
+        assert salience.combine(signals, novelty=novelty) >= before
+
+
+def test_a_signal_the_weights_do_not_name_is_refused() -> None:
+    """A signal nobody weights contributes nothing, silently, and the score still
+    looks like a score."""
+    signals = dict.fromkeys(salience.SIGNAL_NAMES, 0.5) | {"invented": 1.0}
+    with pytest.raises(ranking.UngovernedMagnitude, match="invented"):
+        salience.combine(signals)
+
+
+def test_a_weighted_signal_nobody_supplied_is_refused() -> None:
+    """The other direction: a dropped signal lowers every score by its weight,
+    which looks like the corpus got less interesting."""
+    with pytest.raises(ranking.UngovernedMagnitude, match="state_change"):
+        salience.combine({"outcome_decisive": 1.0})
+
+
+def test_novelty_alone_may_be_absent() -> None:
+    """The one exception, and it is the whole reason the check is not symmetric."""
+    assert salience.combine(dict.fromkeys(salience.SIGNAL_NAMES, 0.0)) == 0.0
+
+
+def test_the_result_stays_inside_the_range_the_column_accepts() -> None:
+    """Brute force, because the database CHECK would otherwise report this as a
+    constraint name rather than as a disagreement between two artifacts."""
+    for value in (0.0, 0.25, 0.5, 0.75, 1.0):
+        for novelty in (None, 0.0, 1.0):
+            result = salience.combine(dict.fromkeys(salience.SIGNAL_NAMES, value), novelty=novelty)
+            assert 0.0 <= result <= 1.0

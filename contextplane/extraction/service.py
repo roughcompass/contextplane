@@ -32,6 +32,7 @@ import uuid
 from prometheus_client import Counter, Histogram
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from contextplane.extraction import salience as salience_module
 from contextplane.extraction.containment import (
     CandidateRefused,
     assert_evidence_cited,
@@ -180,6 +181,16 @@ class ExtractionService:
         floor = confidence_floor if confidence_floor is not None else strategy.default_confidence_floor
         _CANDIDATES.labels(strategy=strategy.strategy_id).inc(len(result.claims))
 
+        # Salience is a property of the episode, not of any one claim, so it is
+        # computed once over the window the provider was given and carried
+        # identically onto every claim staged from it. Computing it per candidate
+        # would produce the same number N times at N times the cost, and would
+        # invite a future edit that made it differ per claim -- at which point
+        # two claims from one conversation would disagree about how much that
+        # conversation was worth keeping.
+        signals = salience_module.signal_vector(request.events)
+        episode_salience = salience_module.combine(signals)
+
         staged: list[StagedClaim] = []
         refusals: list[tuple[str, str]] = []
 
@@ -195,6 +206,8 @@ class ExtractionService:
                     boundary=request.boundary,
                     floor=floor,
                     namespace=namespace,
+                    salience=episode_salience,
+                    signals=signals,
                 )
             except CandidateRefused as refused:
                 # Containment already counted its own trigger; this counts it
@@ -244,6 +257,8 @@ class ExtractionService:
         boundary: str,
         floor: float,
         namespace: str | None = None,
+        salience: float,
+        signals: dict[str, float],
     ) -> StagedClaim:
         """Every check a candidate must pass, in the order it must pass them."""
         # 1. Citation. A candidate nobody can trace is indistinguishable from an
@@ -317,6 +332,9 @@ class ExtractionService:
             ),
             namespace=namespace,
             strategy_id=strategy.strategy_id if namespace is not None else None,
+            salience=salience,
+            salience_signals=signals,
+            salience_weights_id=salience_module.WEIGHTS_MODEL_ID,
         )
 
     async def _assert_no_pii(self, ctx: TenantContext, text: str, *, field: str, strategy: Strategy) -> None:
