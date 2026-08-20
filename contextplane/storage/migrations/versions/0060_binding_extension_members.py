@@ -32,8 +32,8 @@ from __future__ import annotations
 
 from alembic import op
 
-revision = "0059_binding_extension_members"
-down_revision: str | None = "0058_predicate_churn"
+revision = "0060_binding_extension_members"
+down_revision: str | None = "0059_predicate_churn"
 branch_labels: str | None = None
 depends_on: str | None = None
 

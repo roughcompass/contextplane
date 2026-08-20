@@ -40,8 +40,8 @@ from __future__ import annotations
 
 from alembic import op
 
-revision = "0057_claim_salience"
-down_revision: str | None = "0056_drop_superseded_corroboration_knobs"
+revision = "0058_claim_salience"
+down_revision: str | None = "0057_drop_superseded_corroboration_knobs"
 branch_labels: str | None = None
 depends_on: str | None = None
 

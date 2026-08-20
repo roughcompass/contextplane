@@ -31,8 +31,8 @@ from __future__ import annotations
 
 from alembic import op
 
-revision = "0056_drop_superseded_corroboration_knobs"
-down_revision: str | None = "0055_legal_hold_ceiling_absolute"
+revision = "0057_drop_superseded_corroboration_knobs"
+down_revision: str | None = "0056_arc_graph_promoted_source_evidence"
 branch_labels: str | None = None
 depends_on: str | None = None
 
