@@ -134,7 +134,17 @@ async def search(
     return SearchResponse(items=items, total=len(items), took_ms=took_ms)
 
 
-@router.get("/v1/capabilities", response_model=CapabilityListResponse, response_model_exclude_unset=True)
+# `capabilities`, not `retrieval`: this is the read half of `/v1/capabilities`,
+# whose write half is `capabilities`. `retrieval` groups by what an operation
+# does rather than by what it is about, which is why it was the tag that split
+# a path in the first place -- listing capabilities is a capability operation
+# that happens to read.
+@router.get(
+    "/v1/capabilities",
+    response_model=CapabilityListResponse,
+    response_model_exclude_unset=True,
+    tags=["capabilities"],
+)
 async def list_capabilities(
     request: Request,
     lifecycle: Annotated[str | None, Query()] = None,

@@ -51,7 +51,7 @@ from contextplane.exceptions import NotFoundError
 from contextplane.signals.reads import FeedbackReadService, ResumeFeedback
 from contextplane.types import TenantContext
 
-router = APIRouter(prefix="/v1", tags=["context receipts"])
+router = APIRouter(prefix="/v1", tags=["context: receipts"])
 
 # Reading a receipt is an ordinary consumer act; the tenant predicate in every
 # service query is what actually decides what comes back.

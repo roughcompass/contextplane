@@ -216,10 +216,10 @@ from contextplane.service.memory.promotion import PromotionService, Proposal
 from contextplane.types import TenantContext
 from contextplane.usage.results import stash_result_count
 
-router = APIRouter(tags=["memory curation"], prefix="/v1/memory")
+router = APIRouter(tags=["memory: curation"], prefix="/v1/memory")
 
 _mode, _sep = get_mode_settings()
-mutation_router = APIRouter(tags=["memory curation"], prefix="/v1/memory")
+mutation_router = APIRouter(tags=["memory: curation"], prefix="/v1/memory")
 _mut_mr = HttpMethodRouter(mutation_router, mode=_mode, separator=_sep)
 
 _DEFAULT_PAGE_SIZE = 100
@@ -1371,7 +1371,15 @@ def _to_assert_claim_response(claim: StagedClaim) -> AssertClaimResponse:
     )
 
 
-@router.post("/claims", response_model=AssertClaimResponse, status_code=status.HTTP_201_CREATED)
+# `memory`, not `memory: curation`: this is the write half of `/v1/memory/claims`,
+# whose read half is `memory`. Curation is what a human does to a claim that
+# already exists, and asserting one is not that.
+@router.post(
+    "/claims",
+    response_model=AssertClaimResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["memory"],
+)
 async def assert_claim(
     request: Request,
     body: AssertClaimRequest,

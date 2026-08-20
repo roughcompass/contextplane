@@ -16618,7 +16618,7 @@
         },
         "summary": "Get Autopromote Allowlist",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -16660,7 +16660,7 @@
         },
         "summary": "Allow Autopromote Predicate",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -16702,7 +16702,7 @@
         },
         "summary": "Revoke Autopromote Predicate",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -16728,7 +16728,7 @@
         },
         "summary": "List Memory Calibration",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -16770,7 +16770,7 @@
         },
         "summary": "Refit Memory Calibration",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -16792,7 +16792,7 @@
         },
         "summary": "Get Promotion Policy",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       },
       "put": {
@@ -16832,7 +16832,7 @@
         },
         "summary": "Put Promotion Policy",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -16858,7 +16858,7 @@
         },
         "summary": "List Memory Sources",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       },
       "post": {
@@ -16898,7 +16898,7 @@
         },
         "summary": "Declare Memory Source",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -16952,7 +16952,7 @@
         },
         "summary": "Patch Memory Source",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -16996,7 +16996,7 @@
         },
         "summary": "Reset Memory Source Breaker",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -21583,7 +21583,8 @@
         },
         "summary": "List Capabilities",
         "tags": [
-          "retrieval"
+          "retrieval",
+          "capabilities"
         ]
       },
       "post": {
@@ -23299,7 +23300,7 @@
         },
         "summary": "Get Checkpoint By Digest",
         "tags": [
-          "task memory"
+          "intent"
         ]
       }
     },
@@ -23650,7 +23651,7 @@
         },
         "summary": "Resume Context",
         "tags": [
-          "context receipts"
+          "context: receipts"
         ]
       }
     },
@@ -24575,7 +24576,7 @@
         },
         "summary": "Append Checkpoint",
         "tags": [
-          "task memory"
+          "intent"
         ]
       }
     },
@@ -24629,7 +24630,7 @@
         },
         "summary": "Get Checkpoint",
         "tags": [
-          "task memory"
+          "intent"
         ]
       }
     },
@@ -24673,7 +24674,7 @@
         },
         "summary": "List Participants",
         "tags": [
-          "task memory"
+          "intent"
         ]
       },
       "post": {
@@ -24725,7 +24726,7 @@
         },
         "summary": "Add Participant",
         "tags": [
-          "task memory"
+          "intent"
         ]
       }
     },
@@ -24771,7 +24772,7 @@
         },
         "summary": "Remove Participant",
         "tags": [
-          "task memory"
+          "intent"
         ]
       }
     },
@@ -24933,7 +24934,7 @@
         },
         "summary": "List Capability Requests",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       },
       "post": {
@@ -24973,7 +24974,7 @@
         },
         "summary": "Raise Capability Request",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25017,7 +25018,7 @@
         },
         "summary": "Get Capability Request",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       },
       "patch": {
@@ -25069,7 +25070,7 @@
         },
         "summary": "Transition Capability Request",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25113,7 +25114,7 @@
         },
         "summary": "Get Capability Request History",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25167,7 +25168,7 @@
         },
         "summary": "Link Capability Request To Promotion",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25401,7 +25402,8 @@
         },
         "summary": "Assert Claim",
         "tags": [
-          "memory curation"
+          "memory: curation",
+          "memory"
         ]
       }
     },
@@ -25472,7 +25474,7 @@
         },
         "summary": "Get Believed Claims",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25689,7 +25691,7 @@
         },
         "summary": "Get Claim History",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25743,7 +25745,7 @@
         },
         "summary": "Adjudicate Claim",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25787,7 +25789,7 @@
         },
         "summary": "Confirm Claim",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25841,7 +25843,7 @@
         },
         "summary": "Discard Claim",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25895,7 +25897,7 @@
         },
         "summary": "Link Claim Subject",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25945,7 +25947,7 @@
         },
         "summary": "List Contradiction Groups",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -26023,7 +26025,7 @@
         },
         "summary": "List Curation Cases",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       },
       "post": {
@@ -26063,7 +26065,7 @@
         },
         "summary": "Open Curation Case",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -26107,7 +26109,7 @@
         },
         "summary": "Get Curation Case",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -26161,7 +26163,7 @@
         },
         "summary": "Record Case Disposition",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -26215,7 +26217,7 @@
         },
         "summary": "Route Curation Case",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -26295,7 +26297,7 @@
         },
         "summary": "Get Curation Queue",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -26373,7 +26375,7 @@
         },
         "summary": "List Promotion Proposals",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -26417,7 +26419,7 @@
         },
         "summary": "Get Promotion Proposal",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       },
       "patch": {
@@ -26469,7 +26471,7 @@
         },
         "summary": "Review Promotion Proposal",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -26523,7 +26525,7 @@
         },
         "summary": "Reverse Promotion",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -28070,7 +28072,7 @@
         },
         "summary": "Receipts By Reference",
         "tags": [
-          "context receipts"
+          "context: receipts"
         ]
       }
     },
@@ -28114,7 +28116,7 @@
         },
         "summary": "Get Receipt",
         "tags": [
-          "context receipts"
+          "context: receipts"
         ]
       }
     },
@@ -28174,7 +28176,7 @@
         },
         "summary": "Get Receipt Exclusions",
         "tags": [
-          "context receipts"
+          "context: receipts"
         ]
       }
     },
@@ -28218,7 +28220,7 @@
         },
         "summary": "Get Receipt References",
         "tags": [
-          "context receipts"
+          "context: receipts"
         ]
       }
     },
