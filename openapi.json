@@ -201,7 +201,8 @@
         "description": "How a source's bytes entered the system.",
         "enum": [
           "connector_fetch",
-          "authorized_upload"
+          "authorized_upload",
+          "graph_promotion"
         ],
         "title": "AdmissionMethod",
         "type": "string"
@@ -7538,6 +7539,35 @@
           "resolver_version"
         ],
         "title": "GrantResponse",
+        "type": "object"
+      },
+      "GraphPromotionRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST /v1/arc/sources/graph-promotions`: admits a claim the\ncanonical graph already carries, vouched for by its promotion rather\nthan by a signature over bytes this deployment fetched.\n\nNo `claim`, `verifier_id`, or `proof`: every field those carry is read\nfrom the promotion itself. Accepting them from the caller would let a\nrequest assert an approving authority the graph does not record.",
+        "properties": {
+          "claim_id": {
+            "format": "uuid",
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "review_expires_at": {
+            "description": "When this citation must be revisited. A graph fact carries no deadline of its own, and every source evidence row has one.",
+            "format": "date-time",
+            "title": "Review Expires At",
+            "type": "string"
+          },
+          "source_system": {
+            "description": "The upstream system the promoted claim's evidence points into, e.g. `bitbucket.org/acme/adr`. Not derived: an evidence ref names a revision, not the system that issued it.",
+            "title": "Source System",
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim_id",
+          "source_system",
+          "review_expires_at"
+        ],
+        "title": "GraphPromotionRequest",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -15439,10 +15469,11 @@
         "type": "object"
       },
       "VerificationMethod": {
-        "description": "How an `ApprovalProof` is checked: a detached signature or a\ntrusted provider's attestation.",
+        "description": "How a source's approval is checked.\n\nTwo of these three name an `ApprovalProof` variant. `GRAPH_PROMOTION`\ndoes not, and deliberately has no variant in that union: the authority\nis a promotion journal row this service reads itself, so there is no\nproof for a caller to supply and no way for one to assert this method\non a request.",
         "enum": [
           "detached_signature",
-          "verifier_attestation"
+          "verifier_attestation",
+          "graph_promotion"
         ],
         "title": "VerificationMethod",
         "type": "string"
@@ -21308,6 +21339,66 @@
           }
         },
         "summary": "Admit Source Connector Fetch",
+        "tags": [
+          "arc"
+        ]
+      }
+    },
+    "/v1/arc/sources/graph-promotions": {
+      "post": {
+        "description": "Admit a claim the canonical graph already carries.\n\nThe caller names a promoted claim, the upstream system its evidence\npoints into, and a review deadline. It supplies no proof: the approving\nauthority is the promotion journal row, which this service reads and\nre-checks \u2014 including whether the promotion was since reversed, and\nwhether the promoting actor was someone other than the claim's author.",
+        "operationId": "admit_source_graph_promotion_v1_arc_sources_graph_promotions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphPromotionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceEvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admit Source Graph Promotion",
         "tags": [
           "arc"
         ]

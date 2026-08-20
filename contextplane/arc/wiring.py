@@ -74,6 +74,7 @@ from contextplane.arc.service.semantic_tests import SemanticTestService
 from contextplane.arc.service.shadow import ShadowService
 from contextplane.arc.service.signing import KeyRecord, ReceiptSigningProvider
 from contextplane.arc.service.source_admission import SourceAdmissionService
+from contextplane.arc.service.source_admission_graph import GraphPromotionAdmissionService
 from contextplane.arc.service.source_status import SourceStatusService
 from contextplane.arc.service.submission import ArtifactMaterialisationService
 from contextplane.arc.service.verifier_registry import VerifierRegistry
@@ -104,6 +105,9 @@ class ArcServices:
     arc_artifacts: ArtifactService
     arc_exceptions: ExceptionService
     arc_source_admission: SourceAdmissionService
+    # The third admission authority. Composes the service above rather than
+    # duplicating its transaction: one place writes an evidence row.
+    arc_graph_source_admission: GraphPromotionAdmissionService
     # Constructed right after admission, sharing its clock: every later
     # checkpoint (submission, approval, activation, selection, protected-
     # action authorization) reads a source's local status through this one
@@ -233,6 +237,9 @@ def build_arc_services(
     # needs no key material, only the session factory, the shared
     # authorization chokepoint, and the clock.
     arc_source_admission = SourceAdmissionService(session_factory, authorization=authorization, clock=clock)
+    arc_graph_source_admission = GraphPromotionAdmissionService(
+        session_factory, admission=arc_source_admission, authorization=authorization, clock=clock
+    )
     # The real operational-chain appender: signs and appends for real (see
     # its own module docstring for why it needs no operator-configured key
     # to do that), injected into every collaborator below that needs one.
@@ -411,6 +418,7 @@ def build_arc_services(
         arc_artifacts=arc_artifacts,
         arc_exceptions=arc_exceptions,
         arc_source_admission=arc_source_admission,
+        arc_graph_source_admission=arc_graph_source_admission,
         arc_source_status=arc_source_status,
         arc_proposals=arc_proposals,
         arc_provenance=arc_provenance,

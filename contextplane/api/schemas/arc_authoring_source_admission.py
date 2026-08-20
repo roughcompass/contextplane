@@ -42,6 +42,28 @@ class ConnectorFetchRequest(_ClosedModel):
     proof: ApprovalProof
 
 
+class GraphPromotionRequest(_ClosedModel):
+    """Body for `POST /v1/arc/sources/graph-promotions`: admits a claim the
+    canonical graph already carries, vouched for by its promotion rather
+    than by a signature over bytes this deployment fetched.
+
+    No `claim`, `verifier_id`, or `proof`: every field those carry is read
+    from the promotion itself. Accepting them from the caller would let a
+    request assert an approving authority the graph does not record.
+    """
+
+    claim_id: uuid.UUID
+    source_system: str = Field(
+        description="The upstream system the promoted claim's evidence points into, "
+        "e.g. `bitbucket.org/acme/adr`. Not derived: an evidence ref names a "
+        "revision, not the system that issued it."
+    )
+    review_expires_at: datetime.datetime = Field(
+        description="When this citation must be revisited. A graph fact carries no "
+        "deadline of its own, and every source evidence row has one."
+    )
+
+
 class SourceConnectorRegistration(_ScopeColumnsMixin, _ClosedModel):
     """Body for registering a configured source connector: the closed set
     of schemes, hosts, media types, and verifiers it may use."""
@@ -103,6 +125,7 @@ class SourceUploadPolicyResponse(SourceUploadPolicyRegistration):
 
 __all__ = [
     "ConnectorFetchRequest",
+    "GraphPromotionRequest",
     "SourceConnectorRegistration",
     "SourceConnectorResponse",
     "SourceEvidenceResponse",
