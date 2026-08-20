@@ -985,12 +985,41 @@ So:
   `errors[].code` branching, and a caller-owned idempotency key per create.
   Colocated tests cover create and permission-denied. No optimistic concurrency,
   because there is nothing to be optimistic against.
-- **E19-T1b** (contextplane): `ETag` on the relationship detail read and
-  `If-Match` on its update, matching what `_entity_crud` already does for
-  entities. An `openapi.json` hotspot.
+- **E19-T1b** (contextplane) — **split into three, all done**; see below.
 - **E19-T1c** (contextplane-ui): the `GET` detail adapter, the client's
   `ETag`-reading method, the authoring UI, and the `412` handling — all once T1b
   makes an `ETag` and a `412` possible. Blocked by T1a and T1b.
+
+**T1b split again, because grounding it found two defects underneath it.** The
+task read "add an `ETag` to the detail read and an `If-Match` to the update".
+Neither was buildable as stated:
+
+- **T1b-i — the relationship validator (done).** The surface validated its
+  `subject_type` through `EntityValidator`, which reads only the `entity` family
+  of the canonical document. A relationship type is declared in the
+  `relationship` family, so it was never found: every relationship write, on all
+  three intent routes, returned `unknown_entity_type` against a type the tenant's
+  profile did declare, with `valid: false` under a mandatory binding for a write
+  the service had accepted. Nothing branched on it, which is why it survived —
+  and why T1a's adapter would have surfaced the artifact to an operator as though
+  it were a finding.
+- **T1b-ii — an update targets its path id (done).** `update_relationship` used
+  its path id only to check the row existed, then asserted whatever the body
+  described. A `PATCH /v1/relationships/{X}` with different endpoints returned
+  `200` with a *different* `relationship_id`, created a second unrelated edge,
+  and left X untouched. The endpoint summarised as "supersede a relationship"
+  superseded nothing, on every request, and no test covered it. An `If-Match` on
+  a write that lands on a different row than the `ETag` describes is concurrency
+  control in appearance only, so this had to land first.
+- **T1b-iii — the `ETag` and `If-Match` themselves (done).** Advertised in
+  `openapi.json` rather than merely emitted; the validator includes
+  `effective_to` because a supersession does not otherwise touch the row it ends.
+
+The pattern from the previous wave repeated: **the decomposition described the
+service the plan believed existed.** Three tasks last wave, two more here. What
+distinguishes these two is that both were reachable by reading the handler —
+no test asserted the PATCH's effect, and no test asserted `validation.valid` on
+a relationship write, so the tree agreed with the plan by not looking.
 
 **The client's `ETag` method moved from T1a to T1c during T1a.** It was written
 first: `requestWithEtag` on `ContextplaneClient`, both methods sharing one
@@ -1016,7 +1045,7 @@ Acceptance:
 
 ### E19-T2 — Catalog covers every entity type, in one vocabulary
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: the Catalog page lists concepts and operations beside capabilities,
 filterable by type, with `POST /v1/concepts` and `POST /v1/operations` wired for
@@ -1025,6 +1054,26 @@ Naming follows the epic: Catalog the section, entity the thing, type the
 discriminator, and the page copy that presents a capability as the only kind of
 record is corrected in the same change. No new nav destination; this is the
 existing page learning the rest of its domain.
+
+**The premise was half wrong, in the direction that made the task smaller.**
+`GET /v1/capabilities` has never been capability-only: `entity_type` is a
+filter, and with the filter absent `list_capabilities` returns every type the
+tenant holds. The endpoint is named for its first caller, not for what it
+lists. So the page was *already* receiving concepts and operations and
+presenting them under a heading that said "Capabilities", in a column headed
+"Capability", with a count labelled "Capabilities on page". Nothing was missing;
+the page was mislabelling rows it had already fetched.
+
+Shipped accordingly: a service-side `?type=` filter, the epic's vocabulary
+throughout, and one `createCatalogEntity` routing by type rather than three
+near-identical adapters — with `parent_capability_id` in a discriminated union
+member, since only a concept and an operation have a parent to send.
+
+The filter offers the three types with dedicated create routes.
+`/v1/admin/entity-types` would enumerate more, but it lists types holding a
+registered *schema* rather than types that exist, and it is an admin route a
+catalog browser may not be able to call. A fourth type still lists under "All
+types" and is named in the Type column; only creation is limited.
 
 Acceptance:
     pnpm --filter admin-dashboard test -- -t "catalog"
