@@ -936,7 +936,7 @@ Acceptance:
 
 ### E18-T5 — UI contract pin bump for E18
 
-**Kind:** task · **Status:** pending · **Blocked by:** E18-T2, E18-T3, E18-T4 · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E18-T2, E18-T3, E18-T4 · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
 
 Goal: one pin bump carrying all three contract changes, per the procedure in
 `contracts/README.md`. It also absorbs the drift already sitting between the
@@ -1081,7 +1081,7 @@ Acceptance:
 
 ### E19-T3 — A graph view on /relationships, beside the table
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: a node-link rendering of the traversal `/relationships` already runs,
 URL-addressable as a view parameter so a copied link reconstructs it, toggling
@@ -1101,13 +1101,24 @@ the task records the measured route bundle size in its PR body. Building the
 budget gate is real work and belongs to its own issue, not smuggled in here as
 an acceptance line that would have to build the gate to pass.
 
+**Shipped with no rendering library, which resolved the tension the task
+flagged rather than arbitrating it.** Every clause of the standard's graph
+requirement — keyboard-reachable nodes, selection opening the same accessible
+detail a row opens, no drag or spatial memory — comes free from focusable
+elements in the accessibility tree, and no canvas library provides any of them
+without a parallel keyboard layer built beside it. So the layout is arithmetic
+and the rendering is SVG with real buttons. The route bundle went 25.10 kB to
+35.36 kB raw (7.53 to 10.44 kB gzipped), all first-party, and with no dependency
+added there is nothing for a bundle budget to arbitrate. The budget gate is
+still absent and still its own issue.
+
 Acceptance:
     pnpm --filter admin-dashboard test -- -t "graph"
     pnpm lint && pnpm type-check && pnpm test && pnpm build
 
 ### E19-T4 — Entity resolution in global search
 
-**Kind:** task · **Status:** pending · **Blocked by:** E18-T5 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E18-T5 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: `GET /v1/entities:resolve` behind the shell's global search, so a handle
 resolves to one entity and an ambiguous handle is presented as the refusal the
@@ -1116,6 +1127,25 @@ offered as choices and never a silently picked first match, which is the
 failure the endpoint was designed to refuse. Blocked on the pin bump because
 the sibling lookup path moves in E18-T4, and building against the pre-rename
 client would mean writing this adapter twice.
+
+**Two premises failed, and the second was a defect.**
+
+There is no global search to go behind. `⌘K` focuses whatever filter the current
+page has, and a page filter narrows rows already fetched — a different act from
+asking the service which entity a name refers to. So the task added the surface:
+a `search` slot on `AppShell`/`AppHeader` and a resolver in the header. `⌘K` was
+left alone; it has coverage and does something the new field does not, and
+repurposing it would trade working behaviour for a convention.
+
+And the refusal could not offer the qualifying types, because the service never
+sent them. `AmbiguousIdentity` carries its candidates — "so the caller can
+requalify without a second query", per its own docstring — and the HTTP handler
+dropped them, leaving a client that must branch on `code` and never on `message`
+with nothing to present but "that was ambiguous". Fixed in contextplane#31, and
+tested at the handler rather than through the API: `uq_entities_tenant_name`
+still forbids two same-named entities in one tenant, deliberately, until the
+0051 expand contracts. The UI handles the no-candidates case anyway, because
+every deployment is that case until #31 ships.
 
 Acceptance:
     pnpm --filter admin-dashboard test -- -t "resolve"
