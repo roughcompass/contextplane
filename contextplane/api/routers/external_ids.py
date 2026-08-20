@@ -281,7 +281,7 @@ _entities_mr = HttpMethodRouter(_entities_base, mode=_mode, separator=_sep)
 
 
 @_entities_base.get(
-    "/v1/entities",
+    "/v1/entities:lookup",
     response_model=EntityRefResponse,
     summary="Lookup entity by external system slug and external ID",
 )
@@ -506,6 +506,59 @@ _entities_mr.add_mutation_route(
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
 )
+
+# --- deprecated alias ------------------------------------------------------
+#
+# `GET /v1/entities` was this operation, sharing a collection path with `POST
+# /v1/entities`, which asserts an entity through the generic profile-governed
+# surface. Two unrelated operations on one path is the item in E18 that misleads
+# an integrator rather than merely annoying them: a GET on a collection that
+# cannot list the collection reads as a bug in the client.
+#
+# Kept working for the window ADR 0009 fixes -- one minor release and at least
+# ninety days -- marked deprecated in the contract with its sunset and its
+# successor, so a consumer generating from the spec learns all three facts
+# without reading anything else. It delegates to the same handler: the ADR
+# forbids a behavioural difference, since the alias would otherwise be a second
+# implementation nobody is looking at.
+#
+# `GET /v1/entities` is deliberately left **absent** afterwards rather than
+# backfilled with a generic entity list. Inventing a listing nobody asked for is
+# new scope inside a coherence epic, and `GET /v1/capabilities` already lists the
+# one type anyone lists today.
+_LOOKUP_SUNSET_ON = "2026-11-20"
+
+
+@_entities_base.get(
+    "/v1/entities",
+    response_model=EntityRefResponse,
+    summary="Deprecated: use GET /v1/entities:lookup",
+    deprecated=True,
+    openapi_extra={
+        "x-sunset-on": _LOOKUP_SUNSET_ON,
+        "x-successor": "/v1/entities:lookup",
+    },
+)
+async def lookup_entity_by_external_id_deprecated(
+    request: Request,
+    external_system: Annotated[
+        str,
+        Query(description="External system slug (registered via /v1/admin/external-systems)"),
+    ],
+    external_id: Annotated[
+        str,
+        Query(description="The raw external ID string as it appears in the upstream system"),
+    ],
+    ctx: TenantContext = Depends(get_tenant_context),
+) -> EntityRefResponse:
+    """The pre-rename path. Delegates; retires on the date in the contract."""
+    return await lookup_entity_by_external_id(
+        request,
+        external_system=external_system,
+        external_id=external_id,
+        ctx=ctx,
+    )
+
 
 # Expose for main.py.
 entity_external_ids_router = _entities_base

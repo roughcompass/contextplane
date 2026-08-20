@@ -23656,8 +23656,9 @@
     },
     "/v1/entities": {
       "get": {
-        "description": "Return the entity mapped to ``(external_system, external_id)`` for the tenant.\n\nReturns ``404 Not Found`` when no mapping exists.  The ``external_system``\nand ``external_id`` query parameters are both required.",
-        "operationId": "lookup_entity_by_external_id_v1_entities_get",
+        "deprecated": true,
+        "description": "The pre-rename path. Delegates; retires on the date in the contract.",
+        "operationId": "lookup_entity_by_external_id_deprecated_v1_entities_get",
         "parameters": [
           {
             "description": "External system slug (registered via /v1/admin/external-systems)",
@@ -23704,10 +23705,12 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Lookup entity by external system slug and external ID",
+        "summary": "Deprecated: use GET /v1/entities:lookup",
         "tags": [
           "external-ids"
-        ]
+        ],
+        "x-successor": "/v1/entities:lookup",
+        "x-sunset-on": "2026-11-20"
       },
       "post": {
         "description": "Route one generic entity write by its stated intent.",
@@ -24128,6 +24131,62 @@
         "summary": "Report whether this entity's required relationships are present.",
         "tags": [
           "entities"
+        ]
+      }
+    },
+    "/v1/entities:lookup": {
+      "get": {
+        "description": "Return the entity mapped to ``(external_system, external_id)`` for the tenant.\n\nReturns ``404 Not Found`` when no mapping exists.  The ``external_system``\nand ``external_id`` query parameters are both required.",
+        "operationId": "lookup_entity_by_external_id_v1_entities_lookup_get",
+        "parameters": [
+          {
+            "description": "External system slug (registered via /v1/admin/external-systems)",
+            "in": "query",
+            "name": "external_system",
+            "required": true,
+            "schema": {
+              "description": "External system slug (registered via /v1/admin/external-systems)",
+              "title": "External System",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The raw external ID string as it appears in the upstream system",
+            "in": "query",
+            "name": "external_id",
+            "required": true,
+            "schema": {
+              "description": "The raw external ID string as it appears in the upstream system",
+              "title": "External Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityRefResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lookup entity by external system slug and external ID",
+        "tags": [
+          "external-ids"
         ]
       }
     },
