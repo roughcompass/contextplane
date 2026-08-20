@@ -455,3 +455,77 @@ async def test_reading_a_relationship_that_does_not_exist_is_a_404(
             )
 
     assert response.status_code == 404
+
+
+# --- the profile the write is checked against is the relationship family ------------
+
+
+@pytest.mark.asyncio
+async def test_a_declared_relationship_type_validates_clean(harness: EntitlementAuthHarness, pg_container: str) -> None:
+    """The subject was checked against the family that declares it.
+
+    Before this, the surface validated `subject_type` through `EntityValidator`,
+    which reads only the `entity` family. Every relationship write — against a
+    type the tenant's own profile declared — came back `valid: false` carrying
+    `unknown_entity_type`. Nothing branched on it, so it went unnoticed; it was
+    still a wrong answer handed to every caller, and the contract says
+    `violations` may be non-empty on a *successful* write, so a client had no way
+    to tell this artifact from a real finding.
+    """
+    persona = await _persona(harness, pg_container)
+    ids = await _seed(pg_container, persona.slug, _definition())
+    async with AsyncClient(transport=ASGITransport(app=harness.app), base_url="http://test") as client:
+        harness.configure_fetcher_for(persona)
+        with patch_validator_for_actor(persona):
+            response = await _post(client, persona, _body("authorized_approval", ids, approval_reference="review-1"))
+
+    assert response.status_code == 201, response.text
+    validation = response.json()["validation"]
+    assert validation["violations"] == []
+    assert validation["valid"] is True
+    assert validation["mode"] == "mandatory"
+
+
+@pytest.mark.asyncio
+async def test_an_undeclared_subject_type_is_named_in_the_relationship_vocabulary(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    """A caller sent looking through its entity declarations would never find the edge.
+
+    The observation route is used because it stages a claim rather than reaching
+    the write service, so the violation reported is the validator's own rather
+    than the service's refusal of the same condition.
+    """
+    persona = await _persona(harness, pg_container)
+    ids = await _seed(pg_container, persona.slug, _definition())
+    async with AsyncClient(transport=ASGITransport(app=harness.app), base_url="http://test") as client:
+        harness.configure_fetcher_for(persona)
+        with patch_validator_for_actor(persona):
+            response = await _post(client, persona, _body("observation", ids, subject_type=f"{_NS}:invented"))
+
+    assert response.status_code == 201, response.text
+    validation = response.json()["validation"]
+    assert any("unknown_relationship_type" in message for message in validation["violations"]), validation
+    assert not any("unknown_entity_type" in message for message in validation["violations"]), validation
+
+
+@pytest.mark.asyncio
+async def test_the_staged_routes_are_where_property_rules_get_checked_at_all(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    """`RelationshipWriteService` checks properties only on the canonical route.
+
+    An observation stages a claim and never reaches it, so the validator is the
+    only thing that looks at what was written. An undeclared property has to be
+    reported here or it is reported nowhere.
+    """
+    persona = await _persona(harness, pg_container)
+    ids = await _seed(pg_container, persona.slug, _definition())
+    async with AsyncClient(transport=ASGITransport(app=harness.app), base_url="http://test") as client:
+        harness.configure_fetcher_for(persona)
+        with patch_validator_for_actor(persona):
+            response = await _post(client, persona, _body("observation", ids, properties={"invented": "x"}))
+
+    assert response.status_code == 201, response.text
+    validation = response.json()["validation"]
+    assert any("undeclared_property" in message for message in validation["violations"]), validation
