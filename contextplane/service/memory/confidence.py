@@ -24,7 +24,6 @@ every row, which is the only real definition of auditable here.
 from __future__ import annotations
 
 import dataclasses
-import math
 from collections import defaultdict
 from collections.abc import Sequence
 
@@ -35,6 +34,7 @@ from contextplane.service.governance.authority import (
     AUTHORITY_OWNER_EXTRACTION,
     AUTHORITY_OWNER_HUMAN,
     AUTHORITY_OWNER_INFERENCE,
+    AUTHORITY_UNATTRIBUTED,
     SOURCE_AUTHORITY_RANK,
 )
 
@@ -42,7 +42,12 @@ from contextplane.service.governance.authority import (
 # changes, because without it a scoring change makes every historical score
 # unreproducible and turns a calibration set into a mixture of numbers from
 # different functions.
-SCORER_VERSION = "confidence-v1"
+#
+# v2 replaced the saturating corroboration curve with a noisy OR and put a
+# ceiling on what corroboration alone can reach. Scores written under v1 do not
+# re-derive under v2 and are not meant to: `recompute` refuses them rather than
+# returning a number the row was never scored with.
+SCORER_VERSION = "confidence-v2"
 
 # --- the published scale ----------------------------------------------------
 #
@@ -154,33 +159,56 @@ CONTRADICTION_PENALTY = 0.25
 
 # --- corroboration ----------------------------------------------------------
 #
-# How much one independent source agreeing is worth, by the authority of that
-# source. Strictly decreasing across the authority ladder, and that is a constraint
-# rather than an observation: the ladder is the only ordering over these values,
-# and a second table ordered differently would eventually have a rule built on the
-# wrong one. Monotonicity is asserted by test.
+# Independent sources combine as a noisy OR. Each source is a channel that could
+# establish the claim on its own; they are wrong together only if every one of
+# them is wrong, so the agreement they produce is `1 - Π(1 - pᵢ)`. That form is
+# not a curve fitted to anything -- it is what independence means, and it is the
+# reason the arithmetic can be explained to somebody who has to sign off on the
+# number rather than only described.
+#
+# What it replaces was `base + (1 - base) · headroom · (1 - e^(-mass/scale))`:
+# weights summed into a "mass" and pushed through an exponential with two free
+# knobs. The mass had no unit, the two knobs were chosen rather than derived, and
+# nothing about the shape followed from what a corroborating source is.
 #
 # This raises confidence and nothing else. It never enters the authority column,
 # never affects which claim supersedes which, and never reorders the ladder.
-CORROBORATION_WEIGHT_BY_RANK: dict[int, float] = {
-    0: 1.00,  # owner, first-person human
-    1: 0.85,  # owner, reproducible parse
-    2: 0.60,  # owner, model inference
-    3: 0.50,  # observer, first-person human
-    4: 0.40,  # observer, reproducible parse
-    5: 0.25,  # observer, model inference
-    6: 0.00,  # subject unresolved -- not scored at all
-}
 
-# The share of the distance to certainty that corroboration alone may close.
-# Applied to what remains above the claim's own base, so a claim that already
-# scores highly gains less: there is less left to learn.
-CORROBORATION_HEADROOM_FRACTION = 0.60
 
-# Sets how fast the curve flattens. At 2.0 the second independent source is worth
-# roughly two thirds of the first and the fifth roughly a tenth, so volume cannot
-# substitute for quality.
-CORROBORATION_SCALE = 2.0
+def _probabilities_from(base_by_authority: dict[str, float]) -> dict[int, float]:
+    """Per-source probabilities, read off the base table by authority rank.
+
+    Deliberately not a second table. A source's probability of being right about
+    a claim it asserts is exactly what the base table states; a separate table of
+    corroboration weights would be a second ordering over one ladder, and the two
+    would eventually disagree about which tier is stronger. Deriving it means the
+    strictly-decreasing constraint is inherited rather than separately asserted.
+
+    A tier this policy does not score contributes nothing: an unresolved subject
+    has nothing to corroborate anything about.
+    """
+    probabilities = {SOURCE_AUTHORITY_RANK[tier]: value for tier, value in base_by_authority.items()}
+    probabilities[SOURCE_AUTHORITY_RANK[AUTHORITY_UNATTRIBUTED]] = 0.0
+    return probabilities
+
+
+#: The shipped per-source probabilities. A tenant that moves its base table moves
+#: these with it -- see `ConfidencePolicy.probability_by_rank`.
+CORROBORATION_PROBABILITY_BY_RANK: dict[int, float] = _probabilities_from(BASE_CONFIDENCE_BY_AUTHORITY)
+
+# Where corroboration alone stops: one rounding step below the confirmed bucket.
+# That bucket's published meaning is that a human with standing looked at this
+# particular claim, and no number of machines agreeing is that event.
+#
+# Derived from the published boundary rather than chosen, so moving the boundary
+# moves the ceiling with it and the two cannot drift. It is not a tenant knob for
+# the same reason the buckets are not: a consumer filtering at 0.85 is asserting
+# something that has to mean the same thing everywhere.
+#
+# This is a change in behaviour and not a restatement. The superseded curve let an
+# owner-human claim with two independent corroborators reach 0.876 and read as
+# confirmed, which contradicted the semantics this same module publishes.
+CORROBORATION_CEILING = round(dict(BUCKET_LOWER_BOUNDS)[BUCKET_CONFIRMED] - 0.001, 3)
 
 # One person observing the same thing in many sessions is still one person.
 # Separate sessions are separate occasions and do corroborate, but a single actor's
@@ -208,8 +236,6 @@ class ConfidencePolicy:
     """
 
     base_by_authority: dict[str, float] = dataclasses.field(default_factory=lambda: dict(BASE_CONFIDENCE_BY_AUTHORITY))
-    corroboration_headroom: float = CORROBORATION_HEADROOM_FRACTION
-    corroboration_scale: float = CORROBORATION_SCALE
     contradiction_penalty: float = CONTRADICTION_PENALTY
     confirmed_confidence: float = CONFIRMED_CONFIDENCE
     confirmation_hold_days: int = 180
@@ -243,6 +269,17 @@ class ConfidencePolicy:
             msg = "a policy must assign a base confidence to at least one authority tier"
             raise ValueError(msg)
 
+    @property
+    def probability_by_rank(self) -> dict[int, float]:
+        """What one corroborating source of each rank is worth under this policy.
+
+        Read off this policy's own base table, so a tenant that moves its bases
+        moves corroboration with them. A tenant whose bases stayed shipped-default
+        while corroboration did not would be scoring agreement on one ladder and
+        authorship on another.
+        """
+        return _probabilities_from(self.base_by_authority)
+
 
 @dataclasses.dataclass(frozen=True)
 class EvidenceClass:
@@ -271,7 +308,11 @@ class ConfidenceInputs:
     authority: str
     base: float
     corroborating_classes: int
-    corroborating_mass: float
+    #: The noisy-OR combination of the corroborating sources: the probability that
+    #: at least one of them would have got this right on its own. Named for what it
+    #: is, because the superseded field held a unitless "mass" that read like a
+    #: probability at a glance and was not one.
+    corroboration_probability: float
     is_contested: bool
     is_confirmed: bool
     provider_confidence: float | None
@@ -284,7 +325,7 @@ class ConfidenceInputs:
             "authority": self.authority,
             "base": self.base,
             "corroborating_classes": self.corroborating_classes,
-            "corroborating_mass": round(self.corroborating_mass, 6),
+            "corroboration_probability": round(self.corroboration_probability, 6),
             "is_contested": self.is_contested,
             "is_confirmed": self.is_confirmed,
             "provider_confidence": self.provider_confidence,
@@ -305,18 +346,25 @@ class ScoredConfidence:
     inputs: ConfidenceInputs
 
 
-def corroborating_mass(
+def corroboration_probability(
     classes: Sequence[EvidenceClass],
     *,
+    probability_by_rank: dict[int, float] | None = None,
     max_per_group: int = MAX_CLASSES_PER_ACTOR,
 ) -> tuple[float, int]:
-    """Weighted mass of independent agreement, and how many classes it came from.
+    """Combined agreement `1 - Π(1 - pᵢ)`, and how many classes it came from.
 
     Deduplicates by independence key first: several pieces of evidence tracing to
     one conversation, or several runs of one connector over one source, are one
     source however many rows they occupy. Then caps each group, so a single actor
     across many sessions cannot substitute repetition for independence.
+
+    Both of those happen before the product, which is the whole point of the noisy
+    OR: it is only sound over sources that are actually independent, so anything
+    that is not independent has to be collapsed first rather than multiplied in.
     """
+    probabilities = CORROBORATION_PROBABILITY_BY_RANK if probability_by_rank is None else probability_by_rank
+
     strongest_by_key: dict[str, tuple[str, int]] = {}
     for item in classes:
         current = strongest_by_key.get(item.key)
@@ -327,15 +375,31 @@ def corroborating_mass(
     for group, rank in strongest_by_key.values():
         per_group[group].append(rank)
 
-    mass = 0.0
+    all_wrong = 1.0
     counted = 0
     for ranks in per_group.values():
         # Strongest first, so a cap discards the weakest evidence rather than
         # whichever happened to be stored last.
         for rank in sorted(ranks)[:max_per_group]:
-            mass += CORROBORATION_WEIGHT_BY_RANK.get(rank, 0.0)
+            # A rank this policy does not score contributes a factor of one: it
+            # leaves the product where it was rather than lowering it.
+            all_wrong *= 1.0 - probabilities.get(rank, 0.0)
             counted += 1
-    return mass, counted
+    return 1.0 - all_wrong, counted
+
+
+def _corroborated(base: float, agreement: float) -> float:
+    """Move a base score toward the corroboration ceiling by *agreement*.
+
+    The ceiling is a fixed point of the published scale rather than a fraction of
+    the remaining distance to certainty, so the answer to "how confident can
+    agreement alone make this" is one number for every tier instead of six.
+
+    A base already at or above the ceiling gains nothing. That only happens under
+    a tenant policy that put a tier there deliberately, and pulling such a claim
+    *down* on the strength of somebody agreeing with it would be absurd.
+    """
+    return base + max(0.0, CORROBORATION_CEILING - base) * agreement
 
 
 def score(
@@ -372,7 +436,7 @@ def score(
         # number here would assert a determination nobody made.
         return None
 
-    mass, class_count = corroborating_mass(corroborators)
+    agreement, class_count = corroboration_probability(corroborators, probability_by_rank=active.probability_by_rank)
     provider_applied = False
 
     if provider_mapping is not None and provider_confidence is not None:
@@ -381,7 +445,7 @@ def score(
         # authoritative-looking signal.
         provider_applied = True
 
-    value = base + (1.0 - base) * active.corroboration_headroom * (1.0 - math.exp(-mass / active.corroboration_scale))
+    value = _corroborated(base, agreement)
 
     if is_confirmed:
         # A human who reviewed this claim replaces the machine estimate rather
@@ -404,7 +468,7 @@ def score(
             authority=authority,
             base=base,
             corroborating_classes=class_count,
-            corroborating_mass=mass,
+            corroboration_probability=agreement,
             is_contested=is_contested,
             is_confirmed=is_confirmed,
             provider_confidence=provider_confidence,
@@ -418,11 +482,20 @@ def recompute(inputs: ConfidenceInputs, *, policy: ConfidencePolicy | None = Non
 
     The definition of auditable that matters: a reader can take the record beside
     a claim and arrive at the same number. Shipped as a test over every row.
+
+    Inputs recorded by a different scorer are refused rather than re-derived. The
+    number this function would return for them is one their claim was never
+    scored with, and handing it back would make the audit property look satisfied
+    on exactly the rows where it is not.
     """
     active = policy or ConfidencePolicy()
-    value = inputs.base + (1.0 - inputs.base) * active.corroboration_headroom * (
-        1.0 - math.exp(-inputs.corroborating_mass / active.corroboration_scale)
-    )
+    if inputs.scorer_version != SCORER_VERSION:
+        msg = (
+            f"inputs were recorded by scorer {inputs.scorer_version!r} and this is "
+            f"{SCORER_VERSION!r}; re-derive against the scorer that wrote them or rescore the claim"
+        )
+        raise ValueError(msg)
+    value = _corroborated(inputs.base, inputs.corroboration_probability)
     if inputs.is_confirmed:
         value = active.confirmed_confidence
     if inputs.is_contested:
@@ -441,9 +514,8 @@ __all__ = [
     "BUCKET_WEAK",
     "CONFIRMED_CONFIDENCE",
     "CONTRADICTION_PENALTY",
-    "CORROBORATION_HEADROOM_FRACTION",
-    "CORROBORATION_SCALE",
-    "CORROBORATION_WEIGHT_BY_RANK",
+    "CORROBORATION_CEILING",
+    "CORROBORATION_PROBABILITY_BY_RANK",
     "DECAY_FLOOR",
     "MAX_CLASSES_PER_ACTOR",
     "MAX_CONFIDENCE",
@@ -453,7 +525,7 @@ __all__ = [
     "EvidenceClass",
     "ScoredConfidence",
     "bucket_for",
-    "corroborating_mass",
+    "corroboration_probability",
     "recompute",
     "score",
 ]

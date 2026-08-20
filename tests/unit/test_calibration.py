@@ -23,10 +23,12 @@ from contextplane.service.memory.calibration import (
     STATUS_FAILED,
     UNCALIBRATED,
     Adjudication,
+    _scorer_prefix,
     calibration_error,
     fit,
     mapping_version,
 )
+from contextplane.service.memory.confidence import SCORER_VERSION
 
 
 def _well_calibrated(n: int = 400) -> list[Adjudication]:
@@ -95,6 +97,27 @@ def test_the_version_names_everything_that_would_invalidate_the_fit() -> None:
         provider_id="anthropic", model_id="haiku-4-5", strategy_id="pref", fit_date="d", n=250
     )
     assert len({first, swapped_model, swapped_strategy}) == 3
+
+
+def test_the_confidence_scorer_is_part_of_the_key() -> None:
+    """A fit is built from outcomes judged against the numbers a reviewer saw, and
+    those came out of the scorer. Change it and the fit measures something that is
+    no longer running — so it must match no row rather than keep loading."""
+    fixed = {"provider_id": "anthropic", "model_id": "haiku-4-5", "strategy_id": "obs", "fit_date": "d", "n": 250}
+    current = mapping_version(**fixed)  # type: ignore[arg-type]
+    other_scorer = mapping_version(**fixed, scorer_version="confidence-v1")  # type: ignore[arg-type]
+    assert current != other_scorer
+    assert SCORER_VERSION in current
+
+
+def test_a_fit_predating_the_scorer_key_matches_no_current_prefix() -> None:
+    """The pre-existing rows. They keep their version string and stop being
+    selected, which is the intended answer for them rather than a migration."""
+    legacy = "anthropic:haiku-4-5:obs:2026-01-04:250"
+    prefix = _scorer_prefix(provider_id="anthropic", model_id="haiku-4-5", strategy_id="obs")
+    assert not legacy.startswith(prefix.removesuffix("%"))
+    current = mapping_version(provider_id="anthropic", model_id="haiku-4-5", strategy_id="obs", fit_date="d", n=250)
+    assert current.startswith(prefix.removesuffix("%"))
 
 
 def test_the_version_records_how_much_evidence_stood_behind_it() -> None:
