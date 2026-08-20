@@ -30,7 +30,6 @@ import sys
 import tempfile
 import time
 import tomllib
-from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -44,6 +43,7 @@ from integration_control import (
     present_control,
     reject_inherited_control,
 )
+from integration_failure_report import report_outcomes, worker_output
 from integration_reporter import EVENTS_PATH_VARIABLE, WORKER_ID_VARIABLE
 from integration_schedule_inputs import frozen_history, workers_supported
 from integration_scheduler import (
@@ -771,9 +771,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         watchdog.leave(Phase.EXECUTION)
         watchdog.enter(Phase.TEARDOWN)
-        for result in results:
-            if result.stderr.strip():
-                print(result.stderr, file=sys.stderr, end="")
+        # Worker stderr, plus the failure section of stdout -- see
+        # `integration_failure_report` for why the second half is not optional.
+        for line in worker_output((r.stderr, r.stdout) for r in results):
+            print(line, file=sys.stderr, end="")
         watchdog.leave(Phase.TEARDOWN)
     except DeadlineExceeded as exceeded:
         # Closing an interval is where an overrun is detected, so these calls
@@ -782,17 +783,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"integration runner: run invalid: {exceeded}", file=sys.stderr)
         return 1
 
-    # A skip is a disclosed outcome, not a lost one. Modules opt out on an
-    # absent credential or an unreachable stack, so counting that as
-    # unsuccessful leaves this target unable to exit zero anywhere, CI
-    # included -- the zero-test pass with its sign flipped. What catches a run
-    # going shorter than its suite in silence is untouched: an empty collection
-    # is fatal and an undisclosed node is `MISSING` and voids the run by name.
-    disclosed_without_failing: Final = (NodeOutcome.PASSED, NodeOutcome.SKIPPED)
-    unsuccessful = {node: o for node, o in outcomes.items() if o not in disclosed_without_failing}
-    counts = Counter(outcome.value for outcome in outcomes.values())
-    print(f"integration runner: {len(outcomes)} nodes reconciled ({dict(sorted(counts.items()))})")
-    return 1 if unsuccessful else 0
+    return report_outcomes({node: outcome.value for node, outcome in outcomes.items()})
 
 
 if __name__ == "__main__":
