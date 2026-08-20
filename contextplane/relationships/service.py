@@ -38,42 +38,30 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
-import json
 import uuid
 from collections.abc import Mapping
-from typing import Any, Final, Protocol
+from typing import Any, Protocol
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from contextplane.entities import assertions
-from contextplane.relationships import queries, readiness
+from contextplane.relationships import queries, readiness, rows
 from contextplane.relationships.definitions import RelationshipConstraints
-
-#: The audit action a governed assertion records.
-RELATIONSHIP_ASSERTED: Final = "relationship.asserted"
-
-#: What a caller may not do, spelled as codes so an API layer can map them without
-#: matching on message text.
-UNKNOWN_TYPE: Final = "unknown_relationship_type"
-NO_ACTIVE_BINDING: Final = "no_active_binding"
-ENDPOINT_MISSING: Final = "endpoint_missing"
-ENDPOINT_TYPE_MISMATCH: Final = "endpoint_type_mismatch"
-CROSS_ORG_DENIED: Final = "cross_org_denied"
-DUPLICATE_REFUSED: Final = "duplicate_refused"
-MAXIMUM_EXCEEDED: Final = "maximum_cardinality_exceeded"
-UNDECLARED_PROPERTY: Final = "undeclared_property"
-INVERSE_NOT_WRITABLE: Final = "inverse_not_writable"
-SYMMETRY_ENDPOINTS_DIFFER: Final = "symmetry_requires_identical_endpoints"
-
-
-class RelationshipWriteRefused(Exception):
-    """A governed assertion was refused, with the code saying which rule refused it."""
-
-    def __init__(self, code: str, detail: str) -> None:
-        super().__init__(f"{code}: {detail}")
-        self.code = code
-        self.detail = detail
+from contextplane.relationships.refusals import (
+    CROSS_ORG_DENIED,
+    DUPLICATE_REFUSED,
+    ENDPOINT_MISSING,
+    ENDPOINT_TYPE_MISMATCH,
+    INVERSE_NOT_WRITABLE,
+    MAXIMUM_EXCEEDED,
+    NO_ACTIVE_BINDING,
+    RELATIONSHIP_ASSERTED,
+    RELATIONSHIP_SUPERSEDED,
+    SYMMETRY_ENDPOINTS_DIFFER,
+    UNDECLARED_PROPERTY,
+    UNKNOWN_TYPE,
+    RelationshipWriteRefused,
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -219,6 +207,135 @@ class RelationshipWriteService:
         # write is about to join, so the hold starts and does not end until commit.
         await self._lock_scope(session, binding, constraints)
 
+        return await self._write_under_lock(
+            session,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            constraints=constraints,
+            definition_id=definition_id,
+            binding=binding,
+            source_entity_id=source_entity_id,
+            destination_entity_id=destination_entity_id,
+            properties=supplied,
+            started_at=started_at,
+            now=now,
+            produced_by=produced_by,
+            source_system=source_system,
+            source_namespace=source_namespace,
+            action=RELATIONSHIP_ASSERTED,
+        )
+
+    async def supersede_relationship(
+        self,
+        session: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        actor_id: uuid.UUID | None,
+        relationship_id: uuid.UUID,
+        relationship_type: str,
+        source_entity_id: uuid.UUID,
+        destination_entity_id: uuid.UUID,
+        properties: Mapping[str, Any] | None = None,
+        now: datetime.datetime,
+        effective_from: datetime.datetime | None = None,
+        produced_by: str = "contextplane",
+        source_system: str = "contextplane",
+        source_namespace: str = "internal",
+    ) -> AssertedRelationship:
+        """End the named assertion and start its replacement at the same instant.
+
+        **The row that ends is the one named, not one inferred from the body.** An
+        update that resolved its target by re-deriving `(type, source,
+        destination)` would be an update whose subject the caller could not see:
+        two edges differing only in properties are the same triple, and the write
+        would silently pick one.
+
+        Which is why the body may not move the edge. A supersession whose type or
+        endpoints differ from the row it names is refused rather than applied:
+        those three are the assertion's identity, and changing them is retiring
+        one edge and asserting another — two acts, with two audit rows, not one
+        amendment.
+
+        The predecessor is closed *before* the aggregate checks run, and at the
+        same instant its replacement starts. `count_in_force` treats the interval
+        as half-open, so a row ending exactly at `at` is already not counted:
+        the duplicate check, the inverse check and the maximum all see the world
+        the replacement is joining rather than the one it is leaving, with no
+        special case needed for the row being replaced.
+        """
+        started_at = effective_from if effective_from is not None else now
+        supplied = dict(properties or {})
+
+        binding = await self._active_binding(session, tenant_id)
+        constraints, definition_id = await self._definition(session, binding, relationship_type)
+
+        source = await self._endpoint(session, tenant_id, source_entity_id, role="source")
+        destination = await self._endpoint(session, tenant_id, destination_entity_id, role="destination")
+
+        self._check_endpoint_types(constraints, source, destination)
+        self._check_symmetry(constraints, source, destination)
+        self._check_properties(constraints, supplied)
+        await self._check_cross_org(session, constraints, source, destination)
+
+        await self._lock_scope(session, binding, constraints)
+
+        await rows.close_superseded(
+            session,
+            tenant_id=tenant_id,
+            relationship_id=relationship_id,
+            constraints=constraints,
+            source_entity_id=source_entity_id,
+            destination_entity_id=destination_entity_id,
+            at=started_at,
+        )
+        await rows.enqueue_closure(session, tenant_id=tenant_id, edge_id=relationship_id, now=now)
+
+        return await self._write_under_lock(
+            session,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            constraints=constraints,
+            definition_id=definition_id,
+            binding=binding,
+            source_entity_id=source_entity_id,
+            destination_entity_id=destination_entity_id,
+            properties=supplied,
+            started_at=started_at,
+            now=now,
+            produced_by=produced_by,
+            source_system=source_system,
+            source_namespace=source_namespace,
+            action=RELATIONSHIP_SUPERSEDED,
+        )
+
+    async def _write_under_lock(
+        self,
+        session: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        actor_id: uuid.UUID | None,
+        constraints: RelationshipConstraints,
+        definition_id: uuid.UUID,
+        binding: rows.Binding,
+        source_entity_id: uuid.UUID,
+        destination_entity_id: uuid.UUID,
+        properties: Mapping[str, Any],
+        started_at: datetime.datetime,
+        now: datetime.datetime,
+        produced_by: str,
+        source_system: str,
+        source_namespace: str,
+        action: str,
+    ) -> AssertedRelationship:
+        """The aggregate checks and the four rows, with the lock already held.
+
+        Shared by the assertion and the supersession so the two cannot drift: a
+        replacement that skipped the duplicate check, or wrote its edge without
+        its provenance, would be a second write path with none of the first one's
+        guarantees.
+        """
+        supplied = dict(properties)
+
         await self._check_duplicate(
             session,
             tenant_id=tenant_id,
@@ -248,7 +365,7 @@ class RelationshipWriteService:
 
         state = readiness.readiness_for(observed=in_force + 1, minimum=constraints.min_cardinality)
 
-        edge_id = await self._write_edge(
+        edge_id = await rows.write_edge(
             session,
             tenant_id=tenant_id,
             relationship_type=constraints.relationship_type,
@@ -258,7 +375,7 @@ class RelationshipWriteService:
             now=now,
             actor_id=actor_id,
         )
-        provenance_id = await self._write_provenance(
+        provenance_id = await rows.write_provenance(
             session,
             tenant_id=tenant_id,
             constraints=constraints,
@@ -268,7 +385,7 @@ class RelationshipWriteService:
             source_system=source_system,
             source_namespace=source_namespace,
         )
-        await self._write_metadata(
+        await rows.write_metadata(
             session,
             edge_id=edge_id,
             tenant_id=tenant_id,
@@ -283,8 +400,8 @@ class RelationshipWriteService:
             binding=binding,
             now=now,
         )
-        await self._enqueue_closure(session, tenant_id=tenant_id, edge_id=edge_id, now=now)
-        await self._write_audit(
+        await rows.enqueue_closure(session, tenant_id=tenant_id, edge_id=edge_id, now=now)
+        await rows.write_audit(
             session,
             tenant_id=tenant_id,
             actor_id=actor_id,
@@ -294,6 +411,7 @@ class RelationshipWriteService:
             destination_entity_id=destination_entity_id,
             state=state,
             now=now,
+            action=action,
         )
 
         return AssertedRelationship(
@@ -307,7 +425,7 @@ class RelationshipWriteService:
 
     # -- resolution ---------------------------------------------------------
 
-    async def _active_binding(self, session: AsyncSession, tenant_id: uuid.UUID) -> _Binding:
+    async def _active_binding(self, session: AsyncSession, tenant_id: uuid.UUID) -> rows.Binding:
         """The tenant's active binding, which every governed row must name.
 
         Only `active` counts. A `validating` binding is a profile being measured,
@@ -330,10 +448,10 @@ class RelationshipWriteService:
                 "this tenant is bound to no active profile; a governed assertion has to name the revision that "
                 "validated it, and there is none to name",
             )
-        return _Binding(binding_id=row[0], profile_revision_id=row[1], extension_set_digest=row[2])
+        return rows.Binding(binding_id=row[0], profile_revision_id=row[1], extension_set_digest=row[2])
 
     async def _definition(
-        self, session: AsyncSession, binding: _Binding, relationship_type: str
+        self, session: AsyncSession, binding: rows.Binding, relationship_type: str
     ) -> tuple[RelationshipConstraints, uuid.UUID]:
         """The compiled constraint set for this type under the tenant's revision."""
         row = (
@@ -458,7 +576,9 @@ class RelationshipWriteService:
 
     # -- the locked section -------------------------------------------------
 
-    async def _lock_scope(self, session: AsyncSession, binding: _Binding, constraints: RelationshipConstraints) -> None:
+    async def _lock_scope(
+        self, session: AsyncSession, binding: rows.Binding, constraints: RelationshipConstraints
+    ) -> None:
         """Take the aggregate lock for this binding, type and scope.
 
         Transaction-scoped, so it is released by the commit or rollback and never
@@ -559,197 +679,6 @@ class RelationshipWriteService:
                 f"{constraints.cardinality_scope}, and {in_force} are already in force",
             )
 
-    # -- the writes ---------------------------------------------------------
-
-    @staticmethod
-    async def _write_edge(
-        session: AsyncSession,
-        *,
-        tenant_id: uuid.UUID,
-        relationship_type: str,
-        source_entity_id: uuid.UUID,
-        destination_entity_id: uuid.UUID,
-        started_at: datetime.datetime,
-        now: datetime.datetime,
-        actor_id: uuid.UUID | None,
-    ) -> uuid.UUID:
-        """The physical edge. The governed row shares its id rather than minting one."""
-        edge_id = uuid.uuid4()
-        await session.execute(
-            text(
-                "INSERT INTO edges (edge_id, tenant_id, src_entity_id, rel, dst_entity_id,"
-                "                   t_valid_from, t_valid_to, t_ingested_at, created_by)"
-                " VALUES (:eid, :tid, :src, :rel, :dst, :vf, NULL, :now, :actor)"
-            ),
-            {
-                "eid": edge_id,
-                "tid": tenant_id,
-                "src": source_entity_id,
-                "rel": relationship_type,
-                "dst": destination_entity_id,
-                "vf": started_at,
-                "now": now,
-                "actor": actor_id,
-            },
-        )
-        return edge_id
-
-    @staticmethod
-    async def _write_provenance(
-        session: AsyncSession,
-        *,
-        tenant_id: uuid.UUID,
-        constraints: RelationshipConstraints,
-        binding: _Binding,
-        now: datetime.datetime,
-        produced_by: str,
-        source_system: str,
-        source_namespace: str,
-    ) -> uuid.UUID:
-        """The record of who asserted this and which revision validated it.
-
-        Routed through `contextplane.entities.assertions`, which is the one module
-        permitted to write `assertion_provenance` — a second writer could produce
-        evidence that says something the assertion path never observed, and the
-        assertion itself would look untouched.
-
-        `authority` comes from the definition rather than the caller: how much
-        weight an assertion carries is a property of the relationship type, and a
-        caller that could name its own authority could promote its own guesses.
-        """
-        return await assertions.record(
-            session,
-            assertions.for_governed_write(
-                tenant_id=tenant_id,
-                validating_profile_revision_id=binding.profile_revision_id,
-                authority=constraints.authority,
-                ingested_at=now,
-                produced_by=produced_by,
-                source_system=source_system,
-                source_namespace=source_namespace,
-                extension_set_digest=binding.extension_set_digest,
-            ),
-        )
-
-    @staticmethod
-    async def _write_metadata(
-        session: AsyncSession,
-        *,
-        edge_id: uuid.UUID,
-        tenant_id: uuid.UUID,
-        definition_id: uuid.UUID,
-        constraints: RelationshipConstraints,
-        source_entity_id: uuid.UUID,
-        destination_entity_id: uuid.UUID,
-        properties: Mapping[str, Any],
-        started_at: datetime.datetime,
-        state: str,
-        provenance_id: uuid.UUID,
-        binding: _Binding,
-        now: datetime.datetime,
-    ) -> None:
-        """The governed row. `relationship_type` and `cardinality_scope` are copied
-        rather than read through the definition, so a later definition change shows
-        up as a difference instead of rewriting what this assertion meant."""
-        await session.execute(
-            text(
-                "INSERT INTO relationship_metadata ("
-                "  relationship_id, tenant_id, relationship_type_definition_id,"
-                "  source_entity_id, destination_entity_id, relationship_type, cardinality_scope,"
-                "  properties, effective_from, effective_to, readiness_state,"
-                "  provenance_id, profile_binding_id, recorded_at"
-                ") VALUES (:rid, :tid, :did, :src, :dst, :rtype, :scope,"
-                "          CAST(:props AS JSONB), :vf, NULL, :state, :pid, :bid, :now)"
-            ),
-            {
-                "rid": edge_id,
-                "tid": tenant_id,
-                "did": definition_id,
-                "src": source_entity_id,
-                "dst": destination_entity_id,
-                "rtype": constraints.relationship_type,
-                "scope": constraints.cardinality_scope,
-                "props": json.dumps(dict(properties), sort_keys=True, separators=(",", ":")),
-                "vf": started_at,
-                "state": state,
-                "pid": provenance_id,
-                "bid": binding.binding_id,
-                "now": now,
-            },
-        )
-
-    @staticmethod
-    async def _enqueue_closure(
-        session: AsyncSession, *, tenant_id: uuid.UUID, edge_id: uuid.UUID, now: datetime.datetime
-    ) -> None:
-        """Tell the closure cache an edge moved, in this transaction.
-
-        Enqueued rather than refreshed inline because the refresh walks a graph
-        this transaction is still changing; enqueued *here* rather than after the
-        commit because a queue write that can be lost is a cache that can be
-        permanently wrong with nothing recording that it is.
-        """
-        await session.execute(
-            text(
-                "INSERT INTO closure_outbox (outbox_id, tenant_id, edge_id, enqueued_at)"
-                " VALUES (:oid, :tid, :eid, :now)"
-            ),
-            {"oid": uuid.uuid4(), "tid": tenant_id, "eid": edge_id, "now": now},
-        )
-
-    @staticmethod
-    async def _write_audit(
-        session: AsyncSession,
-        *,
-        tenant_id: uuid.UUID,
-        actor_id: uuid.UUID | None,
-        edge_id: uuid.UUID,
-        constraints: RelationshipConstraints,
-        source_entity_id: uuid.UUID,
-        destination_entity_id: uuid.UUID,
-        state: str,
-        now: datetime.datetime,
-    ) -> None:
-        """The audit row, on this session rather than through the fire-and-forget emitter.
-
-        `contextplane.audit.emit` writes in its own transaction and swallows its
-        own failures, which is right for a request that has already happened and
-        wrong here: a governed assertion and the record that it was made have to
-        share one fate, or the graph can hold rows no audit trail admits to.
-        """
-        await session.execute(
-            text(
-                "INSERT INTO audit_log (audit_id, tenant_id, actor_id, action, target_type, target_id,"
-                "                       after_jsonb, ts)"
-                " VALUES (:aid, :tid, :actor, :action, 'relationship', :target, CAST(:after AS JSONB), :now)"
-            ),
-            {
-                "aid": uuid.uuid4(),
-                "tid": tenant_id,
-                "actor": actor_id,
-                "action": RELATIONSHIP_ASSERTED,
-                "target": edge_id,
-                "after": json.dumps(
-                    {
-                        "relationship_type": constraints.relationship_type,
-                        "source_entity_id": str(source_entity_id),
-                        "destination_entity_id": str(destination_entity_id),
-                        "readiness_state": state,
-                    },
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ),
-                "now": now,
-            },
-        )
-
-
-@dataclasses.dataclass(frozen=True)
-class _Binding:
-    binding_id: uuid.UUID
-    profile_revision_id: uuid.UUID
-    extension_set_digest: str
-
 
 __all__ = [
     "CROSS_ORG_DENIED",
@@ -760,6 +689,7 @@ __all__ = [
     "MAXIMUM_EXCEEDED",
     "NO_ACTIVE_BINDING",
     "RELATIONSHIP_ASSERTED",
+    "RELATIONSHIP_SUPERSEDED",
     "SYMMETRY_ENDPOINTS_DIFFER",
     "UNDECLARED_PROPERTY",
     "UNKNOWN_TYPE",
