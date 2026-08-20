@@ -67,15 +67,22 @@ def cycled(migration_databases: MigrationDatabases) -> Iterator[Engine]:
     A clone rather than the session database, because downgrading that would
     drop schema out from under every other integration module in the run — a
     test proving the reverse works would break unrelated tests to do it.
+
+    Through `head_clone` rather than `clone`, so the database is dropped even if
+    the downgrade raises. The first version called `clone` and relied on the
+    fixture's end-of-test sweep to catch it, which works and holds the database
+    open for longer than it needs to be — and the sweep raises rather than logs
+    when a drop fails, so a lingering clone under a loaded run turns into a
+    teardown error attributed to whichever test happened to be last.
     """
-    database = migration_databases.clone("confidence policy knobs cycle")
-    assert_at_head(database)
-    assert_alembic_ok(database.downgrade(_BEFORE), f"downgrade to {_BEFORE}")
-    engine = create_engine(database.sync_url)
-    try:
-        yield engine
-    finally:
-        engine.dispose()
+    with migration_databases.head_clone("confidence policy knobs cycle") as database:
+        assert_at_head(database)
+        assert_alembic_ok(database.downgrade(_BEFORE), f"downgrade to {_BEFORE}")
+        engine = create_engine(database.sync_url)
+        try:
+            yield engine
+        finally:
+            engine.dispose()
 
 
 def _tenant(engine: Engine) -> uuid.UUID:
@@ -187,14 +194,14 @@ def test_re_upgrading_the_reversed_clone_reaches_head_again(
 ) -> None:
     """Down and back up on one database. A downgrade that leaves the schema in a
     shape the upgrade cannot re-apply is only visible from this direction."""
-    database = migration_databases.clone("confidence policy knobs round trip")
-    assert_at_head(database)
-    assert_alembic_ok(database.downgrade(_BEFORE), f"downgrade to {_BEFORE}")
-    assert_alembic_ok(database.upgrade_head(), "re-upgrade to head")
-    assert_at_head(database)
+    with migration_databases.head_clone("confidence policy knobs round trip") as database:
+        assert_at_head(database)
+        assert_alembic_ok(database.downgrade(_BEFORE), f"downgrade to {_BEFORE}")
+        assert_alembic_ok(database.upgrade_head(), "re-upgrade to head")
+        assert_at_head(database)
 
-    engine = create_engine(database.sync_url)
-    try:
-        assert not (set(_DROPPED) & _columns(engine))
-    finally:
-        engine.dispose()
+        engine = create_engine(database.sync_url)
+        try:
+            assert not (set(_DROPPED) & _columns(engine))
+        finally:
+            engine.dispose()
