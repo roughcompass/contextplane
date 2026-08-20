@@ -11,11 +11,15 @@ from __future__ import annotations
 import pytest
 
 from contextplane.service.memory.salience_reliability import (
+    ASSURANCE_NOT_EARNED,
     BUCKET_COUNT,
     MIN_BUCKET_OBSERVATIONS,
+    MIN_TENANT_OBSERVATIONS,
     Observation,
     measure,
+    measure_split,
     render,
+    render_split,
 )
 
 _LABEL = "served in at least one resolution"
@@ -154,3 +158,102 @@ def test_a_salience_outside_the_range_is_clamped_rather_than_dropped() -> None:
     report = measure([Observation(salience=1.5, was_retrieved=True)], label=_LABEL)
     assert report.total_observations == 1
     assert report.buckets[-1].observations == 1
+
+
+# --- the per-tenant split ---------------------------------------------------------
+
+
+def _for(tenant: str, *, own_weights: bool, salience: float, retrieved: int, missed: int) -> list[Observation]:
+    return [
+        Observation(salience=salience, was_retrieved=hit, tenant_id=tenant, uses_own_weights=own_weights)
+        for hit in ([True] * retrieved + [False] * missed)
+    ]
+
+
+class TestTheSplit:
+    def test_tenants_on_the_committed_defaults_are_pooled(self) -> None:
+        """Pooling is what makes the shared curve mean anything: identical
+        weights produce comparable numbers, so those observations are one
+        population."""
+        split = measure_split(
+            _for("a", own_weights=False, salience=0.9, retrieved=30, missed=10)
+            + _for("b", own_weights=False, salience=0.9, retrieved=30, missed=10),
+            label=_LABEL,
+        )
+        assert split.shared.total_observations == 80
+        assert split.pooled_tenants == ("a", "b")
+        assert split.per_tenant == ()
+
+    def test_a_tenant_with_its_own_weights_gets_its_own_curve(self) -> None:
+        """The cost ADR 0004 recorded. One global curve describes a population no
+        overriding tenant matches."""
+        split = measure_split(
+            _for("shared", own_weights=False, salience=0.9, retrieved=30, missed=10)
+            + _for("own", own_weights=True, salience=0.9, retrieved=100, missed=20),
+            label=_LABEL,
+        )
+        assert split.shared.total_observations == 40
+        assert [entry.tenant_id for entry in split.per_tenant] == ["own"]
+        assert split.per_tenant[0].report is not None
+        assert split.per_tenant[0].report.total_observations == 120
+
+    def test_an_overriding_tenants_observations_stay_out_of_the_shared_curve(self) -> None:
+        """The half that is easy to get wrong: measuring a tenant separately and
+        also leaving it in the pool would double-count it and contaminate the
+        curve it was split out of."""
+        split = measure_split(_for("own", own_weights=True, salience=0.9, retrieved=100, missed=20), label=_LABEL)
+        assert split.shared.total_observations == 0
+        assert "own" not in split.pooled_tenants
+
+    def test_a_thin_overriding_tenant_is_told_assurance_is_not_earned(self) -> None:
+        """Not folded into the shared curve. Borrowing it would attach a figure
+        measured under one weighting to scores produced under another."""
+        split = measure_split(_for("thin", own_weights=True, salience=0.9, retrieved=5, missed=5), label=_LABEL)
+        entry = split.per_tenant[0]
+        assert entry.report is None
+        assert entry.withheld_because is not None
+        assert ASSURANCE_NOT_EARNED in entry.withheld_because
+        assert split.shared.total_observations == 0, "a withheld tenant must not leak into the pool"
+
+    def test_the_withheld_reason_names_the_count_and_the_floor(self) -> None:
+        """An operator reading 'not earned' needs to know how far off they are,
+        or the message is a refusal with no next step."""
+        split = measure_split(_for("thin", own_weights=True, salience=0.9, retrieved=5, missed=5), label=_LABEL)
+        assert "10 observations" in split.per_tenant[0].withheld_because  # type: ignore[operator]
+        assert str(MIN_TENANT_OBSERVATIONS) in split.per_tenant[0].withheld_because  # type: ignore[operator]
+
+    def test_a_tenant_at_the_floor_is_measured(self) -> None:
+        """The control. A floor that rejected its own boundary would be one
+        higher than the number written down."""
+        split = measure_split(
+            _for("at", own_weights=True, salience=0.9, retrieved=MIN_TENANT_OBSERVATIONS, missed=0),
+            label=_LABEL,
+        )
+        assert split.per_tenant[0].report is not None
+
+    def test_a_tenant_that_adopted_an_override_midway_has_both_kinds_counted_apart(self) -> None:
+        """Carried per observation rather than looked up per tenant. Pooling a
+        mixed corpus would measure neither weighting."""
+        split = measure_split(
+            _for("mixed", own_weights=False, salience=0.3, retrieved=10, missed=30)
+            + _for("mixed", own_weights=True, salience=0.9, retrieved=100, missed=20),
+            label=_LABEL,
+        )
+        assert split.shared.total_observations == 40
+        assert split.per_tenant[0].report is not None
+        assert split.per_tenant[0].report.total_observations == 120
+
+    def test_the_rendered_split_says_when_there_is_nothing_to_split(self) -> None:
+        text = render_split(
+            measure_split(_for("a", own_weights=False, salience=0.5, retrieved=1, missed=1), label=_LABEL)
+        )
+        assert "nothing to split out" in text
+
+    def test_the_rendered_split_shows_a_withheld_tenant_rather_than_omitting_it(self) -> None:
+        """A tenant absent from the report reads as a tenant with no data. A
+        tenant whose line says why it has no curve reads as a decision."""
+        text = render_split(
+            measure_split(_for("thin", own_weights=True, salience=0.9, retrieved=5, missed=5), label=_LABEL)
+        )
+        assert "tenant thin" in text
+        assert ASSURANCE_NOT_EARNED in text

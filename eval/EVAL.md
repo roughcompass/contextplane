@@ -1663,3 +1663,34 @@ before any threshold consumes them.
 and reported. That order is deliberate — a weighting whose reliability was
 measured after something started depending on it is a measurement nobody can act
 on.
+
+### Per-tenant split
+
+Once a tenant can reweight salience — which E17 made possible — one global
+reliability curve describes a population no overriding tenant matches. That is
+the cost ADR 0004 recorded as arriving late, and it is paid where it has arrived:
+
+- **Tenants on the committed defaults pool.** Their scores mean the same thing,
+  and pooling them is what makes a shared curve worth having.
+- **A tenant running its own weights is measured on its own.** Its observations
+  leave the shared pool entirely, so the curve it was split out of is not
+  contaminated by it either.
+- **Below 100 observations, an overriding tenant reports "assurance not
+  earned".** It is not given the shared curve. Borrowing would attach a figure
+  measured under one weighting to scores produced under another, which is how a
+  calibration number becomes worse than no number. The message names the count
+  and the floor, so "not earned" comes with a distance rather than only a
+  refusal. Same discipline as the k-anonymity floors on the learning reads.
+- **A tenant that adopted an override mid-corpus has both kinds counted apart.**
+  The flag travels per observation rather than per tenant, because pooling a
+  mixed corpus would measure neither weighting.
+
+Provider calibration (`calibration.py`) gains a scope segment in its mapping key
+for the same reason, and the condition is stated rather than assumed: it applies
+where a tenant overrides a magnitude that feeds the numbers being calibrated. **No
+shipped override does** — salience decides what is remembered and does not enter
+`confidence.score` — so every fit this deployment writes carries the `shared`
+scope and the pooled mapping is correct for all of them. The key is in place so
+that the day a tenant overrides a confidence magnitude, their fit separates
+without anybody remembering to make it, and two overriding tenants cannot read
+each other's.

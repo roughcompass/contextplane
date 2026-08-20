@@ -32,6 +32,20 @@ makes two curves comparable.
 and no receipts, and a reliability curve over zero observations is not a flat
 curve, it is no curve. Returning zeros would put a shape on a table nobody
 measured.
+
+**A tenant running its own weights gets its own curve.** This is the cost ADR
+0004 recorded and deferred: once a tenant can reweight salience, one global
+reliability curve describes a population no tenant matches. Tenants on the
+committed defaults still pool -- their scores mean the same thing, so pooling
+them is what makes the shared curve worth having -- and a tenant that has
+overridden is measured on its own or not at all.
+
+**"Not at all" is a reported state, not a fallback.** A tenant with its own
+weights and too few observations reports *assurance not earned* rather than
+borrowing the global curve. Borrowing would attach a reliability figure measured
+under one weighting to scores produced under another, which is the specific way a
+calibration number becomes worse than none. Same discipline as the k-anonymity
+floors on the learning reads: below the cell size, say so.
 """
 
 from __future__ import annotations
@@ -51,12 +65,32 @@ BUCKET_COUNT: Final = 10
 MIN_BUCKET_OBSERVATIONS: Final = 20
 
 
+#: Below this many observations, a tenant running its own weights is reported as
+#: unmeasured rather than folded into the shared curve. Higher than the per-bucket
+#: floor because a whole curve needs enough to fill more than one cell of it.
+MIN_TENANT_OBSERVATIONS: Final = 100
+
+#: What a tenant with its own weights and too little evidence is told. Named
+#: rather than spelled at each call site, so the phrase a reader searches for is
+#: the phrase the code uses.
+ASSURANCE_NOT_EARNED: Final = "assurance not earned"
+
+
 @dataclasses.dataclass(frozen=True)
 class Observation:
     """One scored claim and whether any resolution ever served it."""
 
     salience: float
     was_retrieved: bool
+    #: Which tenant's corpus this came from. `None` for a caller measuring one
+    #: population and not splitting it, which is what the report did before a
+    #: tenant could reweight anything.
+    tenant_id: str | None = None
+    #: Whether this tenant's salience was produced by its own weights rather than
+    #: the committed defaults. Carried per observation rather than looked up,
+    #: because a tenant that adopted an override mid-corpus has claims of both
+    #: kinds and pooling them would measure neither weighting.
+    uses_own_weights: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -177,11 +211,110 @@ def render(report: Reliability) -> str:
 
 
 __all__ = [
+    "ASSURANCE_NOT_EARNED",
     "BUCKET_COUNT",
     "MIN_BUCKET_OBSERVATIONS",
+    "MIN_TENANT_OBSERVATIONS",
     "Bucket",
     "Observation",
     "Reliability",
+    "SplitReliability",
+    "TenantReliability",
     "measure",
+    "measure_split",
     "render",
+    "render_split",
 ]
+
+
+@dataclasses.dataclass(frozen=True)
+class TenantReliability:
+    """One tenant's curve, or the reason it does not have one."""
+
+    tenant_id: str
+    report: Reliability | None
+    #: `None` when the tenant has a curve. Set when it does not, and always to a
+    #: reason rather than to a bare flag -- "assurance not earned" and "this
+    #: tenant is on the shared curve" are different states and a boolean would
+    #: collapse them.
+    withheld_because: str | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class SplitReliability:
+    """The shared curve, plus a curve or a refusal per overriding tenant."""
+
+    shared: Reliability
+    #: Tenants pooled into `shared` because they score on the committed defaults.
+    #: Named rather than counted: an operator asking why their tenant is not in
+    #: the per-tenant list needs to see it here.
+    pooled_tenants: tuple[str, ...]
+    per_tenant: tuple[TenantReliability, ...]
+
+
+def measure_split(observations: Sequence[Observation], *, label: str) -> SplitReliability:
+    """Pool the tenants on core defaults; measure the overriding ones separately.
+
+    Pooling is not a convenience here -- it is what makes the shared curve mean
+    something. Tenants scoring on identical weights produce comparable numbers,
+    so their observations are one population; a tenant scoring on its own
+    produces numbers on a different scale, and averaging the two describes
+    neither.
+    """
+    pooled: list[Observation] = []
+    by_tenant: dict[str, list[Observation]] = {}
+    pooled_tenants: set[str] = set()
+
+    for item in observations:
+        if item.uses_own_weights and item.tenant_id is not None:
+            by_tenant.setdefault(item.tenant_id, []).append(item)
+        else:
+            pooled.append(item)
+            if item.tenant_id is not None:
+                pooled_tenants.add(item.tenant_id)
+
+    per_tenant: list[TenantReliability] = []
+    for tenant_id, rows in sorted(by_tenant.items()):
+        if len(rows) < MIN_TENANT_OBSERVATIONS:
+            # Deliberately not folded into `shared`. Borrowing the shared curve
+            # would attach a figure measured under one weighting to scores
+            # produced under another, which is how a calibration number becomes
+            # worse than no number.
+            per_tenant.append(
+                TenantReliability(
+                    tenant_id=tenant_id,
+                    report=None,
+                    withheld_because=(
+                        f"{ASSURANCE_NOT_EARNED}: {len(rows)} observations against a floor of "
+                        f"{MIN_TENANT_OBSERVATIONS}. This tenant runs its own weights, so the shared "
+                        "curve does not describe it and is not offered as a substitute."
+                    ),
+                )
+            )
+            continue
+        per_tenant.append(TenantReliability(tenant_id=tenant_id, report=measure(rows, label=label)))
+
+    return SplitReliability(
+        shared=measure(pooled, label=label),
+        pooled_tenants=tuple(sorted(pooled_tenants)),
+        per_tenant=tuple(per_tenant),
+    )
+
+
+def render_split(split: SplitReliability) -> str:
+    """The split report as a reader sees it, including what was withheld."""
+    lines = ["shared curve — tenants scoring on the committed defaults"]
+    lines.append(render(split.shared))
+    lines.append(f"  pooled tenants: {len(split.pooled_tenants)}")
+
+    if not split.per_tenant:
+        lines.append("\nno tenant is running its own scoring weights, so there is nothing to split out")
+        return "\n".join(lines)
+
+    for entry in split.per_tenant:
+        lines.append(f"\ntenant {entry.tenant_id} — own weights")
+        if entry.report is None:
+            lines.append(f"  {entry.withheld_because}")
+        else:
+            lines.append(render(entry.report))
+    return "\n".join(lines)

@@ -23,6 +23,20 @@ the same object, since the target is itself stated over buckets.
 bound is worse than no mapping, because it carries a version string that reads as
 calibrated.
 
+**A tenant running its own scoring weights calibrates on its own.** Once a tenant
+can reweight a scoring magnitude, a mapping fitted across every tenant describes
+a population that tenant is not in. Tenants on the committed defaults still pool,
+because their numbers mean the same thing and pooling is what makes a shared
+mapping worth having. This is the cost ADR 0004 recorded as arriving late.
+
+The split is *conditional*, and the condition matters: it applies where a tenant
+overrides a magnitude that feeds the numbers being calibrated. No shipped
+override does yet -- salience weights decide what is remembered and do not enter
+`confidence.score` -- so `tenant_id` is `None` on every fit this deployment
+writes, and the pooled mapping is the right answer for all of them. The key is
+here so that the day a tenant overrides a confidence magnitude, their fit
+separates without anybody remembering to make it.
+
 **So is a fit made against a different confidence scorer.** A fit is a statement about
 outcomes that were judged against the numbers a reviewer saw, and those numbers came
 out of `confidence.score`. Change that arithmetic and the judged set becomes a mixture
@@ -50,6 +64,11 @@ from contextplane.service.memory.confidence import SCORER_VERSION
 # colon-delimited. A claim carrying this was scored without any evidence about what
 # its provider's numbers are worth.
 UNCALIBRATED = "uncalibrated"
+
+#: The scope segment for the pooled mapping -- tenants scoring on the committed
+#: defaults. A literal rather than an empty segment so a key always has the same
+#: number of parts, and so the pooled case is something a reader can grep for.
+SHARED_SCOPE = "shared"
 
 # Ten bins across the raw range. The coarsest split that can hold the pile-up at the
 # top of the range apart from the band below it, which is where a self-reporting model
@@ -154,6 +173,7 @@ def mapping_version(
     fit_date: str,
     n: int,
     scorer_version: str = SCORER_VERSION,
+    tenant_id: str | None = None,
 ) -> str:
     """Identifies a fit by everything that would invalidate it.
 
@@ -170,20 +190,34 @@ def mapping_version(
     before the scorer entered the key have a date in this position, match no
     prefix, and are therefore stored and never selected -- which is the intended
     answer for them.
+
+    `tenant_id` is the last of the four invalidating facts and the only optional
+    one. `None` -- the pooled mapping, and every fit this deployment writes today
+    -- renders as `shared`, so the segment is always present and a key is never
+    two shapes. A tenant appears here only when it runs its own weights for a
+    magnitude that feeds these numbers, at which point its fit stops matching the
+    pooled prefix and stops being offered one.
     """
-    return f"{provider_id}:{model_id}:{strategy_id}:{scorer_version}:{fit_date}:{n}"
+    scope = tenant_id or SHARED_SCOPE
+    return f"{provider_id}:{model_id}:{strategy_id}:{scorer_version}:{scope}:{fit_date}:{n}"
 
 
-def _scorer_prefix(*, provider_id: str, model_id: str, strategy_id: str) -> str:
-    """The LIKE pattern matching this key's fits from the running scorer only.
+def _scorer_prefix(*, provider_id: str, model_id: str, strategy_id: str, tenant_id: str | None = None) -> str:
+    """The LIKE pattern matching this key's fits from the running scorer and scope.
 
     A pattern rather than a parsed segment because selection belongs in the query
     a reader looks at. The `provider_id`/`model_id`/`strategy_id` equality
     predicates alongside it already pin the row set to one key, so any wildcard
     character inside those ids cannot widen the match beyond it -- this comparison
-    only ever decides the scorer segment.
+    only ever decides the scorer and scope segments.
+
+    A tenant on the committed defaults asks for `shared` and gets the pooled
+    mapping. A tenant running its own weights asks for its own id and gets its own
+    fit or none -- never the pooled one, because a mapping fitted across other
+    tenants' scores is exactly the borrowed assurance the split exists to refuse.
     """
-    return f"{provider_id}:{model_id}:{strategy_id}:{SCORER_VERSION}:%"
+    scope = tenant_id or SHARED_SCOPE
+    return f"{provider_id}:{model_id}:{strategy_id}:{SCORER_VERSION}:{scope}:%"
 
 
 def fit(observations: Sequence[Adjudication]) -> Fit:

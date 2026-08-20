@@ -794,13 +794,22 @@ Acceptance:
 
 ### E17-T3 — Per-tenant calibration split
 
-**Kind:** task · **Status:** pending · **Blocked by:** E17-T2, E15-T5 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E17-T2, E15-T5 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the cost ADR-0004 records arriving late, paid: reliability reporting
 (E15-T5) and calibration mappings key by tenant wherever a tenant runs its own
 weights, with the global curve retained for tenants on core defaults. A tenant
 below the observation floor reports "assurance not earned" rather than
 borrowing the global curve, mirroring the small-cell suppression discipline.
+
+The calibration half is deliberately **defined and inert**, and the reason is
+recorded rather than left implicit: the split applies where a tenant overrides a
+magnitude that feeds the numbers being calibrated, and no shipped override does.
+Salience decides what is remembered and does not enter `confidence.score`, so
+every fit this deployment writes carries the `shared` scope. Building the key now
+means the separation happens on the day it is needed rather than the day somebody
+remembers it is needed — the same argument that put `requires_validated` in the
+registry before its check existed.
 
 Acceptance:
     make eval
