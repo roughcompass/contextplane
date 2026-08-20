@@ -1315,3 +1315,219 @@ Acceptance:
     pnpm --filter admin-dashboard test -- -t "resolve"
     pnpm lint && pnpm type-check && pnpm test && pnpm build
 
+---
+
+## Task decomposition — second wave (E1's build, now that its decisions have landed)
+
+Tasks for **E1 only**. The first wave's note said the second decomposition is
+what the closed waves unblock, because E2–E13 were held while their contracts
+would otherwise embed values nobody had decided. ADRs 0005–0008 decided four of
+those values, and all four are E1's — so what they unblock first is E1's own
+build, not the twelve epics downstream of it.
+
+**E2–E13 still wait, and for a reason narrower than before.** E2's hot write
+path takes an "envelope digest check" and E7's tool registry exposes
+"envelope-derived core verbs"; neither can be cut against an envelope that has no
+shape yet. Cutting them now would embed a guess about the object E1-T6 defines,
+which is the same failure the first wave's held epics were held to avoid. They
+become cuttable when E1-T6 and E1-T7 land, not when this wave opens.
+
+**Every value these tasks embed is quoted from an accepted ADR, not chosen
+here.** Where a task states a constraint the ADRs do not settle, it says so and
+names what must be established rather than assuming it.
+
+Each task's premises were checked against the tree before it was written, which
+is how E19 went — five of its six tasks had a premise that did not survive that
+check. Two did not survive here either, and both are recorded in the tasks
+themselves: `autonomy_envelope` is not the kind to add, and the "applicability"
+an authority matrix wants is `arc_applicability_rules`, not the same-named
+memory-claim concept.
+
+
+### E1-T5 — The sensitivity vocabulary becomes one closed, ordered module
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: `contextplane/sensitivity.py`, exactly as ADR-0006 decided — a closed
+ordered tuple at the bottom import layer, declared `"ranking | sensitivity"` in
+the layers contract, with set membership derived from the order rather than
+written out beside it, and `rank()` raising on a name it does not know.
+
+Nothing about an envelope is needed to do this, and the module has consumers
+today: the ADR names `contextplane/sharing/authorization.py` and
+`contextplane/arc/vocabularies.py` as the two furthest apart, and verified with
+probe imports that both can reach a bottom-layer module without breaking the
+import contract. Those probes were reverted; this task makes them real.
+
+The ADR is explicit that the module must *not* decide what a caller does about
+an unknown name. The two call sites that treat an unreadable label as most
+restrictive keep doing so at the call site; the one that refuses to rank keeps
+refusing. Folding either rule into the vocabulary would change a
+security-relevant decision in two places as a side effect of moving a constant.
+
+Cut first because it is the only E1 build task with no envelope in it, so it
+neither waits for the rest nor blocks them.
+
+Acceptance:
+    make lint
+    make test-unit
+
+### E1-T6 — An envelope is a `policy` artifact, and its authority matrix is applicability
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: an Autonomy Envelope written as an ARC artifact of kind `policy`, whose
+applicability rules carry the delegated-authority matrix — the shape E1's body
+specifies, using the vocabulary that already ships.
+
+`ck_arc_artifacts_kind` (`0001_baseline_schema.py:2420`) admits `standard`,
+`policy`, `adr`, `runbook` and `capability_contract`, so `policy` needs no
+migration. **`autonomy_envelope` is deliberately not added here.** E1's body
+makes the new kind conditional on envelopes needing to be listable as their own
+class, and nothing in this task needs that: the cost is a CHECK-constraint
+migration plus an `ArtifactKind` member whose docstring currently records that
+"this phase adds no new kind", and it buys a filter nobody has asked for. When
+a listing surface wants it, that is its own task and its own migration.
+
+**The matrix already has a table, and its columns are already the right ones.**
+`ArcApplicabilityRule` (`contextplane/arc/models.py:265`) is a "structured
+applicability predicate over a task manifest" carrying `action_classes`,
+`data_sensitivity_tiers`, `environments`, `intent_kinds`, `capability_ids`,
+`capability_labels`, `domain_ids`, a scope, a `target_tenant_id`, an
+`effective_from`/`effective_until` window and `is_mandatory`. Those are the
+dimensions E1's body names when it says "stream-scoped action-class and
+sensitivity declarations", so the matrix is expressed in the existing predicate
+rather than beside it.
+
+Two things to check rather than assume. The predicate is over a *task manifest*
+and an authority decision is about a *principal*, so the task must establish that
+the dimensions a decision selects on are reachable from what a decision knows —
+a matrix expressed in dimensions the resolver cannot read is a document, not a
+policy. And `data_sensitivity_tiers` is a bare `ARRAY(Text)`, so E1-T5's closed
+vocabulary is what gives those strings meaning; without it the column admits any
+label and the matrix silently widens on a typo.
+
+Beware the name collision: `applicability_dimensions` in
+`contextplane/service/memory/derivation.py:441` is an unrelated memory-claim
+concept over free text with reserved keys. It is not this.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit -q -k "envelope"
+    make lint && make test-coverage
+
+### E1-T7 — The authority decision, computed and never cached
+
+**Kind:** task · **Status:** pending · **Blocked by:** E1-T6 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the decision point that reads an envelope and answers whether a principal
+may act — derived from the envelope row on every decision, per ADR-0007, with no
+projection stored and no TTL.
+
+The ADR is unusually specific about what *not* to build. There is no grant cache,
+so there is no invalidation, no sweeper and no staleness window: "how long does a
+grant projection live" is the wrong question, and the answer is that it does not
+live, it is computed. Suspension therefore needs no propagation mechanism — a
+status flip on the envelope row is visible to the next decision made by any
+replica because no replica holds a copy.
+
+**The SLO is a bound on operations, not on wall-clock**, and the task must not
+restate it as a duration. "A suspended envelope authorises no operation that
+begins after the flip commits" is testable; "sub-second" is not measurable on
+what ships, because the latency histogram's buckets top out at ten seconds. A
+revocation SLO with no test and no bucket would be a sentence rather than a
+promise.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "envelope and (suspend or decision)"
+    make lint && make test-coverage
+
+### E1-T8 — Advisory recording, which is what the graduation scan later reads
+
+**Kind:** task · **Status:** pending · **Blocked by:** E1-T7 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the `advisory` stage from ADR-0005 and ADR-0008 — an enforcement stage
+column on `tenants` (`advisory | enforcing`, CHECK-constrained, defaulting to
+`advisory`), and a decision path that in `advisory` refuses nothing and records
+what *would* have been refused.
+
+`tenants` already carries three tenant-level policy columns of this shape
+(`is_regulated`, `notification_digest_window`, `memory_retention_days`), each
+with a CHECK constraint, so the column is the house pattern rather than a new
+one. Per tenant rather than per deployment, because a multi-tenant deployment
+that can only graduate everybody at once cannot graduate anybody.
+
+**No environment variable and no `Settings` field sets it.** ADR-0005's argument
+is that this repository's one precedent for a security-relevant flag is that a
+flag may only make behaviour *more* restrictive, and a mode read from the
+environment would be the first able to widen authority — without an audit row
+naming who widened it.
+
+**The rate is one, and it is called recording.** ADR-0008: sampling at rate 1.0
+is recording, and naming it sampling implies a rate somebody could lower and a
+population somebody is counting, neither of which exists.
+
+The recorded rows are not telemetry. They are the input to E1-T9's offender
+scan, which is the only thing that can move a tenant to `enforcing`, so their
+shape is decided by that query rather than by what is convenient to log. Note
+that metric cardinality is closed here — `contextplane/metrics.py` forbids
+tenant-labelled series — so "how many tenants are still advisory" cannot be a
+gauge and must be a query.
+
+Acceptance:
+    .venv/bin/python -m alembic upgrade head
+    make lint && make test-coverage
+
+### E1-T9 — Graduation is a pre-flight over offenders, not a flag flip
+
+**Kind:** task · **Status:** pending · **Blocked by:** E1-T8 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the admin route that moves a tenant from `advisory` to `enforcing`, in the
+shape `_run_graduation_preflight` already has
+(`contextplane/api/routers/admin_progression.py:385`) over a scan in the shape of
+`scan_graduation_offenders` (`contextplane/service/catalog/progression.py:236`).
+
+Reused rather than reinvented, because ADR-0005 chose this mechanism over the
+four disagreeing enforcement vocabularies that ship today precisely on the ground
+that it is a working implementation of this exact transition. What it already
+does and this must keep: a dry-run that reports without writing, a refusal
+carrying the offender list when the scan is non-empty, a bounded scan with a
+timeout, and a force path that requires a written migration plan recorded on the
+audit row.
+
+One detail the ADR flags and this task must honour: the pre-flight runs on every
+write rather than only on the flip, because conditioning it on the flip would
+silently discard a caller's `dry_run`.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "graduation and envelope"
+    make lint && make test-coverage
+
+### E1-T10 — Cold start: three principals, and the first envelope is advisory
+
+**Kind:** task · **Status:** pending · **Blocked by:** E1-T8 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the first envelope on a deployment, per ADR-0008 — approved by the
+authority that already exists, classified for actor separation, and starting
+`advisory`.
+
+**No new authority concept.** A global envelope requires an `(issuer, subject)`
+pair in `ARC_GLOBAL_OPERATOR_ALLOWLIST`; a tenant envelope requires `ROLE_ADMIN`
+in the owning tenant. The ADR rejects a "named human" flag on the ground that the
+schema cannot assert humanity and a column claiming to would be a comment
+carrying a CHECK constraint's costs.
+
+**`global_mandatory` is how "named human authority" becomes enforceable.** It
+requires three distinct principals — three distinct `(issuer, subject)`
+identities, at least one on the operator allowlist, none able to fill two roles
+in the same transaction — which is the existing mechanism doing what it was built
+for.
+
+**Initial state is `advisory`, not auto-accept.** Every cold-start decision in
+this repository refuses rather than guesses, and an envelope that auto-accepts on
+day one is a governed object whose first act is to be ungoverned. Advisory is not
+propose-only: nothing is queued, nothing waits, and no operation is refused — it
+records what would have been.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "cold_start or first_envelope"
+    make lint && make test-coverage
