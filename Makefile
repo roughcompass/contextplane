@@ -357,6 +357,8 @@ eval: ## Measure memory quality: retrieval recall, time-travel correctness, ARC 
 	  -k "recall_at_10 or time_travel_scenarios"; \
 	echo "eval: retrieval precision, joined through receipts (needs a DB)"; \
 	$(PYTEST) $(TEST_ROOT)/integration/test_retrieval_relevance.py -q --timeout=600; \
+	echo "eval: salience reliability — retrieval rate per salience bucket (needs a DB)"; \
+	$(PYTEST) $(TEST_ROOT)/integration/test_salience_reliability_report.py -q --timeout=600 -s; \
 	echo ""; \
 	echo "eval: measured. Record the figures in eval/EVAL.md — the table is the"; \
 	echo "      record, this target only produces the numbers."

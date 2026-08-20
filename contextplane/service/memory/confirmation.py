@@ -172,7 +172,7 @@ class ConfirmationService:
                 authority=authority,
                 base=active.base_by_authority[authority],
                 corroborating_classes=0,
-                corroborating_mass=0.0,
+                corroboration_probability=0.0,
                 is_contested=False,
                 is_confirmed=True,
                 provider_confidence=None,

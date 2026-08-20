@@ -183,7 +183,9 @@ The immediate bug fixes formerly listed here are **shipped** (2026-08-19):
 scope statements, and the `cd registry` clone directory fixed in this repo
 along with the prover and fidelity test that had let three mutually-consistent
 copies of the wrong value pass. What remains of E10 is the ordered UI work
-above, nothing else.
+above. Catalog-side authoring is **E19**, cut separately rather than folded in
+here: it is unblocked by E5, and it belongs to the catalog domain rather than
+to this epic's memory-governance screens.
 
 ### E11 — Consumption legibility (suppression-compliant)
 
@@ -313,14 +315,109 @@ weights needs its own reliability curve, since a global one describes a
 population no tenant matches. That is the real cost of this epic and it lands
 after the decision does. Single-tenant deployments pay none of it.
 
+### E18 — Contract surface coherence
+
+**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane, contextplane-ui
+
+One table backs the whole catalog — `Entity`, `__tablename__ = "entities"` in
+`storage/models.py`; there is no `capabilities` table. Four HTTP write surfaces
+sit on it (`POST /v1/capabilities`, `/v1/concepts`, `/v1/operations`, and the
+generic `POST /v1/entities`), discriminated by `entity_type`. That much is
+ordinary single-table inheritance and is not the problem. The problem is that
+the surfaces disagree with each other about names, and in one place about
+semantics. Three defects, each verified against the committed `openapi.json`:
+
+- **`GET` and `POST /v1/entities` are unrelated operations.** `POST` asserts an
+  entity through the generic profile-governed surface (tag `entities`). `GET`
+  is an external-ID lookup requiring both `external_system` and `external_id`,
+  and 404s when unmapped (tag `external-ids`). A `GET` on a collection path
+  that cannot list the collection is the one item here that misleads an
+  integrator rather than merely annoying them.
+- **One resource, three names for its identifier.**
+  `/v1/capabilities/{capability_id}/interface`,
+  `/v1/capabilities/{entity_id}/artifacts` and
+  `/v1/capabilities/{provider_cap_id}/adoptions` all take the same UUID.
+- **The tag vocabulary stopped grouping.** 49 tags over 189 operations, three
+  operations untagged, three delimiter conventions in use (`arc: admin`,
+  `memory curation`, `external-ids`), and three paths whose methods are tagged
+  into different subdomains — `/v1/capabilities` is `retrieval` on GET and
+  `capabilities` on POST. `task memory` also survives the Intent rename that
+  IDR-T04 already applied to the fixtures.
+
+What is *not* wrong, recorded so a later pass does not "fix" it: the nineteen
+colon custom methods (`:resolve`, `:query`, `:adjudicate`) are AIP-136 and are
+applied consistently, and typed surfaces over a single-table discriminator is
+the normal shape. The naming discipline slipped, not the architecture — and it
+slipped because five renames each landed cleanly in code while the HTTP surface
+accumulated the sediment.
+
+This is not E13. That epic is subtraction — retiring surfaces the two-call loop
+subsumes — and waits on E2, E3 and E7. This one removes no capability and waits
+on nothing. Doing it first is also what keeps E13 measurable, because a target
+of "≤ 6 endpoints an agent integration must know" cannot be counted while one
+endpoint means two things.
+
+The supersession rule applies with a wire-compatibility caveat: a renamed path
+is removed, but only after the dual-alias window E18-T1 defines has expired,
+and the window is recorded on the alias rather than left to memory.
+
+### E19 — Catalog authoring in the dashboard
+
+**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane-ui
+
+The dashboard can read the canonical graph and cannot write it. `POST
+/v1/relationships`, `PATCH /v1/relationships/{relationship_id}` and `POST
+/v1/relationships:query` reach the generated client and stop there — no adapter
+function, no caller. So do `POST /v1/entities`, `GET /v1/entities:resolve`,
+`/v1/concepts` and `/v1/operations`. `shared/api/catalog.ts` exports twenty
+capability operations and nothing for any other entity type. An operator can
+therefore traverse a dependency they have no way to create, and the Catalog
+page presents capabilities as though they were the only entity type the service
+has had since `02a1d07`.
+
+The Catalog page stays a list, and that is recorded here because the opposite
+was proposed and rejected on the design standard's own terms: `.develop/DESIGN.md`
+in the UI repo says graphs "never replace discovery or impact lists" and
+requires every graph be paired with a searchable table. `GET /v1/capabilities`
+also returns a flat cursor page carrying no edges, so a canvas over it would
+need one traversal per node against a service that publishes no graph total —
+the browser would be inferring a shape the service declines to state. The
+visual surface belongs on `/relationships`, beside the table, over the
+traversal already running there.
+
+Vocabulary follows storage: **Catalog** is the section, **entity** is the
+thing, and capability, concept and operation are its types. The UI adopts that
+regardless of what E18 settles on the wire, because the adapter layer is where
+a contract seam is absorbed rather than mirrored into the IA.
+
 ---
 
 ## Task decomposition — first wave (the unblocked frontier)
 
-Tasks for E1, E8, E9, E15, E16 and E17 only. The remaining epics decompose
-after E1's decision tasks land, because their contracts would otherwise embed
-values nobody has decided — the failure the earlier decomposition audit found
-eight times in one pass. E1's claimable frontier *is* its decisions.
+Tasks for E1, E8, E9, E15, E16, E17, E18 and E19 only. The remaining epics
+decompose after E1's decision tasks land, because their contracts would
+otherwise embed values nobody has decided — the failure the earlier
+decomposition audit found eight times in one pass. E1's claimable frontier *is*
+its decisions.
+
+E18 and E19 join the frontier on the same test the others pass, not by
+exception: neither embeds an envelope, sensitivity-tier, grant-lifetime or
+cold-start value, so neither waits on E1. E18 renames surfaces that already
+ship, and E19 wires clients to endpoints that already ship governed.
+
+**Wave status, 2026-08-20.** E1, E8, E9, E15 and E17 have every first-wave task
+done; E16 has one left (E16-T2, written and waiting on E16-T1 to land). None of
+those epics is itself done, and their headers still read `pending` for that
+reason: a first wave is the claimable frontier, not the scope. E1's four ADRs
+decide how an Autonomy Envelope rolls out and nothing builds one; E15–E17 shipped
+salience, its governance and its reporting without anything yet *consuming* a
+salience score. Flipping an epic because its first wave closed would record work
+as done that was never started, which is the failure this file's own
+supersession rule is written against.
+
+What the closed waves unblock is the second decomposition: E2 through E13 were
+held because their contracts would otherwise embed values nobody had decided, and
+ADRs 0005–0008 have now decided four of them.
 
 ### E1-T1 — ADR 0005: envelope rollout is advisory before it is enforcing
 
@@ -466,7 +563,7 @@ Acceptance:
 
 ### E9-T1 — Validation evidence fields on the magnitude registry
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: extend `ranking_registry.json` entries with a validation block —
 `status` (`validated` | `grandfathered`), `validated_by`, `validated_on`,
@@ -557,7 +654,7 @@ Acceptance:
 
 ### E15-T4 — Salience stored on extracted claims, weights governed
 
-**Kind:** task · **Status:** pending · **Blocked by:** E15-T3, E9-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E15-T3, E9-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: a `salience` column on the claims table (additive migration), a
 `salience-weights@1` registry entry (form `weights`, the six signals, reasons
@@ -575,7 +672,7 @@ Acceptance:
 
 ### E15-T5 — Salience reliability report from receipts
 
-**Kind:** task · **Status:** pending · **Blocked by:** E15-T4 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E15-T4 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the calibration half the epic calls non-optional, from data that already
 exists: receipts record what was served, so "retrieved at least once" is
@@ -592,7 +689,7 @@ Acceptance:
 
 ### E16-T1 — Noisy-OR replaces the saturating corroboration curve
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: corroborating sources combine by `1 − Π(1 − pᵢ)` in
 `service/memory/confidence.py`, and the superseded saturating curve — the
@@ -605,9 +702,31 @@ never selected against post-change scores. Unit tests updated to the new
 arithmetic, including the property that N duplicate-lineage sources combine as
 one.
 
+Two corrections found while implementing, recorded here rather than left as a
+disagreement between the plan and the tree:
+
+- **The knobs are also columns**, so removing them is a migration and this task
+  is a `storage/migrations/` hotspot, not the non-hotspot it was cut as. The
+  acceptance grep below is scoped past `migrations/` accordingly: the baseline
+  revision that created the columns is history and cannot stop naming them, and
+  the revision that drops them has to name them to drop them.
+- **The per-source probabilities are the base table**, read by authority rank,
+  rather than the separate weight table the curve used. Noisy-OR needs a
+  probability per source and the base table already states one; a second table
+  would be a second ordering over one ladder. Corroboration is also capped one
+  rounding step below the confirmed bucket, because that bucket means a human
+  looked at the claim — the superseded curve did not hold that and let an
+  owner-human claim with two corroborators read as confirmed.
+
+`memory_confidence_policy` is now within two columns of being entirely dead:
+nothing reads any of it, because `ConfidencePolicy` is constructed with shipped
+defaults at every call site. E17 should retire the table rather than extend it,
+since tenant-scoped scoring lands on the profile-binding system instead.
+
 Acceptance:
     .venv/bin/python -m pytest tests/unit -q -k "confidence"
-    sh -c '! grep -rn "corroboration_headroom\|corroboration_scale" contextplane/'
+    sh -c '! grep -rn "corroboration_headroom\|corroboration_scale" contextplane/ --exclude-dir=migrations --exclude-dir=__pycache__'
+    .venv/bin/python -m pytest tests/integration/test_confidence_policy_migrations.py -q
     make test-unit && make lint && make typecheck
 
 ### E16-T2 — Regression: same-session corroboration counts once
@@ -627,7 +746,7 @@ Acceptance:
 
 ### E16-T3 — Per-predicate churn measurement, fitted and inspected
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: measure each predicate's supersession half-life from the bitemporal
 history and store fitted rates the way calibration mappings are stored — a
@@ -644,7 +763,7 @@ Acceptance:
 
 ### E16-T4 — Decay reads the per-predicate rate, category as fallback
 
-**Kind:** task · **Status:** pending · **Blocked by:** E16-T3 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E16-T3 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `confidence_decay.py` resolves half-life per predicate where an
 inspected fit exists, category-plus-subject otherwise, and its docstring — 
@@ -660,7 +779,7 @@ Acceptance:
 
 ### E17-T1 — The tenant-resolving accessor beside the profile services
 
-**Kind:** task · **Status:** pending · **Blocked by:** E15-T4 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E15-T4 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: one accessor in the profile layer resolving a scoring magnitude for a
 tenant — active binding's extension value if one exists, else the committed
@@ -676,7 +795,7 @@ Acceptance:
 
 ### E17-T2 — Scoring overrides in the extension schema and binding lifecycle
 
-**Kind:** task · **Status:** pending · **Blocked by:** E17-T1 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E17-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: a tenant extension may carry scoring-magnitude overrides — same forms
 and validation the registry enforces, reasons included — published and
@@ -684,13 +803,29 @@ activated through the existing `plan → validate → activate → rollback`
 lifecycle, with an integration test proving a planned-but-unactivated override
 governs nothing and a rolled-back one restores the prior value.
 
+**A schema gap surfaced doing this, so the task is a migrations hotspot after
+all.** `profile_bindings` recorded only `extension_set_digest` — a hash over the
+extension ids — and discarded the ids `plan_binding` was handed. A digest can
+verify a set somebody already has and cannot produce one, so the schema had no
+answer to "which extensions is this tenant governed by". Nothing needed the
+answer until a resolver had to read a bound extension's contents.
+
+The first implementation worked around it by enumerating the tenant's extensions
+against the bound core revision and checking the digest matched. That is wrong in
+a way that looks right: enumeration also finds extensions the tenant published
+and never bound, so a tenant with one bound and one shelved extension produced a
+mismatch and was refused for an ordinary configuration. The rollback test caught
+it — the case the lifecycle exists for. `0059` adds
+`profile_binding_extensions`; the digest stays as an integrity check over a set
+the schema can now state.
+
 Acceptance:
     env CONTEXTPLANE_TEST_PG=testcontainers .venv/bin/python -m pytest tests/integration/test_profile_bindings.py tests/integration/test_scoring_overrides.py -q
     make lint && make typecheck
 
 ### E17-T3 — Per-tenant calibration split
 
-**Kind:** task · **Status:** pending · **Blocked by:** E17-T2, E15-T5 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E17-T2, E15-T5 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the cost ADR-0004 records arriving late, paid: reliability reporting
 (E15-T5) and calibration mappings key by tenant wherever a tenant runs its own
@@ -698,8 +833,291 @@ weights, with the global curve retained for tenants on core defaults. A tenant
 below the observation floor reports "assurance not earned" rather than
 borrowing the global curve, mirroring the small-cell suppression discipline.
 
+The calibration half is deliberately **defined and inert**, and the reason is
+recorded rather than left implicit: the split applies where a tenant overrides a
+magnitude that feeds the numbers being calibrated, and no shipped override does.
+Salience decides what is remembered and does not enter `confidence.score`, so
+every fit this deployment writes carries the `shared` scope. Building the key now
+means the separation happens on the day it is needed rather than the day somebody
+remembers it is needed — the same argument that put `requires_validated` in the
+registry before its check existed.
+
 Acceptance:
     make eval
     .venv/bin/python -m pytest tests/unit -q -k "calibration"
     make test-unit
+
+### E18-T1 — ADR 0009: how a published HTTP surface is renamed
+
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: decide the dual-alias window E13 assumes and E18-T4 needs, before the
+first rename rather than during it. The ADR fixes how long an alias lives, how
+it is marked in the contract (`deprecated: true` plus a sunset stamp, which
+OpenAPI already models, so nothing new is invented), whether a deprecated alias
+may differ in behaviour from its successor — it may not, or the window becomes
+a second implementation — and what actually retires one. The honest constraint
+to record: neither this repository nor the UI can currently see third-party
+callers, so retirement cannot rest on an observed-zero-usage claim it has no
+instrument for. All six MADR sections, dissent included.
+
+**That constraint was stated wrongly and the ADR corrects it.** There *is* an
+instrument: `usage_events.operation` holds the route template per tenant, so
+"has anyone called this path" is a query that runs today. It is the wrong
+instrument for two reasons the tree already records — the usage tier is
+deliberately lossy, so zero observed and zero are different facts, and
+`check_usage_boundary.py` forbids any decision path reading it. A retirement is a
+decision. The correction matters because "we cannot see" invites somebody to
+build the instrument and then use it, while "we can see and must not decide from
+it" is the rule that survives the instrument existing.
+
+Acceptance:
+    test -f .develop/adr/0009-renaming-a-published-surface.md
+    make doc-links && make doc-refs
+
+### E18-T2 — One path parameter for one identifier
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — openapi.json · **Repo:** contextplane
+
+Goal: `{capability_id}` and `{provider_cap_id}` become `{entity_id}` across the
+five `/v1/capabilities/*` templates that still use them. No URL changes — a
+path-template variable is positional on the wire — so this is not a rename
+under E18-T1 and needs no alias; what changes is the generated client's
+parameter names, which is the whole reason it is a contract hotspot. The twelve
+`capability_id` occurrences inside `components` are request and response *body*
+fields, out of scope and left alone, which is why the acceptance grep is scoped
+to path keys rather than the file.
+
+Acceptance:
+    make openapi-export
+    sh -c '! grep -nE "\"/v1/capabilities/\{(capability_id|provider_cap_id)\}" openapi.json'
+    make lint && make typecheck && make test-conformance
+
+### E18-T3 — One tag vocabulary, and a gate that keeps it
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — openapi.json · **Repo:** contextplane
+
+Goal: one delimiter convention across all 49 tags, every operation tagged, no
+path split across subdomains by method, and `task memory` moved to the Intent
+vocabulary IDR-T04 already applied to the fixtures. Then
+`scripts/check_contract_tags.py` and a `make contract-tags` target wired into
+the CI lint job, built on `checklib` in the shape `check_surface_inventory.py`
+already uses: it fails if any operation is untagged, if a tag mixes
+conventions, or if one path's methods carry tags from two subdomains.
+Anti-vacuity via `require_nonempty` — a run that inspects zero operations fails
+rather than passes, which is how the tag gate avoids the failure mode E9's
+restatement describes.
+
+Acceptance:
+    make openapi-export
+    make contract-tags
+    .venv/bin/python -m pytest tests/unit/test_check_contract_tags.py -q
+    grep -q "contract-tags" .github/workflows/ci.yml
+    make lint && make typecheck
+
+### E18-T4 — Split the `/v1/entities` GET and POST collision
+
+**Kind:** task · **Status:** pending · **Blocked by:** E18-T1 · **Hotspot:** yes — openapi.json · **Repo:** contextplane
+
+Goal: the external-ID lookup moves off the collection path to `GET
+/v1/entities:lookup`, matching the nineteen AIP-136 colon methods the contract
+already carries and its sibling `GET /v1/entities:resolve` in particular. `GET
+/v1/entities` is then left **absent** rather than backfilled with a generic
+entity list: inventing a list nobody asked for would be new scope inside a
+coherence epic, and `GET /v1/capabilities` already serves the listing job for
+the type anyone lists today. The old path keeps working for the window E18-T1
+defines, marked deprecated with its sunset, and the issue that removes it is
+cut in the same PR so the alias cannot outlive the plan that created it.
+
+Acceptance:
+    make openapi-export
+    .venv/bin/python -m pytest tests/conformance/test_openapi_drift.py tests/conformance/test_generic_profile_parity.py -q
+    make lint && make typecheck && make test-conformance
+
+### E18-T5 — UI contract pin bump for E18
+
+**Kind:** task · **Status:** pending · **Blocked by:** E18-T2, E18-T3, E18-T4 · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
+
+Goal: one pin bump carrying all three contract changes, per the procedure in
+`contracts/README.md`. It also absorbs the drift already sitting between the
+current pin (`00613eb`) and service HEAD — `update_entity` and
+`update_relationship` lost their generated path suffixes in `53960d3`, two
+operationId lines and nothing else — so the bump closes the existing gap rather
+than widening it. No UI code reads any renamed parameter today, so the diff is
+the pin, the regenerated client, and the hash note. Serialize against E15-T2:
+both touch the same UI hotspot and contract-bump PRs run one at a time.
+
+Acceptance:
+    pnpm generate:api && git diff --exit-code -- apps/admin-dashboard/src/shared/api/generated/
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E19-T1 — Relationship writes: adapter and edge authoring
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: adapter functions for `POST /v1/relationships`, `PATCH
+/v1/relationships/{relationship_id}` and `POST /v1/relationships:query` in
+`shared/api/`, plus the authoring UI that uses them — create an edge from a
+capability's detail dialog and from the Relationships page, edit or retire one
+from a traversal result. The repo's own contract rules carry the detail rather
+than being restated here: a fresh idempotency key per create, `If-Match` from
+the detail `ETag` on update, a `412` that keeps the draft and refetches, and
+branching on `errors[].code` never on message text.
+
+**Two of those four are unbuildable against the service as it stands, and the
+task splits because of it.**
+
+`GET /v1/relationships/{relationship_id}` emits no `ETag` and `PATCH` reads no
+`If-Match`. Entities do — `contextplane/api/routers/_entity_crud.py` computes one
+and returns it on the detail read — and relationships were never given the same
+treatment. Nothing in the contract advertises an `ETag` response header on any of
+its 242 operations, so the omission is uniform rather than specific, and it means
+the UI cannot send a concurrency token it is never handed, nor test a `412` that
+never arrives.
+
+`ContextplaneClient.request` also returns only the parsed body and discards
+response headers, so even once the service emits an `ETag` the adapter has no way
+to read it. That is a UI-repo prerequisite and a small one.
+
+So:
+
+- **E19-T1a** (contextplane-ui) — **done**: the three relationship adapters,
+  `errors[].code` branching, and a caller-owned idempotency key per create.
+  Colocated tests cover create and permission-denied. No optimistic concurrency,
+  because there is nothing to be optimistic against.
+- **E19-T1b** (contextplane) — **split into three, all done**; see below.
+- **E19-T1c** (contextplane-ui): the `GET` detail adapter, the client's
+  `ETag`-reading method, the authoring UI, and the `412` handling — all once T1b
+  makes an `ETag` and a `412` possible. Blocked by T1a and T1b.
+
+**T1b split again, because grounding it found two defects underneath it.** The
+task read "add an `ETag` to the detail read and an `If-Match` to the update".
+Neither was buildable as stated:
+
+- **T1b-i — the relationship validator (done).** The surface validated its
+  `subject_type` through `EntityValidator`, which reads only the `entity` family
+  of the canonical document. A relationship type is declared in the
+  `relationship` family, so it was never found: every relationship write, on all
+  three intent routes, returned `unknown_entity_type` against a type the tenant's
+  profile did declare, with `valid: false` under a mandatory binding for a write
+  the service had accepted. Nothing branched on it, which is why it survived —
+  and why T1a's adapter would have surfaced the artifact to an operator as though
+  it were a finding.
+- **T1b-ii — an update targets its path id (done).** `update_relationship` used
+  its path id only to check the row existed, then asserted whatever the body
+  described. A `PATCH /v1/relationships/{X}` with different endpoints returned
+  `200` with a *different* `relationship_id`, created a second unrelated edge,
+  and left X untouched. The endpoint summarised as "supersede a relationship"
+  superseded nothing, on every request, and no test covered it. An `If-Match` on
+  a write that lands on a different row than the `ETag` describes is concurrency
+  control in appearance only, so this had to land first.
+- **T1b-iii — the `ETag` and `If-Match` themselves (done).** Advertised in
+  `openapi.json` rather than merely emitted; the validator includes
+  `effective_to` because a supersession does not otherwise touch the row it ends.
+
+The pattern from the previous wave repeated: **the decomposition described the
+service the plan believed existed.** Three tasks last wave, two more here. What
+distinguishes these two is that both were reachable by reading the handler —
+no test asserted the PATCH's effect, and no test asserted `validation.valid` on
+a relationship write, so the tree agreed with the plan by not looking.
+
+**The client's `ETag` method moved from T1a to T1c during T1a.** It was written
+first: `requestWithEtag` on `ContextplaneClient`, both methods sharing one
+`perform()`. Adding it to the interface broke the typecheck in 22 test files,
+each of which builds a `{ request: vi.fn() }` double that no longer satisfies
+`ContextplaneClient`. The fix is mechanical but the trade is not worth taking
+early — until T1b lands, `requestWithEtag` returns `etag: null` at every one of
+the contract's 242 operations, so the change buys nothing and the 22 doubles pay
+for it. It lands in T1c beside the first endpoint that has an `ETag` to read.
+Making the method optional was the alternative and is worse: an optional method
+means every adapter carries a fallback branch that no endpoint ever takes.
+
+Recorded rather than worked around because the alternative shapes are both worse:
+shipping the adapter with an `If-Match` header derived from nothing would look
+like concurrency control and be none, and skipping the concurrency test would
+leave the task's own acceptance list describing a case nobody exercises. Colocated tests cover the
+create, the concurrency conflict, and the permission-denied path, because those
+are the three the adapter can get wrong silently.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "relationship"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E19-T2 — Catalog covers every entity type, in one vocabulary
+
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: the Catalog page lists concepts and operations beside capabilities,
+filterable by type, with `POST /v1/concepts` and `POST /v1/operations` wired for
+creation — the service has offered both since `02a1d07` and the UI neither.
+Naming follows the epic: Catalog the section, entity the thing, type the
+discriminator, and the page copy that presents a capability as the only kind of
+record is corrected in the same change. No new nav destination; this is the
+existing page learning the rest of its domain.
+
+**The premise was half wrong, in the direction that made the task smaller.**
+`GET /v1/capabilities` has never been capability-only: `entity_type` is a
+filter, and with the filter absent `list_capabilities` returns every type the
+tenant holds. The endpoint is named for its first caller, not for what it
+lists. So the page was *already* receiving concepts and operations and
+presenting them under a heading that said "Capabilities", in a column headed
+"Capability", with a count labelled "Capabilities on page". Nothing was missing;
+the page was mislabelling rows it had already fetched.
+
+Shipped accordingly: a service-side `?type=` filter, the epic's vocabulary
+throughout, and one `createCatalogEntity` routing by type rather than three
+near-identical adapters — with `parent_capability_id` in a discriminated union
+member, since only a concept and an operation have a parent to send.
+
+The filter offers the three types with dedicated create routes.
+`/v1/admin/entity-types` would enumerate more, but it lists types holding a
+registered *schema* rather than types that exist, and it is an admin route a
+catalog browser may not be able to call. A fourth type still lists under "All
+types" and is named in the Type column; only creation is limited.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "catalog"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E19-T3 — A graph view on /relationships, beside the table
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: a node-link rendering of the traversal `/relationships` already runs,
+URL-addressable as a view parameter so a copied link reconstructs it, toggling
+against the existing table rather than replacing it. The design standard's
+graph clause is the acceptance surface rather than decoration: focused root
+with visible direction, relationship type, depth, version and time scope;
+progressive expansion; disclosed hidden-node counts; a legend; searchable node
+names; selection opening the same accessible detail a table row opens; all of
+it keyboard-operable, and no task requiring a drag to complete.
+
+One honest gap this task must not paper over: the UI `CLAUDE.md` requires
+bundle and route budgets enforced in CI, and no such gate exists in the
+repository today — no `size-limit`, no budget config, nothing in `ci.yml`. So
+the rendering library is chosen against the keyboard requirement first (a
+library that cannot satisfy it is disqualified before size is discussed) and
+the task records the measured route bundle size in its PR body. Building the
+budget gate is real work and belongs to its own issue, not smuggled in here as
+an acceptance line that would have to build the gate to pass.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "graph"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E19-T4 — Entity resolution in global search
+
+**Kind:** task · **Status:** pending · **Blocked by:** E18-T5 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: `GET /v1/entities:resolve` behind the shell's global search, so a handle
+resolves to one entity and an ambiguous handle is presented as the refusal the
+service actually returns — `identity_ambiguous`, with the qualifying types
+offered as choices and never a silently picked first match, which is the
+failure the endpoint was designed to refuse. Blocked on the pin bump because
+the sibling lookup path moves in E18-T4, and building against the pre-rename
+client would mean writing this adapter twice.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "resolve"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
 

@@ -18,16 +18,40 @@ the job also wrote a history row -- one row per claim per tick, containing no ne
 information. It would also be O(all claims) writes producing no facts, and it would
 invalidate the stored audit record on every pass.
 
-**The rate is keyed on the category and modified by the subject.** Category alone
-cannot distinguish two subjects that change at different speeds; subject alone has
-no behaviour for an entity nobody has watched, and would flatten the fast-versus-slow
-distinction between an interface and an owner. Per predicate would be twenty-six
-figures nobody could defend one at a time.
+**The rate is the predicate's measured one where there is one, and the category's
+authored one otherwise; the subject modifies whichever applies.**
+
+This module argued the opposite for most of its life, on the grounds that a rate
+per predicate meant two dozen numbers nobody could defend individually. That was
+right about *authored* numbers and wrong about *measured* ones. Nobody defends a
+fitted rate individually; the defence is the fit and the inspection that accepted
+it, and measuring two dozen is no harder than measuring six. The reversal is
+recorded here as a decision rather than left as two contradictory explanations of
+one behaviour, which is what keeping the old paragraph beside the new code would
+have produced.
+
+The category figures stay and are not dead. They govern every predicate that has
+not been measured, which on a new deployment is all of them and on a mature one is
+still most: a predicate needs twenty observed supersessions inside a year before
+it carries a rate of its own, and a predicate whose claims do not expire never
+will. So the six authored numbers remain the answer for the common case, and a
+fitted rate is a refinement over them rather than a replacement.
+
+A fitted rate is used only after somebody has inspected it. The fit cannot tell
+churn -- a claim becoming untrue -- from correction -- a claim having been wrong
+when written, and both produce identical bitemporal history. Decaying aggressively
+on the second buries an extraction defect under a confidence curve, so the
+inspection is what stands between a measurement and a behaviour.
+
+Subject volatility still modifies whichever base applies. Category alone cannot
+distinguish two subjects that change at different speeds, and that is true of a
+per-predicate base as well.
 """
 
 from __future__ import annotations
 
 import datetime
+from collections.abc import Mapping
 
 # The age at which an assertion has lost half its value above the floor, per
 # category. Six numbers rather than twenty-six: the differences that are real are
@@ -103,16 +127,34 @@ _SECONDS_PER_DAY = 86400.0
 def half_life_days(
     claim_category: str,
     *,
+    predicate: str | None = None,
+    fitted_half_lives: Mapping[str, float] | None = None,
     subject_median_change_days: float | None = None,
     subject_change_observations: int = 0,
     tenant_multiplier: float = 1.0,
 ) -> float:
     """How long this claim takes to lose half its value above the floor.
 
-    The category sets the rate and the subject modifies it. An entity with too
-    little history gets no modifier rather than a guessed one: claiming a subject
-    changes slowly because nobody has watched it would be inventing an observation.
+    The predicate's measured rate sets the base where an inspected fit exists;
+    the category's authored figure sets it otherwise. The subject modifies
+    whichever applied. An entity with too little history gets no modifier rather
+    than a guessed one: claiming a subject changes slowly because nobody has
+    watched it would be inventing an observation.
+
+    `fitted_half_lives` is passed in rather than read here. This function is pure
+    and is called on the claim write path; giving it a database read would put a
+    query inside the one place a stored score has to be re-derivable from stored
+    inputs. The caller loads the (small, cacheable) map of inspected rates and
+    hands it over — and a caller that hands over nothing gets exactly today's
+    behaviour, which is what makes this change safe to land before any rate has
+    been inspected.
     """
+    base = _fitted_base(predicate, fitted_half_lives)
+    if base is not None:
+        return (
+            base * _subject_factor(subject_median_change_days, subject_change_observations) * _tenant(tenant_multiplier)
+        )
+
     base = CATEGORY_HALF_LIFE_DAYS.get(claim_category)
     if base is None:
         # An unrecognized category decays at the slowest rate rather than the
@@ -120,20 +162,37 @@ def half_life_days(
         # somebody added without considering how quickly its subjects move.
         base = max(CATEGORY_HALF_LIFE_DAYS.values())
 
-    factor = 1.0
-    if (
-        subject_median_change_days is not None
-        and subject_change_observations >= MIN_CHANGE_OBSERVATIONS
-        and subject_median_change_days > 0
-    ):
-        factor = min(
-            SUBJECT_VOLATILITY_MAX_FACTOR,
-            max(
-                SUBJECT_VOLATILITY_MIN_FACTOR,
-                subject_median_change_days / SUBJECT_VOLATILITY_BASELINE_DAYS,
-            ),
-        )
-    return base * factor * max(0.01, tenant_multiplier)
+    return base * _subject_factor(subject_median_change_days, subject_change_observations) * _tenant(tenant_multiplier)
+
+
+def _fitted_base(predicate: str | None, fitted: Mapping[str, float] | None) -> float | None:
+    """The predicate's inspected rate, or None if it has none.
+
+    A non-positive stored rate is ignored rather than used. The database refuses
+    one, so seeing it here means the map came from somewhere else, and dividing a
+    decay curve by zero is a worse outcome than falling back to the category.
+    """
+    if predicate is None or not fitted:
+        return None
+    measured = fitted.get(predicate)
+    if measured is None or measured <= 0:
+        return None
+    return measured
+
+
+def _subject_factor(median_change_days: float | None, observations: int) -> float:
+    """How much this subject's own history moves the base rate, bounded both ways."""
+    if median_change_days is None or observations < MIN_CHANGE_OBSERVATIONS or median_change_days <= 0:
+        return 1.0
+    return min(
+        SUBJECT_VOLATILITY_MAX_FACTOR,
+        max(SUBJECT_VOLATILITY_MIN_FACTOR, median_change_days / SUBJECT_VOLATILITY_BASELINE_DAYS),
+    )
+
+
+def _tenant(multiplier: float) -> float:
+    """A tenant may scale the rate; a zero or negative multiplier is not a scale."""
+    return max(0.01, multiplier)
 
 
 def confirmation_hold_days(claim_category: str, *, configured: float | None = None) -> float:

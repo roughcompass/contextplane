@@ -19,14 +19,17 @@ from contextplane.service.memory.calibration import (
     MAX_CALIBRATION_ERROR,
     MIN_ADJUDICATED_FOR_MAPPING,
     PRIOR_STRENGTH,
+    SHARED_SCOPE,
     STATUS_ACTIVE,
     STATUS_FAILED,
     UNCALIBRATED,
     Adjudication,
+    _scorer_prefix,
     calibration_error,
     fit,
     mapping_version,
 )
+from contextplane.service.memory.confidence import SCORER_VERSION
 
 
 def _well_calibrated(n: int = 400) -> list[Adjudication]:
@@ -95,6 +98,27 @@ def test_the_version_names_everything_that_would_invalidate_the_fit() -> None:
         provider_id="anthropic", model_id="haiku-4-5", strategy_id="pref", fit_date="d", n=250
     )
     assert len({first, swapped_model, swapped_strategy}) == 3
+
+
+def test_the_confidence_scorer_is_part_of_the_key() -> None:
+    """A fit is built from outcomes judged against the numbers a reviewer saw, and
+    those came out of the scorer. Change it and the fit measures something that is
+    no longer running — so it must match no row rather than keep loading."""
+    fixed = {"provider_id": "anthropic", "model_id": "haiku-4-5", "strategy_id": "obs", "fit_date": "d", "n": 250}
+    current = mapping_version(**fixed)  # type: ignore[arg-type]
+    other_scorer = mapping_version(**fixed, scorer_version="confidence-v1")  # type: ignore[arg-type]
+    assert current != other_scorer
+    assert SCORER_VERSION in current
+
+
+def test_a_fit_predating_the_scorer_key_matches_no_current_prefix() -> None:
+    """The pre-existing rows. They keep their version string and stop being
+    selected, which is the intended answer for them rather than a migration."""
+    legacy = "anthropic:haiku-4-5:obs:2026-01-04:250"
+    prefix = _scorer_prefix(provider_id="anthropic", model_id="haiku-4-5", strategy_id="obs")
+    assert not legacy.startswith(prefix.removesuffix("%"))
+    current = mapping_version(provider_id="anthropic", model_id="haiku-4-5", strategy_id="obs", fit_date="d", n=250)
+    assert current.startswith(prefix.removesuffix("%"))
 
 
 def test_the_version_records_how_much_evidence_stood_behind_it() -> None:
@@ -206,3 +230,49 @@ def test_the_bin_count_is_coarse_enough_to_hold_real_evidence() -> None:
     """At the minimum sample, ten bins average twenty observations each — already
     thin. Finer bins would fit noise."""
     assert MIN_ADJUDICATED_FOR_MAPPING / CALIBRATION_BIN_COUNT >= PRIOR_STRENGTH
+
+
+# --- the per-tenant split ---------------------------------------------------------
+
+
+def test_the_pooled_scope_is_a_literal_rather_than_an_empty_segment() -> None:
+    """A key with a variable number of parts is one a prefix match gets wrong
+    exactly once, and the pooled case has to be something a reader can grep."""
+    pooled = mapping_version(provider_id="p", model_id="m", strategy_id="s", fit_date="d", n=250)
+    assert f":{SHARED_SCOPE}:" in pooled
+    assert len(pooled.split(":")) == len(
+        mapping_version(provider_id="p", model_id="m", strategy_id="s", fit_date="d", n=250, tenant_id="t-1").split(":")
+    )
+
+
+def test_a_tenant_running_its_own_weights_gets_its_own_key() -> None:
+    """Once a tenant can reweight a magnitude, a mapping fitted across every
+    tenant describes a population that tenant is not in."""
+    fixed = {"provider_id": "p", "model_id": "m", "strategy_id": "s", "fit_date": "d", "n": 250}
+    pooled = mapping_version(**fixed)  # type: ignore[arg-type]
+    theirs = mapping_version(**fixed, tenant_id="tenant-a")  # type: ignore[arg-type]
+    assert pooled != theirs
+    assert "tenant-a" in theirs
+
+
+def test_a_tenant_fit_does_not_match_the_pooled_prefix() -> None:
+    """The mechanism, not the intention: an overriding tenant is not *offered*
+    the pooled mapping, because a mapping fitted across other tenants' scores is
+    borrowed assurance."""
+    pooled_prefix = _scorer_prefix(provider_id="p", model_id="m", strategy_id="s").removesuffix("%")
+    theirs = mapping_version(provider_id="p", model_id="m", strategy_id="s", fit_date="d", n=250, tenant_id="a")
+    assert not theirs.startswith(pooled_prefix)
+
+
+def test_a_tenant_asking_for_its_own_scope_does_not_match_another_tenants() -> None:
+    """Two overriding tenants must not read each other's fits either."""
+    a_prefix = _scorer_prefix(provider_id="p", model_id="m", strategy_id="s", tenant_id="a").removesuffix("%")
+    b_key = mapping_version(provider_id="p", model_id="m", strategy_id="s", fit_date="d", n=250, tenant_id="b")
+    assert not b_key.startswith(a_prefix)
+
+
+def test_a_pooled_fit_still_matches_the_pooled_prefix() -> None:
+    """The control. Every fit this deployment writes is pooled, so a split that
+    stopped them matching would take calibration away from everyone."""
+    prefix = _scorer_prefix(provider_id="p", model_id="m", strategy_id="s").removesuffix("%")
+    assert mapping_version(provider_id="p", model_id="m", strategy_id="s", fit_date="d", n=250).startswith(prefix)

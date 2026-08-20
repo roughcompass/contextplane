@@ -40,9 +40,10 @@ from sqlalchemy.exc import IntegrityError
 
 from contextplane.profile.compiler import CompiledProfile, compile_profile
 from contextplane.profile.schemas.common import ProfileCompositionError
+from contextplane.profile.scoring import validate_overrides
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -217,6 +218,12 @@ class ProfileService:
         relationships: Sequence[RelationshipTypeDefinition],
         interfaces: Sequence[InterfaceFamilyDefinition],
         published_by: str,
+        # Scoring-magnitude overrides, validated to the same bar the committed
+        # registry holds its own entries to. Optional because most extensions
+        # extend the entity model and say nothing about scoring; an empty map
+        # and an absent argument mean the same thing, which is "this tenant
+        # scores on the core defaults".
+        scoring_overrides: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> PublishedExtension:
         """Publish a tenant's extension of a core revision it must already have.
 
@@ -242,8 +249,26 @@ class ProfileService:
                 )
                 raise ProfilePublicationError(msg)
 
+        # Validated before compiling and before the insert, so a refused
+        # override never reaches a row. A tenant who published a bad weighting
+        # and had it rejected at activation would have a document in the table
+        # that nothing can use and nothing will clean up.
+        magnitudes = validate_overrides(scoring_overrides or {})
+
         compiled = self._compile(entities=entities, relationships=relationships, interfaces=interfaces)
         extension_points = tuple(sorted({definition.qualified for definition in entities}))
+
+        # `compiled.document` is the canonical JSON *text* the output digest was
+        # taken over, so the overrides are merged into a parsed copy rather than
+        # appended to a string. The digest deliberately still covers the compiled
+        # families only: it answers "did the type model change", and a reweighting
+        # is not a change to the type model.
+        document = json.loads(compiled.document)
+        if magnitudes:
+            # Under `magnitudes`, the key the resolver reads. Written only when
+            # there is something to write: an empty key would make "publishes no
+            # override" and "publishes an empty override" indistinguishable.
+            document["magnitudes"] = magnitudes
 
         extension_id = uuid.uuid4()
         now = self._clock.now()
@@ -264,7 +289,7 @@ class ProfileService:
                         "tenant": tenant_id,
                         "namespace": namespace,
                         "target": target_core_revision_id,
-                        "document": compiled.document,
+                        "document": json.dumps(document, sort_keys=True),
                         "digest": compiled.output_digest,
                         "points": _json_array(extension_points),
                         "result": "compatible",

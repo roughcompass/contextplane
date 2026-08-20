@@ -45,6 +45,7 @@ from contextplane.service.memory.confidence import score as score_confidence
 from contextplane.service.memory.confidence_decay import half_life_days
 from contextplane.service.memory.confidence_read import subject_change_profile
 from contextplane.service.memory.contest import detect_for_claim
+from contextplane.service.memory.predicate_churn import inspected_half_lives
 from contextplane.types import Clock, TenantContext
 
 # Who may act on the queue's two curator decisions -- linking a subjectless
@@ -208,6 +209,8 @@ class _ClaimCuratorActionsMixin:
             median_change, observations = await subject_change_profile(session, entity_id=subject.entity_id, now=now)
             half_life = half_life_days(
                 claim.claim_category,
+                predicate=claim.predicate,
+                fitted_half_lives=await inspected_half_lives(session),
                 subject_median_change_days=median_change,
                 subject_change_observations=observations,
                 tenant_multiplier=policy.decay_multiplier,

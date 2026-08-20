@@ -13,8 +13,10 @@ predicate; those two findings go to different people.
 from __future__ import annotations
 
 import datetime
+import json
 import uuid
 from collections.abc import AsyncIterator
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -22,6 +24,7 @@ from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from contextplane.extraction import salience
 from contextplane.extraction.containment import (
     TRIGGER_DIRECTIVE,
     TRIGGER_NO_EVIDENCE,
@@ -46,6 +49,7 @@ from contextplane.service.catalog.global_vocabulary import GlobalVocabularyServi
 from contextplane.service.memory.claim_authority import REJECT_VALUE_TYPE, STATUS_STAGED
 from contextplane.service.memory.claim_ontology import seed_ontology
 from contextplane.service.memory.claim_writer import ClaimService
+from contextplane.service.memory.session_events import SessionEvent
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import claim_producer_ctx as _ctx
 from tests.helpers.seeding import seed_shared_entity as _seed_entity
@@ -92,7 +96,12 @@ async def _seed_tenant(factory: async_sessionmaker[AsyncSession]) -> tuple[uuid.
     return tid, aid
 
 
-def _request(strategy: Strategy = OBSERVATION, *, boundary: str | None = None) -> ExtractionRequest:
+def _request(
+    strategy: Strategy = OBSERVATION,
+    *,
+    boundary: str | None = None,
+    events: tuple[SessionEvent, ...] = (),
+) -> ExtractionRequest:
     """The request whose output is being staged.
 
     Staging checks the delimiter the event bodies were actually wrapped in, so
@@ -101,7 +110,7 @@ def _request(strategy: Strategy = OBSERVATION, *, boundary: str | None = None) -
     the one that names it; every other test gets a fresh one it never sees.
     """
     return ExtractionRequest(
-        events=(),
+        events=events,
         strategy_id=strategy.strategy_id,
         system_prompt=strategy.system_prompt,
         output_schema=strategy.output_schema,
@@ -757,3 +766,148 @@ async def test_a_clean_value_is_not_blocked_by_the_pii_policy(
     )
 
     assert len(outcome.staged) == 1
+
+
+# --- salience ----------------------------------------------------------------
+
+
+def _event(seq: int, *, kind: str, body: str, tool_name: str | None = None) -> SessionEvent:
+    return SessionEvent(
+        event_id=uuid.uuid4(),
+        session_id="salience-window",
+        seq=seq,
+        kind=kind,
+        body=body,
+        tool_name=tool_name,
+        metadata={},
+        created_at=_NOW,
+    )
+
+
+async def _salience_row(factory: async_sessionmaker[AsyncSession], claim_id: uuid.UUID) -> Any:
+    async with factory() as session:
+        return (
+            await session.execute(
+                text(
+                    "SELECT salience, salience_signals, salience_weights_id, salience_novelty "
+                    "FROM memory_claims WHERE claim_id = :cid"
+                ),
+                {"cid": claim_id},
+            )
+        ).one()
+
+
+@pytest.mark.asyncio
+async def test_a_staged_claim_carries_the_salience_of_the_episode_it_came_from(
+    factory: async_sessionmaker[AsyncSession], service: ExtractionService, ontology: None
+) -> None:
+    """The number, the signals it was computed from, and which weights produced
+    it. All three, because a score nobody can explain is worse than no score."""
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+    event = str(uuid.uuid4())
+    window = (
+        _event(0, kind="user_message", body="deploy the checkout-api change"),
+        _event(1, kind="agent_action", body="applying", tool_name="Write"),
+        _event(2, kind="agent_message", body="done, the rollout completed"),
+    )
+
+    outcome = await service.stage_result(
+        _ctx(tid, aid),
+        strategy=OBSERVATION,
+        request=_request(events=window),
+        result=_result(_candidate(str(subject), "owned_by_team", "platform", event)),
+        known_event_ids=frozenset({event}),
+    )
+    assert len(outcome.staged) == 1
+
+    row = await _salience_row(factory, outcome.staged[0].claim_id)
+    assert row.salience is not None
+    assert 0.0 < float(row.salience) <= 1.0
+    assert row.salience_weights_id == salience.WEIGHTS_MODEL_ID
+    stored = row.salience_signals if isinstance(row.salience_signals, dict) else json.loads(row.salience_signals)
+    assert set(stored) == set(salience.SIGNAL_NAMES)
+    # The stored number is the stored signals under the committed weights, so a
+    # reader can check the row without re-running the window.
+    assert float(row.salience) == pytest.approx(salience.combine(stored))
+
+
+@pytest.mark.asyncio
+async def test_novelty_is_left_for_the_embedding_consumer(
+    factory: async_sessionmaker[AsyncSession], service: ExtractionService, ontology: None
+) -> None:
+    """Written null rather than zero. Zero is a measurement that says the episode
+    is identical to something already stored, which nobody checked."""
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+    event = str(uuid.uuid4())
+
+    outcome = await service.stage_result(
+        _ctx(tid, aid),
+        strategy=OBSERVATION,
+        request=_request(events=(_event(0, kind="user_message", body="who owns checkout"),)),
+        result=_result(_candidate(str(subject), "owned_by_team", "platform", event)),
+        known_event_ids=frozenset({event}),
+    )
+
+    row = await _salience_row(factory, outcome.staged[0].claim_id)
+    assert row.salience_novelty is None
+
+
+@pytest.mark.asyncio
+async def test_every_claim_from_one_episode_carries_the_same_salience(
+    factory: async_sessionmaker[AsyncSession], service: ExtractionService, ontology: None
+) -> None:
+    """Salience is a property of the window, not of the claim. Two claims from
+    one conversation disagreeing about how much that conversation was worth
+    keeping would be indefensible to a reader of either."""
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+    event = str(uuid.uuid4())
+    window = (_event(0, kind="user_message", body="checkout-api is owned by platform, staging only"),)
+
+    outcome = await service.stage_result(
+        _ctx(tid, aid),
+        strategy=OBSERVATION,
+        request=_request(events=window),
+        result=_result(
+            _candidate(str(subject), "owned_by_team", "platform", event),
+            _candidate(str(subject), "deployment_environment", "staging", event),
+        ),
+        known_event_ids=frozenset({event}),
+    )
+    assert len(outcome.staged) == 2
+
+    scores = {float((await _salience_row(factory, c.claim_id)).salience) for c in outcome.staged}
+    assert len(scores) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_richer_episode_outscores_a_thinner_one(
+    factory: async_sessionmaker[AsyncSession], service: ExtractionService, ontology: None
+) -> None:
+    """The control. Every assertion above would hold if salience were a constant."""
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+
+    async def _stage(window: tuple[SessionEvent, ...]) -> float:
+        event = str(uuid.uuid4())
+        outcome = await service.stage_result(
+            _ctx(tid, aid),
+            strategy=OBSERVATION,
+            request=_request(events=window),
+            result=_result(_candidate(str(subject), "owned_by_team", f"team-{uuid.uuid4().hex[:6]}", event)),
+            known_event_ids=frozenset({event}),
+        )
+        return float((await _salience_row(factory, outcome.staged[0].claim_id)).salience)
+
+    thin = await _stage((_event(0, kind="agent_message", body="looking into it"),))
+    rich = await _stage(
+        (
+            _event(0, kind="user_message", body="no, that is wrong — checkout-api owns it"),
+            _event(1, kind="agent_action", body="applying", tool_name="Write"),
+            _event(2, kind="agent_action", body="deploying", tool_name="Deploy"),
+            _event(3, kind="agent_message", body="fixed, the rollout completed"),
+        )
+    )
+    assert rich > thin

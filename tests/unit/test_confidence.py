@@ -26,13 +26,16 @@ from contextplane.service.memory.confidence import (
     BUCKET_STRONG,
     BUCKET_UNRELIABLE,
     BUCKET_WEAK,
-    CORROBORATION_WEIGHT_BY_RANK,
+    CORROBORATION_CEILING,
+    CORROBORATION_PROBABILITY_BY_RANK,
     DECAY_FLOOR,
     MAX_CONFIDENCE,
+    SCORER_VERSION,
+    ConfidenceInputs,
     ConfidencePolicy,
     EvidenceClass,
     bucket_for,
-    corroborating_mass,
+    corroboration_probability,
     recompute,
     score,
 )
@@ -130,12 +133,45 @@ def test_the_strongest_base_is_not_yet_the_confirmed_bucket() -> None:
 # --- corroboration -------------------------------------------------------------
 
 
-def test_corroboration_weights_strictly_decrease_with_authority() -> None:
+def test_corroboration_probabilities_strictly_decrease_with_authority() -> None:
     """Otherwise there are two differently-ordered ladders and a rule will
     eventually be built on the wrong one."""
-    ranks = sorted(CORROBORATION_WEIGHT_BY_RANK)
-    weights = [CORROBORATION_WEIGHT_BY_RANK[r] for r in ranks]
-    assert weights == sorted(weights, reverse=True)
+    ranks = sorted(CORROBORATION_PROBABILITY_BY_RANK)
+    probabilities = [CORROBORATION_PROBABILITY_BY_RANK[r] for r in ranks]
+    assert probabilities == sorted(probabilities, reverse=True)
+
+
+def test_a_source_corroborates_at_the_strength_it_would_assert_at() -> None:
+    """One ladder, read twice. A separate table of corroboration weights could be
+    reordered without touching the base table, and then the two would disagree
+    about which tier is stronger."""
+    for tier, base in BASE_CONFIDENCE_BY_AUTHORITY.items():
+        assert CORROBORATION_PROBABILITY_BY_RANK[SOURCE_AUTHORITY_RANK[tier]] == base
+
+
+def test_agreement_is_the_noisy_or_of_the_sources() -> None:
+    """The arithmetic itself, against the formula rather than against a fixture:
+    independent sources are wrong together only if every one of them is wrong."""
+    probability = CORROBORATION_PROBABILITY_BY_RANK[1]
+    for n in (0, 1, 2, 5):
+        agreement, _ = corroboration_probability(_classes(n, 1))
+        assert agreement == pytest.approx(1.0 - (1.0 - probability) ** n)
+
+
+def test_a_moved_base_table_moves_corroboration_with_it() -> None:
+    """A tenant scoring agreement on the shipped ladder and authorship on its own
+    would be using two ladders."""
+    tighter = ConfidencePolicy(
+        base_by_authority={
+            "owner_human": 0.70,
+            "owner_extraction": 0.60,
+            "owner_inference": 0.50,
+            "observer_human": 0.40,
+            "observer_extraction": 0.30,
+            "observer_inference": 0.20,
+        }
+    )
+    assert tighter.probability_by_rank[SOURCE_AUTHORITY_RANK["owner_human"]] == 0.70
 
 
 def test_corroboration_raises_confidence_with_diminishing_returns() -> None:
@@ -165,13 +201,74 @@ def test_corroboration_is_bounded_below_the_ceiling() -> None:
     assert saturated.value < MAX_CONFIDENCE
 
 
+def test_agreement_alone_never_reaches_the_confirmed_bucket() -> None:
+    """That bucket's published meaning is that a human with standing looked at
+    this particular claim, and no number of machines agreeing is that event.
+
+    The superseded curve did not hold this: an owner-human claim with two
+    independent corroborators reached 0.876 and read as confirmed.
+    """
+    for authority in BASE_CONFIDENCE_BY_AUTHORITY:
+        for rank in CORROBORATION_PROBABILITY_BY_RANK:
+            for n in (1, 2, 5, 50):
+                scored = score(authority=authority, corroborators=_classes(n, rank))
+                assert scored is not None
+                assert scored.bucket != BUCKET_CONFIRMED
+                assert scored.value <= CORROBORATION_CEILING
+
+
+def test_the_ceiling_sits_one_rounding_step_below_the_confirmed_boundary() -> None:
+    """Derived from the published boundary rather than chosen, so the two cannot
+    drift. Scores round to three places, so this is the largest value that is
+    still not confirmed."""
+    assert CORROBORATION_CEILING == 0.849
+    assert bucket_for(CORROBORATION_CEILING) == BUCKET_STRONG
+    assert bucket_for(round(CORROBORATION_CEILING + 0.001, 3)) == BUCKET_CONFIRMED
+
+
+def test_a_base_already_past_the_ceiling_is_not_dragged_down_by_agreement() -> None:
+    """Only reachable under a tenant policy that put a tier there deliberately.
+    Lowering such a claim because somebody agreed with it would be absurd."""
+    top_heavy = ConfidencePolicy(
+        base_by_authority={
+            "owner_human": 0.90,
+            "owner_extraction": 0.62,
+            "owner_inference": 0.45,
+            "observer_human": 0.42,
+            "observer_extraction": 0.32,
+            "observer_inference": 0.23,
+        }
+    )
+    alone = score(authority="owner_human", policy=top_heavy)
+    agreed = score(authority="owner_human", corroborators=_classes(4, 0), policy=top_heavy)
+    assert alone is not None and agreed is not None
+    assert agreed.value == alone.value == 0.90
+
+
 def test_evidence_sharing_an_independence_key_counts_once() -> None:
     """Several turns of one conversation are one source however many rows they
     occupy. This is the requirement's own named case."""
     same = [EvidenceClass(key="session-1", group="actor-1", authority_rank=1) for _ in range(5)]
-    mass, count = corroborating_mass(same)
+    agreement, count = corroboration_probability(same)
     assert count == 1
-    assert mass == CORROBORATION_WEIGHT_BY_RANK[1]
+    assert agreement == pytest.approx(CORROBORATION_PROBABILITY_BY_RANK[1])
+
+
+def test_duplicate_lineage_scores_as_one_source() -> None:
+    """The property at the score, not just at the combining function.
+
+    Independence is what licenses multiplying the complements at all, so evidence
+    that is not independent has to collapse before the product rather than be
+    multiplied in — five rows from one conversation must score exactly as one.
+    """
+    once = score(authority="owner_extraction", corroborators=_classes(1, 1))
+    repeated = score(
+        authority="owner_extraction",
+        corroborators=[EvidenceClass(key="session-1", group="actor-1", authority_rank=1) for _ in range(5)],
+    )
+    assert once is not None and repeated is not None
+    assert repeated.value == once.value
+    assert repeated.inputs.corroborating_classes == 1
 
 
 def test_one_actor_across_many_sessions_is_capped() -> None:
@@ -179,7 +276,7 @@ def test_one_actor_across_many_sessions_is_capped() -> None:
     re-observing a fact every session must not ratchet to the ceiling off one
     source."""
     many_sessions = [EvidenceClass(key=f"session-{i}", group="actor-1", authority_rank=1) for i in range(10)]
-    _, count = corroborating_mass(many_sessions)
+    _, count = corroboration_probability(many_sessions)
     assert count == 2
 
 
@@ -187,7 +284,7 @@ def test_different_actors_are_not_capped_together() -> None:
     """The cap is per source, not global. Ten independent people agreeing is real
     corroboration."""
     distinct = [EvidenceClass(key=f"session-{i}", group=f"actor-{i}", authority_rank=1) for i in range(10)]
-    _, count = corroborating_mass(distinct)
+    _, count = corroboration_probability(distinct)
     assert count == 10
 
 
@@ -199,15 +296,16 @@ def test_the_cap_keeps_the_strongest_evidence() -> None:
         EvidenceClass(key="b", group="actor-1", authority_rank=0),
         EvidenceClass(key="c", group="actor-1", authority_rank=1),
     ]
-    mass, count = corroborating_mass(mixed)
+    agreement, count = corroboration_probability(mixed)
     assert count == 2
-    assert mass == CORROBORATION_WEIGHT_BY_RANK[0] + CORROBORATION_WEIGHT_BY_RANK[1]
+    kept = (1.0 - CORROBORATION_PROBABILITY_BY_RANK[0]) * (1.0 - CORROBORATION_PROBABILITY_BY_RANK[1])
+    assert agreement == pytest.approx(1.0 - kept)
 
 
 def test_an_unresolved_source_corroborates_nothing() -> None:
     """It has no subject to corroborate anything about."""
-    mass, _ = corroborating_mass(_classes(3, 6))
-    assert mass == 0.0
+    agreement, _ = corroboration_probability(_classes(3, 6))
+    assert agreement == 0.0
 
 
 def test_corroboration_never_changes_the_authority_tier() -> None:
@@ -324,6 +422,33 @@ def test_the_inputs_record_names_the_scorer() -> None:
     assert scored.inputs.scorer_version
 
 
+def test_inputs_from_another_scorer_are_refused_rather_than_re_derived() -> None:
+    """Returning a number for them would make the audit property look satisfied
+    on exactly the rows where it is not — the row carries what an older function
+    produced, and this one would answer with something else."""
+    stale = ConfidenceInputs(
+        authority="owner_extraction",
+        base=0.62,
+        corroborating_classes=1,
+        corroboration_probability=0.5,
+        is_contested=False,
+        is_confirmed=False,
+        provider_confidence=None,
+        provider_applied=False,
+        scorer_version="confidence-v1",
+    )
+    with pytest.raises(ValueError, match="confidence-v1"):
+        recompute(stale)
+
+
+def test_the_current_scorer_is_named_in_what_it_writes() -> None:
+    """The positive control for the refusal above: a bar, not a wall."""
+    scored = score(authority="owner_extraction", corroborators=_classes(2, 1))
+    assert scored is not None
+    assert scored.inputs.scorer_version == SCORER_VERSION
+    assert recompute(scored.inputs) == scored.value
+
+
 # --- tenant policy --------------------------------------------------------------
 
 
@@ -382,11 +507,11 @@ def test_a_policy_with_two_equal_tiers_is_refused() -> None:
         )
 
 
-def test_every_scored_authority_tier_has_a_corroboration_weight() -> None:
+def test_every_scored_authority_tier_can_corroborate() -> None:
     """A tier that can hold a claim but not corroborate one would silently
     contribute nothing when it agreed."""
     for tier in BASE_CONFIDENCE_BY_AUTHORITY:
-        assert SOURCE_AUTHORITY_RANK[tier] in CORROBORATION_WEIGHT_BY_RANK
+        assert SOURCE_AUTHORITY_RANK[tier] in CORROBORATION_PROBABILITY_BY_RANK
 
 
 def test_the_score_is_bounded_for_every_reachable_combination() -> None:
@@ -394,7 +519,7 @@ def test_the_score_is_bounded_for_every_reachable_combination() -> None:
     a bound that eventually fails on an input nobody considered."""
     for authority in BASE_CONFIDENCE_BY_AUTHORITY:
         for n in (0, 1, 7):
-            for rank in CORROBORATION_WEIGHT_BY_RANK:
+            for rank in CORROBORATION_PROBABILITY_BY_RANK:
                 for contested in (False, True):
                     for confirmed in (False, True):
                         scored = score(

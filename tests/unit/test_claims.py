@@ -251,6 +251,12 @@ def _stage_service(
         if "SELECT independence_key, independence_group" in sql:
             result.all = MagicMock(return_value=[])
             return result
+        if "FROM memory_predicate_churn" in sql:
+            # No inspected per-predicate rate, which is every deployment until
+            # somebody inspects a fit. The write path then decays on the authored
+            # category figure, which is what the assertions below expect.
+            result.all = MagicMock(return_value=[])
+            return result
         if "UPDATE memory_claims SET" in sql and "confidence" in sql:
             return result
         raise AssertionError(f"unexpected SQL in test session: {sql}")
@@ -809,6 +815,12 @@ def _link_service(
             )
             return result
         if "SELECT independence_key, independence_group" in sql:
+            result.all = MagicMock(return_value=[])
+            return result
+        if "FROM memory_predicate_churn" in sql:
+            # No inspected per-predicate rate, so decay falls back to the
+            # authored category figure -- what these assertions were written
+            # against and what every deployment does until a fit is inspected.
             result.all = MagicMock(return_value=[])
             return result
         if "UPDATE memory_claims SET" in sql and "confidence" in sql:
