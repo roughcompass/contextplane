@@ -313,7 +313,14 @@ class SyncWriteResult:
 class SearchResult:
     entity: EntityRef
     matching_facts: list[FactRef]
-    score: float
+    #: The fused rank produced by combining the retrieval arms. Named for the
+    #: quantity rather than the role, because it is not the only float in this
+    #: system between zero and one: how worth keeping a memory is, how likely a
+    #: claim is to be true, and how a procedure scored on held-out cases are
+    #: three others, and they are not comparable with this or with each other.
+    #: A field called plain `score` is what invites a later reader to average
+    #: two of them.
+    fused_rank_score: float
     retrieval_arms: dict[str, float]
 
 

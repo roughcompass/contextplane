@@ -263,7 +263,7 @@ def _search_result(name: str = "payments-api") -> SearchResult:
                 t_invalidated_at=None,
             )
         ],
-        score=0.87,
+        fused_rank_score=0.87,
         retrieval_arms={"semantic": 0.5},
     )
 

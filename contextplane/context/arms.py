@@ -601,7 +601,7 @@ def _canonical_payload(result: SearchResult) -> dict[str, object]:
         "name": result.entity.name,
         "external_id": result.entity.external_id,
         "is_active": result.entity.is_active,
-        "score": result.score,
+        "score": result.fused_rank_score,
         "matching_facts": [
             {"fact_id": str(fact.fact_id), "category": fact.category, "body": fact.body}
             for fact in result.matching_facts
