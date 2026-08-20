@@ -303,7 +303,12 @@ class _SearchMethods(_RetrievalState):
                     )
                 )
 
-        results.sort(key=lambda r: r.fused_rank_score, reverse=True)
+        # Entity id breaks a tied fused score. Python's sort is stable, so without
+        # it the final order inherits whichever arm happened to contribute the row
+        # first -- a detail that is not itself pinned. The arms below are ordered
+        # deterministically; this is what carries that property through the fusion
+        # to the answer a receipt records.
+        results.sort(key=lambda r: (-r.fused_rank_score, r.entity.name.lower(), r.entity.entity_id))
         return results[:top_k]
 
     async def _semantic_arm(
@@ -388,7 +393,21 @@ class _SearchMethods(_RetrievalState):
               AND emb.target_type = :target_type
               {entity_filter}
               AND {tf_sql}
-            ORDER BY emb.vector <=> CAST(:vec AS vector)
+            -- Tiebroken, and not as decoration. Distances tie constantly: an
+            -- embedder returning zero vectors makes every distance identical, and
+            -- a real model still ties exactly on duplicated text. Without a second
+            -- key Postgres may return a different subset for the same query
+            -- against unchanged data, so the LIMIT keeps different rows on
+            -- different runs and a receipt stops being reproducible -- the one
+            -- property a receipt must have. The listing and traversal queries in
+            -- this package already tiebreak; these two did not.
+            --
+            -- Name before id. Both give a total order, but an id is a random
+            -- UUID: the order it produces is fixed for one dataset and arbitrary
+            -- across any two, so a measurement over a reseeded corpus would still
+            -- move. `lower(name)` is unique per tenant by index and is a property
+            -- of the data rather than of when the row happened to be created.
+            ORDER BY emb.vector <=> CAST(:vec AS vector), lower(ent.name), f.fact_id
             LIMIT :fetch_k
             """
         )
@@ -465,7 +484,11 @@ class _SearchMethods(_RetrievalState):
               AND f.ts_vector @@ plainto_tsquery('english', :query)
               {entity_filter}
               AND {tf_sql}
-            ORDER BY rank DESC
+            -- Tiebroken for the same reason as the semantic arm above:
+            -- `ts_rank_cd` returns equal ranks routinely across a corpus of short
+            -- similar documents, and an untiebroken LIMIT then selects a
+            -- different set on each run.
+            ORDER BY rank DESC, lower(ent.name), f.fact_id
             LIMIT :limit
             """
         )
