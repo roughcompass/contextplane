@@ -43,7 +43,6 @@ from contextplane.api.schemas.relationship_writes import (
     RelationshipWriteRequestV1,
     RelationshipWriteResultV1,
 )
-from contextplane.entities.validation import EntityValidationResult, EntityValidator
 from contextplane.entities.write_intent import (
     AUTHORITY_OBSERVED_EVIDENCE,
     AUTHORITY_REQUESTER_ENTITLEMENT,
@@ -66,6 +65,7 @@ from contextplane.relationships.service import (
     RelationshipWriteRefused,
     RelationshipWriteService,
 )
+from contextplane.relationships.validation import RelationshipValidationResult, RelationshipValidator
 from contextplane.types import TenantContext
 
 if TYPE_CHECKING:
@@ -227,8 +227,8 @@ async def _routed_write(
     except RefusedProfileWrite as refused:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(refused)) from refused
 
-    validation = await EntityValidator(services.session_factory).validate(
-        tenant_id=ctx.tenant_id, entity_type=body.subject_type, attributes=body.properties
+    validation = await RelationshipValidator(services.session_factory).validate(
+        tenant_id=ctx.tenant_id, relationship_type=body.subject_type, properties=body.properties
     )
 
     if routed.effect == EFFECT_CANONICAL_ASSERTION_WRITE:
@@ -255,7 +255,7 @@ async def _canonical(
     ctx: TenantContext,
     body: RelationshipWriteRequestV1,
     routed: RoutedProfileWrite,
-    validation: EntityValidationResult,
+    validation: RelationshipValidationResult,
 ) -> RelationshipWriteResultV1:
     """Write through the transactional relationship service, which owns the lock.
 
@@ -292,7 +292,7 @@ async def _canonical(
     )
 
 
-def _outcome(validation: EntityValidationResult) -> ValidationOutcomeV1:
+def _outcome(validation: RelationshipValidationResult) -> ValidationOutcomeV1:
     return ValidationOutcomeV1(
         valid=validation.valid,
         mode=validation.mode,
@@ -301,7 +301,7 @@ def _outcome(validation: EntityValidationResult) -> ValidationOutcomeV1:
     )
 
 
-def _attribution(validation: EntityValidationResult) -> ProfileAttributionV1:
+def _attribution(validation: RelationshipValidationResult) -> ProfileAttributionV1:
     return ProfileAttributionV1(
         profile_revision_id=validation.profile_revision_id,
         binding_id=None,
