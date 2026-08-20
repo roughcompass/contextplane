@@ -383,7 +383,7 @@ Acceptance:
 
 ### E8-T1 — Extraction ground truth: a frozen labeled fixture and its gate
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a new frozen fixture `eval/fixtures/extraction_ground_truth.json` — 30
 transcript excerpts, each labeled with the claims a correct extraction yields
@@ -393,6 +393,26 @@ per predicate. Report first, threshold later: the number goes in `eval/EVAL.md`
 before anyone decides what to demand of it. Follows the EVAL.md discipline —
 new file, frozen after first measurement, never edited in place.
 
+Two things the task did not anticipate, recorded because both change what the
+number means:
+
+- **The measurement cannot run against `local-rules`.** That provider's own
+  module says a benchmark against it measures the regexes, so a precision figure
+  derived from the demo patterns and filed under "extraction quality" would be
+  the self-consistent non-measurement this fixture exists to replace. The gate
+  therefore splits: the fixture contract and the scoring arithmetic run always
+  and need neither a database nor a provider; the measurement is opt-in on a
+  real credential, following `test_extraction_live_provider.py`'s no-key-no-run
+  rule.
+- **The first measurement was a fixture bug, not a model result.** It reported
+  precision 0.148 / recall 0.186. Eighteen of thirty excerpts named a service in
+  prose while the label named it by reference, and the strategy tells a provider
+  to use the reference exactly as it appeared in the data — so those labels were
+  unreachable. Repaired, the same model measures 0.788 / 0.953. The gate that
+  would have caught it is now in the suite. This is the argument for report-first
+  in one episode: a threshold set beside that first number would have been set
+  against the fixture's own defect.
+
 Acceptance:
     .venv/bin/python -m pytest tests/integration/test_extraction_ground_truth.py -q
     make eval
@@ -400,12 +420,29 @@ Acceptance:
 
 ### E8-T2 — Retrieval relevance judged against receipts
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a relevance-judgment fixture over the existing 50 search questions —
 for each, the entity ids a correct answer contains — and a report joining what
 receipts say was served against those judgments, yielding precision@k
 alongside the existing recall@10. Wired into `make eval`.
+
+**precision@k is not receipt-derivable, and finding that out was the task's
+real yield.** `context_receipt_items` carries the item's identity, block, source
+and trust and has no rank, score or position column, so a receipt records which
+items were served and not in what order. The envelope's item order is not rank
+order either — `ordered_items` sorts a block by the receipt-item digest so that
+two resolutions over unchanged data agree, which is a hash of the entity id. The
+gate therefore reports two reads and names which is auditable: a set precision
+from the receipt, and R-precision and precision@1 reconstructed from each item's
+`payload["score"]`. Two follow-on consequences are recorded and not fixed: the
+assembler's item cap truncates a block by that hash rather than by rank, and an
+auditor cannot ask a receipt what the agent saw first.
+
+Two missing tiebreakers were found and fixed in the same change, because the
+measurement would not reproduce without them: the semantic and lexical arms both
+ordered without a second key, so a tied `LIMIT` kept different rows on different
+runs.
 
 Acceptance:
     make eval
