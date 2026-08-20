@@ -468,11 +468,11 @@ class TestDocFidelity:
         # One deliberate addition on top of the doc's own text: an explicit
         # `git clone <repo-url> registry` destination, rather than relying on
         # git's own default (the URL's basename) -- so this proof works
-        # from a source path that is not itself named "registry" (a scratch
+        # from a source path that is not itself named after the checkout (a scratch
         # snapshot clone, say), while still producing exactly what a reader
         # cloning the real project gets, since that project *is* named
-        # "registry". Every other line is unmodified doc text.
-        expected = block1.replace("git clone <repo-url>", f"git clone {shlex.quote(source)} registry")
+        # CLONE_DEST_NAME. Every other line is unmodified doc text.
+        expected = block1.replace("git clone <repo-url>", f"git clone {shlex.quote(source)} {pq.CLONE_DEST_NAME}")
         assert assembled == expected
 
     def test_native_healthz_step_matches_its_fenced_block(self) -> None:
@@ -508,7 +508,9 @@ class TestDocFidelity:
 
         # Same deliberate addition as the native path's clone step -- see
         # the comment in test_native_setup_steps_match_step_1s_fenced_block.
-        expected = compose_block.replace("git clone <repo-url>", f"git clone {shlex.quote(source)} registry")
+        expected = compose_block.replace(
+            "git clone <repo-url>", f"git clone {shlex.quote(source)} {pq.CLONE_DEST_NAME}"
+        )
         assert assembled == expected
 
     def test_teardown_commands_are_literally_present_in_the_docs(self) -> None:

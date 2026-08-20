@@ -43,7 +43,7 @@ Five commands to a live `/healthz`:
 
 ```bash
 git clone <repo-url>
-cd registry
+cd contextplane
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,devstack]"
 make dev-up

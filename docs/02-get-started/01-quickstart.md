@@ -12,7 +12,7 @@ Prefer containers? [Use Docker Compose instead](#alternative--docker-compose) â€
 
 ```bash
 git clone <repo-url>
-cd registry
+cd contextplane
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,devstack]"
 make dev-up
@@ -136,7 +136,7 @@ Where a container runtime is available, Compose gives a topology closer to produ
 
 ```bash
 git clone <repo-url>
-cd registry
+cd contextplane
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 docker compose up -d
