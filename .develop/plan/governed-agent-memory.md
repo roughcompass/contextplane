@@ -324,7 +324,7 @@ eight times in one pass. E1's claimable frontier *is* its decisions.
 
 ### E1-T1 — ADR 0005: envelope rollout is advisory before it is enforcing
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: record the rollout decision the earlier audit found missing: landing
 "no envelope, no authority" as specified breaks every existing deployment on
@@ -339,7 +339,7 @@ Acceptance:
 
 ### E1-T2 — ADR 0006: the data-sensitivity tier vocabulary and where it lives
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: close the vocabulary (the tier names and their order) and decide its
 placement so the import contract accepts it — the earlier audit showed the
@@ -354,7 +354,7 @@ Acceptance:
 
 ### E1-T3 — ADR 0007: grant projection lifetime and suspend propagation
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: decide how a ProvenanceGrant projection is bounded and how suspension
 reaches a holder, honestly against what exists: there is no server-to-agent
@@ -368,7 +368,7 @@ Acceptance:
 
 ### E1-T4 — ADR 0008: cold-start authority and initial posture
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: name who approves the first envelope when no conformance history exists
 and what the initial posture is. The bank-plan adjudication settled the shape
