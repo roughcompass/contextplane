@@ -1527,3 +1527,60 @@ simultaneous optional degradation (with both reason buckets populated
 independently of the final status); multiple blocked reasons reported
 together, sorted; and a capability-scoped rule matching on overlap rather
 than exact-set equality.
+
+## Salience reliability
+
+**Report:** `tests/integration/test_salience_reliability_report.py`, wired into
+`make eval`. Buckets stored `memory_claims.salience` into ten bins and reports
+the retrieval rate per bin, plus a Brier score and whether the rate rises with
+salience at all.
+
+**The label is weaker than the one salience is for, and every line of output says
+so.** Salience is about whether a claim will be *used*. This measures whether it
+was *served* — joinable today, because receipts record the claims each resolution
+returned. Serving is necessary for use and nowhere near sufficient, so a claim
+scoring well here has cleared a lower bar than the one the weights are about. The
+stronger label (cited on a succeeding turn within thirty days) needs a
+citation-to-outcome join that does not exist; when it does, this report gains a
+second curve rather than replacing its first.
+
+### Measurement
+
+**None yet, and that is the correct output.** No deployment has scored claims:
+`salience` lands on claims written by extraction, and the column arrived with
+`0057`. The report renders
+
+```
+salience reliability — label: served in at least one resolution
+  observations: 0
+  no scored claims and no receipts to join them against; there is no curve to draw
+```
+
+rather than a flat curve at zero. A reliability diagram over an empty population
+is not a finding about salience; returning zeros would put a shape on a table
+nobody measured, and a flat curve reads as "salience predicts nothing" — the
+opposite of "nothing has been measured".
+
+The figure appears the moment there is one. What to record when it does: the
+per-bucket table, the Brier score, and whether the curve rises. A flat or
+inverted curve is the finding that the weighting orders claims by something
+retrieval does not care about, and it would mean the weights need refitting
+before any threshold consumes them.
+
+### How to read it when there is data
+
+- **A bucket showing `n/a` is below the observation floor of 20, not a bucket
+  where nothing was retrieved.** Those are opposite facts and the table says
+  which is which on every render.
+- **Brier is beside the curve, not instead of it.** One number cannot tell a
+  uniformly mediocre weighting from one that is excellent at the top of the range
+  and useless at the bottom — and for a retention decision only the top matters.
+  0.25 is the score of predicting 0.5 about everything, so anything above it is
+  worse than hedging.
+- **"Rises with salience" needs at least two measurable buckets.** With one it
+  reports that it cannot say, rather than reporting success from a single point.
+
+**No threshold consumes salience.** Nothing reads the column yet; it is written
+and reported. That order is deliberate — a weighting whose reliability was
+measured after something started depending on it is a measurement nobody can act
+on.

@@ -608,7 +608,7 @@ Acceptance:
 
 ### E15-T5 — Salience reliability report from receipts
 
-**Kind:** task · **Status:** pending · **Blocked by:** E15-T4 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E15-T4 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the calibration half the epic calls non-optional, from data that already
 exists: receipts record what was served, so "retrieved at least once" is
@@ -757,4 +757,175 @@ Acceptance:
     make eval
     .venv/bin/python -m pytest tests/unit -q -k "calibration"
     make test-unit
+
+### E18-T1 — ADR 0009: how a published HTTP surface is renamed
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: decide the dual-alias window E13 assumes and E18-T4 needs, before the
+first rename rather than during it. The ADR fixes how long an alias lives, how
+it is marked in the contract (`deprecated: true` plus a sunset stamp, which
+OpenAPI already models, so nothing new is invented), whether a deprecated alias
+may differ in behaviour from its successor — it may not, or the window becomes
+a second implementation — and what actually retires one. The honest constraint
+to record: neither this repository nor the UI can currently see third-party
+callers, so retirement cannot rest on an observed-zero-usage claim it has no
+instrument for. All six MADR sections, dissent included.
+
+Acceptance:
+    test -f .develop/adr/0009-renaming-a-published-surface.md
+    make doc-links && make doc-refs
+
+### E18-T2 — One path parameter for one identifier
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — openapi.json · **Repo:** contextplane
+
+Goal: `{capability_id}` and `{provider_cap_id}` become `{entity_id}` across the
+five `/v1/capabilities/*` templates that still use them. No URL changes — a
+path-template variable is positional on the wire — so this is not a rename
+under E18-T1 and needs no alias; what changes is the generated client's
+parameter names, which is the whole reason it is a contract hotspot. The twelve
+`capability_id` occurrences inside `components` are request and response *body*
+fields, out of scope and left alone, which is why the acceptance grep is scoped
+to path keys rather than the file.
+
+Acceptance:
+    make openapi-export
+    sh -c '! grep -nE "\"/v1/capabilities/\{(capability_id|provider_cap_id)\}" openapi.json'
+    make lint && make typecheck && make test-conformance
+
+### E18-T3 — One tag vocabulary, and a gate that keeps it
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — openapi.json · **Repo:** contextplane
+
+Goal: one delimiter convention across all 49 tags, every operation tagged, no
+path split across subdomains by method, and `task memory` moved to the Intent
+vocabulary IDR-T04 already applied to the fixtures. Then
+`scripts/check_contract_tags.py` and a `make contract-tags` target wired into
+the CI lint job, built on `checklib` in the shape `check_surface_inventory.py`
+already uses: it fails if any operation is untagged, if a tag mixes
+conventions, or if one path's methods carry tags from two subdomains.
+Anti-vacuity via `require_nonempty` — a run that inspects zero operations fails
+rather than passes, which is how the tag gate avoids the failure mode E9's
+restatement describes.
+
+Acceptance:
+    make openapi-export
+    make contract-tags
+    .venv/bin/python -m pytest tests/unit/test_check_contract_tags.py -q
+    grep -q "contract-tags" .github/workflows/ci.yml
+    make lint && make typecheck
+
+### E18-T4 — Split the `/v1/entities` GET and POST collision
+
+**Kind:** task · **Status:** pending · **Blocked by:** E18-T1 · **Hotspot:** yes — openapi.json · **Repo:** contextplane
+
+Goal: the external-ID lookup moves off the collection path to `GET
+/v1/entities:lookup`, matching the nineteen AIP-136 colon methods the contract
+already carries and its sibling `GET /v1/entities:resolve` in particular. `GET
+/v1/entities` is then left **absent** rather than backfilled with a generic
+entity list: inventing a list nobody asked for would be new scope inside a
+coherence epic, and `GET /v1/capabilities` already serves the listing job for
+the type anyone lists today. The old path keeps working for the window E18-T1
+defines, marked deprecated with its sunset, and the issue that removes it is
+cut in the same PR so the alias cannot outlive the plan that created it.
+
+Acceptance:
+    make openapi-export
+    .venv/bin/python -m pytest tests/conformance/test_openapi_drift.py tests/conformance/test_generic_profile_parity.py -q
+    make lint && make typecheck && make test-conformance
+
+### E18-T5 — UI contract pin bump for E18
+
+**Kind:** task · **Status:** pending · **Blocked by:** E18-T2, E18-T3, E18-T4 · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
+
+Goal: one pin bump carrying all three contract changes, per the procedure in
+`contracts/README.md`. It also absorbs the drift already sitting between the
+current pin (`00613eb`) and service HEAD — `update_entity` and
+`update_relationship` lost their generated path suffixes in `53960d3`, two
+operationId lines and nothing else — so the bump closes the existing gap rather
+than widening it. No UI code reads any renamed parameter today, so the diff is
+the pin, the regenerated client, and the hash note. Serialize against E15-T2:
+both touch the same UI hotspot and contract-bump PRs run one at a time.
+
+Acceptance:
+    pnpm generate:api && git diff --exit-code -- apps/admin-dashboard/src/shared/api/generated/
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E19-T1 — Relationship writes: adapter and edge authoring
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: adapter functions for `POST /v1/relationships`, `PATCH
+/v1/relationships/{relationship_id}` and `POST /v1/relationships:query` in
+`shared/api/`, plus the authoring UI that uses them — create an edge from a
+capability's detail dialog and from the Relationships page, edit or retire one
+from a traversal result. The repo's own contract rules carry the detail rather
+than being restated here: a fresh idempotency key per create, `If-Match` from
+the detail `ETag` on update, a `412` that keeps the draft and refetches, and
+branching on `errors[].code` never on message text. Colocated tests cover the
+create, the concurrency conflict, and the permission-denied path, because those
+are the three the adapter can get wrong silently.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "relationship"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E19-T2 — Catalog covers every entity type, in one vocabulary
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: the Catalog page lists concepts and operations beside capabilities,
+filterable by type, with `POST /v1/concepts` and `POST /v1/operations` wired for
+creation — the service has offered both since `02a1d07` and the UI neither.
+Naming follows the epic: Catalog the section, entity the thing, type the
+discriminator, and the page copy that presents a capability as the only kind of
+record is corrected in the same change. No new nav destination; this is the
+existing page learning the rest of its domain.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "catalog"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E19-T3 — A graph view on /relationships, beside the table
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: a node-link rendering of the traversal `/relationships` already runs,
+URL-addressable as a view parameter so a copied link reconstructs it, toggling
+against the existing table rather than replacing it. The design standard's
+graph clause is the acceptance surface rather than decoration: focused root
+with visible direction, relationship type, depth, version and time scope;
+progressive expansion; disclosed hidden-node counts; a legend; searchable node
+names; selection opening the same accessible detail a table row opens; all of
+it keyboard-operable, and no task requiring a drag to complete.
+
+One honest gap this task must not paper over: the UI `CLAUDE.md` requires
+bundle and route budgets enforced in CI, and no such gate exists in the
+repository today — no `size-limit`, no budget config, nothing in `ci.yml`. So
+the rendering library is chosen against the keyboard requirement first (a
+library that cannot satisfy it is disqualified before size is discussed) and
+the task records the measured route bundle size in its PR body. Building the
+budget gate is real work and belongs to its own issue, not smuggled in here as
+an acceptance line that would have to build the gate to pass.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "graph"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E19-T4 — Entity resolution in global search
+
+**Kind:** task · **Status:** pending · **Blocked by:** E18-T5 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: `GET /v1/entities:resolve` behind the shell's global search, so a handle
+resolves to one entity and an ambiguous handle is presented as the refusal the
+service actually returns — `identity_ambiguous`, with the qualifying types
+offered as choices and never a silently picked first match, which is the
+failure the endpoint was designed to refuse. Blocked on the pin bump because
+the sibling lookup path moves in E18-T4, and building against the pre-rename
+client would mean writing this adapter twice.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "resolve"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
 
