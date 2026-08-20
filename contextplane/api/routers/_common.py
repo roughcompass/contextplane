@@ -203,7 +203,7 @@ def search_result_to_item(result: SearchResult, *, audit: bool = False) -> Searc
         entity_id=result.entity.entity_id,
         name=result.entity.name,
         entity_type=result.entity.entity_type,
-        score=result.score,
+        score=result.fused_rank_score,
         retrieval_arms=result.retrieval_arms,
         citations=[fact_to_citation(f) for f in result.matching_facts],
     )

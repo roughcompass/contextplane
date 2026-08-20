@@ -268,7 +268,7 @@ class TestSearchResultToItem:
         result = SearchResult(
             entity=_entity(),
             matching_facts=[fact],
-            score=0.87,
+            fused_rank_score=0.87,
             retrieval_arms={"lexical": 0.5, "semantic": 0.9},
         )
         item = search_result_to_item(result)
@@ -289,7 +289,7 @@ class TestSearchResultToItem:
         result = SearchResult(
             entity=_entity(),
             matching_facts=[fact],
-            score=0.5,
+            fused_rank_score=0.5,
             retrieval_arms={"lexical": 0.5},
         )
         item = search_result_to_item(result, audit=True)
@@ -302,6 +302,6 @@ class TestSearchResultToItem:
         assert len(item.citations) == 1
 
     def test_no_matching_facts_returns_empty_citations(self) -> None:
-        result = SearchResult(entity=_entity(), matching_facts=[], score=0.1, retrieval_arms={})
+        result = SearchResult(entity=_entity(), matching_facts=[], fused_rank_score=0.1, retrieval_arms={})
         item = search_result_to_item(result)
         assert item.citations == []
