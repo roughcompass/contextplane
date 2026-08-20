@@ -981,16 +981,27 @@ to read it. That is a UI-repo prerequisite and a small one.
 
 So:
 
-- **E19-T1a** (contextplane-ui): the three relationship adapters, `errors[].code`
-  branching, a fresh idempotency key per create, and an additive client method
-  that surfaces the response `ETag` alongside the body. Colocated tests cover
-  create and permission-denied. No optimistic concurrency, because there is
-  nothing to be optimistic against.
+- **E19-T1a** (contextplane-ui) — **done**: the three relationship adapters,
+  `errors[].code` branching, and a caller-owned idempotency key per create.
+  Colocated tests cover create and permission-denied. No optimistic concurrency,
+  because there is nothing to be optimistic against.
 - **E19-T1b** (contextplane): `ETag` on the relationship detail read and
   `If-Match` on its update, matching what `_entity_crud` already does for
   entities. An `openapi.json` hotspot.
-- **E19-T1c** (contextplane-ui): the authoring UI, plus the `412` handling once
-  T1b makes a `412` possible. Blocked by T1a and T1b.
+- **E19-T1c** (contextplane-ui): the `GET` detail adapter, the client's
+  `ETag`-reading method, the authoring UI, and the `412` handling — all once T1b
+  makes an `ETag` and a `412` possible. Blocked by T1a and T1b.
+
+**The client's `ETag` method moved from T1a to T1c during T1a.** It was written
+first: `requestWithEtag` on `ContextplaneClient`, both methods sharing one
+`perform()`. Adding it to the interface broke the typecheck in 22 test files,
+each of which builds a `{ request: vi.fn() }` double that no longer satisfies
+`ContextplaneClient`. The fix is mechanical but the trade is not worth taking
+early — until T1b lands, `requestWithEtag` returns `etag: null` at every one of
+the contract's 242 operations, so the change buys nothing and the 22 doubles pay
+for it. It lands in T1c beside the first endpoint that has an `ETag` to read.
+Making the method optional was the alternative and is worse: an optional method
+means every adapter carries a fallback branch that no endpoint ever takes.
 
 Recorded rather than worked around because the alternative shapes are both worse:
 shipping the adapter with an `If-Match` header derived from nothing would look
