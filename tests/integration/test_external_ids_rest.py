@@ -681,3 +681,108 @@ async def test_unauthenticated_request_401(http_client: Any) -> None:
 
     resp = await client.get(f"/v1/entities/{entity_id}/external-ids")
     assert resp.status_code == 401, f"Expected 401 for unauthenticated request, got {resp.status_code}"
+
+
+# --- the collection-path split (E18-T4) -------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_lookup_answers_on_its_own_path(http_client: Any) -> None:
+    """`GET /v1/entities:lookup` is where this operation lives now.
+
+    It shared `/v1/entities` with `POST`, which asserts an entity through the
+    generic profile-governed surface — two unrelated operations on one path, and
+    a GET on a collection that cannot list the collection reads as a client bug.
+    """
+    client, setup = http_client
+    persona: TenantPersona = setup["persona"]
+    harness: EntitlementAuthHarness = setup["harness"]
+    harness.configure_fetcher_for(persona)
+    entity_id = setup["entity_id"]
+    sys_slug, ext_id = f"colon-{uuid.uuid4().hex[:6]}", f"CP-{uuid.uuid4().hex[:6]}"
+
+    with patch_validator_for_actor(persona):
+        await client.post(
+            "/v1/admin/external-systems",
+            json={"slug": sys_slug, "display_name": "Colon"},
+            headers=_auth(setup),
+        )
+        await client.post(
+            f"/v1/entities/{entity_id}/external-ids",
+            json={"external_system_slug": sys_slug, "external_id": ext_id},
+            headers=_auth(setup),
+        )
+        resp = await client.get(
+            "/v1/entities:lookup",
+            params={"external_system": sys_slug, "external_id": ext_id},
+            headers=_auth(setup),
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["entity_id"] == str(entity_id)
+
+
+@pytest.mark.asyncio
+async def test_the_deprecated_path_answers_identically(http_client: Any) -> None:
+    """Byte-identical, not merely compatible.
+
+    ADR 0009 forbids a behavioural difference between an alias and its successor,
+    because the window would otherwise be a second implementation to keep correct
+    for ninety days at the moment nobody is looking at it. Asserting equality of
+    the whole body is what makes that a property rather than an intention.
+    """
+    client, setup = http_client
+    persona: TenantPersona = setup["persona"]
+    harness: EntitlementAuthHarness = setup["harness"]
+    harness.configure_fetcher_for(persona)
+    entity_id = setup["entity_id"]
+    sys_slug, ext_id = f"alias-{uuid.uuid4().hex[:6]}", f"AL-{uuid.uuid4().hex[:6]}"
+
+    with patch_validator_for_actor(persona):
+        await client.post(
+            "/v1/admin/external-systems",
+            json={"slug": sys_slug, "display_name": "Alias"},
+            headers=_auth(setup),
+        )
+        await client.post(
+            f"/v1/entities/{entity_id}/external-ids",
+            json={"external_system_slug": sys_slug, "external_id": ext_id},
+            headers=_auth(setup),
+        )
+        params = {"external_system": sys_slug, "external_id": ext_id}
+        successor = await client.get("/v1/entities:lookup", params=params, headers=_auth(setup))
+        alias = await client.get("/v1/entities", params=params, headers=_auth(setup))
+
+    assert alias.status_code == successor.status_code == 200
+    assert alias.json() == successor.json()
+
+
+@pytest.mark.asyncio
+async def test_the_deprecated_path_refuses_the_same_things(http_client: Any) -> None:
+    """The other half of identical. An alias that succeeded where its successor
+    404s would be the behavioural difference by a different route."""
+    client, setup = http_client
+    persona: TenantPersona = setup["persona"]
+    harness: EntitlementAuthHarness = setup["harness"]
+    harness.configure_fetcher_for(persona)
+    params = {"external_system": "nonexistent-sys", "external_id": "GHOST-999"}
+
+    with patch_validator_for_actor(persona):
+        successor = await client.get("/v1/entities:lookup", params=params, headers=_auth(setup))
+        alias = await client.get("/v1/entities", params=params, headers=_auth(setup))
+    assert alias.status_code == successor.status_code == 404
+
+
+def test_the_contract_marks_the_alias_with_its_sunset_and_successor() -> None:
+    """A consumer generating from the spec learns three things without reading
+    anything else: that this goes, when, and where to go instead. A deprecation
+    with no successor is a removal announced politely, which ADR 0009 refuses."""
+    import json
+    import pathlib
+
+    spec = json.loads((pathlib.Path(__file__).resolve().parents[2] / "openapi.json").read_text())
+    alias = spec["paths"]["/v1/entities"]["get"]
+    assert alias["deprecated"] is True
+    assert alias["x-successor"] == "/v1/entities:lookup"
+    assert alias["x-sunset-on"], "a deprecation with no date retires when somebody remembers"
+    assert "/v1/entities:lookup" in spec["paths"], "the successor the alias names must exist"
+    assert spec["paths"]["/v1/entities:lookup"]["get"].get("deprecated") is not True

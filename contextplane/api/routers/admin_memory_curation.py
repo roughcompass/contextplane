@@ -73,10 +73,10 @@ from contextplane.service.memory.source_governance import SourcePolicy
 from contextplane.types import TenantContext
 from contextplane.workers.calibration_refit import refit_one
 
-router = APIRouter(prefix="/v1/admin", tags=["admin: memory curation"])
+router = APIRouter(prefix="/v1/admin", tags=["admin: memory-curation"])
 
 _mode, _sep = get_mode_settings()
-mutation_router = APIRouter(prefix="/v1/admin", tags=["admin: memory curation"])
+mutation_router = APIRouter(prefix="/v1/admin", tags=["admin: memory-curation"])
 _mut_mr = HttpMethodRouter(mutation_router, mode=_mode, separator=_sep)
 
 

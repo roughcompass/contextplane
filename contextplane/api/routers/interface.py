@@ -66,7 +66,7 @@ router = APIRouter(prefix="/v1/capabilities", tags=["interface"])
 
 
 async def put_interface(
-    capability_id: Annotated[str, Path(description="Capability UUID or slug")],
+    entity_id: Annotated[str, Path(description="Capability UUID or slug")],
     body: InterfacePutRequest,
     request: Request,
     ctx: TenantContext = Depends(_producer_or_admin),
@@ -77,7 +77,7 @@ async def put_interface(
     """
     catalog_svc = get_service(request)
     try:
-        resolved = await catalog_svc.resolve_entity_handle(ctx, capability_id)
+        resolved = await catalog_svc.resolve_entity_handle(ctx, entity_id)
         surface = await _svc(request).put_interface(
             ctx=ctx,
             capability_id=resolved.entity_id,
@@ -106,7 +106,7 @@ mutation_router = APIRouter(prefix="/v1/capabilities", tags=["interface"])
 _mut_mr = HttpMethodRouter(mutation_router, mode=_mode, separator=_sep)
 
 _mut_mr.add_mutation_route(
-    path="/{capability_id}/interface",
+    path="/{entity_id}/interface",
     # "replace", not "update": PUT replaces the whole interface surface in one
     # write. Every other mutation in this API using "update" is a PATCH partial
     # update; reusing that verb here for a full-replacement PUT would blur a
@@ -120,14 +120,14 @@ _mut_mr.add_mutation_route(
 
 
 @router.get(
-    "/{capability_id}/interface",
+    "/{entity_id}/interface",
     response_model=InterfaceReadResponse,
     response_model_exclude_unset=True,
     response_model_by_alias=True,
     summary="Read the capability's declared interface surface",
 )
 async def get_interface(
-    capability_id: Annotated[str, Path(description="Capability UUID or slug")],
+    entity_id: Annotated[str, Path(description="Capability UUID or slug")],
     request: Request,
     as_of: str | None = Query(None, description="ISO-8601 UTC for time-travel"),
     view: ViewParam = "default",
@@ -154,7 +154,7 @@ async def get_interface(
 
     catalog_svc = get_service(request)
     try:
-        resolved = await catalog_svc.resolve_entity_handle(ctx, capability_id)
+        resolved = await catalog_svc.resolve_entity_handle(ctx, entity_id)
         record = await _svc(request).get_interface(ctx=ctx, capability_id=resolved.entity_id, as_of=as_of_dt)
     except (NotFoundError, PermissionError) as exc:
         raise map_catalog_error(exc) from exc
@@ -168,14 +168,14 @@ async def get_interface(
         )
 
     return InterfaceReadResponse(
-        capability_id=capability_id,
+        capability_id=entity_id,
         interface_canonical=canonical_payload,
         interface_source=record.interface_source,
         interface_format=record.interface_format,
         as_of=record.as_of.isoformat() if record.as_of else None,
         _links=Links(
-            self=f"/v1/capabilities/{capability_id}/interface",
-            capability=f"/v1/capabilities/{capability_id}",
+            self=f"/v1/capabilities/{entity_id}/interface",
+            capability=f"/v1/capabilities/{entity_id}",
         ),
     )
 

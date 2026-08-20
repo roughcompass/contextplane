@@ -228,6 +228,10 @@ from contextplane.arc.service.source_admission import (
     UploadPolicyRegistration,
     iter_upload_file,
 )
+from contextplane.arc.service.source_admission_graph import (
+    GraphPromotionAdmission,
+    GraphPromotionAdmissionService,
+)
 from contextplane.arc.service.source_status import (
     SourceStatusService,
     SourceStatusUnavailable,
@@ -398,6 +402,8 @@ __all__ = [
     "ShadowError",
     "ShadowService",
     "SourceAdmissionRefused",
+    "GraphPromotionAdmission",
+    "GraphPromotionAdmissionService",
     "SourceAdmissionService",
     "SourceEvidence",
     "SourceIdempotencyConflict",

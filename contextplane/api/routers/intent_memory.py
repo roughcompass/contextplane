@@ -47,7 +47,7 @@ from contextplane.types import TenantContext
 from contextplane.workspaces.audience import AudienceDenied
 from contextplane.workspaces.schemas.intent_memory import PARTICIPANT_ROLES
 
-router = APIRouter(prefix="/v1", tags=["task memory"])
+router = APIRouter(prefix="/v1", tags=["intent"])
 
 # Reading a task you participate in is an ordinary consumer act. Changing who
 # participates is checked by the service against the *task* role, not this one --

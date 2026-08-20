@@ -80,14 +80,25 @@ class AdmissionMethod(enum.StrEnum):
 
     CONNECTOR_FETCH = "connector_fetch"
     AUTHORIZED_UPLOAD = "authorized_upload"
+    #: Neither: the bytes are a projection of a claim already promoted onto
+    #: the canonical graph, so nothing was fetched from outside and nothing
+    #: was uploaded.
+    GRAPH_PROMOTION = "graph_promotion"
 
 
 class VerificationMethod(enum.StrEnum):
-    """How an `ApprovalProof` is checked: a detached signature or a
-    trusted provider's attestation."""
+    """How a source's approval is checked.
+
+    Two of these three name an `ApprovalProof` variant. `GRAPH_PROMOTION`
+    does not, and deliberately has no variant in that union: the authority
+    is a promotion journal row this service reads itself, so there is no
+    proof for a caller to supply and no way for one to assert this method
+    on a request.
+    """
 
     DETACHED_SIGNATURE = "detached_signature"
     VERIFIER_ATTESTATION = "verifier_attestation"
+    GRAPH_PROMOTION = "graph_promotion"
 
 
 class PrincipalBindingKind(enum.StrEnum):

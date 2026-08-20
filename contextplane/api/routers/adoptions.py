@@ -2,9 +2,9 @@
 
 Consumer-side adoption surface for cross-tenant capability dependencies:
 
-  POST   /v1/capabilities/{provider_cap_id}/adoptions  → AdoptionEventRef (201)
-  GET    /v1/capabilities/{provider_cap_id}/adoptions  → list[AdoptionEventRef]
-  DELETE /v1/capabilities/{provider_cap_id}/adoptions/{adoption_id}  → 204
+  POST   /v1/capabilities/{entity_id}/adoptions  → AdoptionEventRef (201)
+  GET    /v1/capabilities/{entity_id}/adoptions  → list[AdoptionEventRef]
+  DELETE /v1/capabilities/{entity_id}/adoptions/{adoption_id}  → 204
 
 The DELETE route is registered via :class:`HttpMethodRouter` so the
 ``CONTEXTPLANE_HTTP_METHODS_MODE`` env var controls the exposed surface
@@ -130,7 +130,7 @@ router = APIRouter(prefix="/v1/capabilities", tags=["adoptions"])
 
 
 @router.post(
-    "/{provider_cap_id}/adoptions",
+    "/{entity_id}/adoptions",
     response_model=AdoptionResponse,
     response_model_exclude_unset=True,
     response_model_by_alias=True,
@@ -138,7 +138,7 @@ router = APIRouter(prefix="/v1/capabilities", tags=["adoptions"])
     summary="Adopt a provider capability (cross-tenant)",
 )
 async def adopt_capability(
-    provider_cap_id: Annotated[str, Path(description="Provider capability UUID or slug")],
+    entity_id: Annotated[str, Path(description="Provider capability UUID or slug")],
     body: AdoptionCreate,
     request: Request,
     view: ViewParam = "default",
@@ -164,7 +164,7 @@ async def adopt_capability(
     catalog_svc = get_service(request)
     svc = _svc(request)
     try:
-        resolved = await catalog_svc.resolve_entity_handle(ctx, provider_cap_id)
+        resolved = await catalog_svc.resolve_entity_handle(ctx, entity_id)
         ref = await svc.adopt(
             ctx=ctx,
             provider_capability_id=resolved.entity_id,
@@ -174,20 +174,20 @@ async def adopt_capability(
         )
     except (NotFoundError, ValidationError, PermissionError) as exc:
         raise map_catalog_error(exc) from exc
-    response = _ref_to_response(ref, audit=audit, provider_cap_handle=provider_cap_id, include_links=True)
+    response = _ref_to_response(ref, audit=audit, provider_cap_handle=entity_id, include_links=True)
     await idem.persist(ctx, 201, response.model_dump(mode="json"))
     return response
 
 
 @router.get(
-    "/{provider_cap_id}/adoptions",
+    "/{entity_id}/adoptions",
     response_model=AdoptionListResponse,
     response_model_exclude_unset=True,
     response_model_by_alias=True,
     summary="List active adoptions for a capability",
 )
 async def list_adoptions(
-    provider_cap_id: Annotated[str, Path(description="Provider capability UUID or slug")],
+    entity_id: Annotated[str, Path(description="Provider capability UUID or slug")],
     request: Request,
     view: ViewParam = "default",
     ctx: TenantContext = Depends(_list_adoptions_required),
@@ -209,7 +209,7 @@ async def list_adoptions(
     catalog_svc = get_service(request)
     svc = _svc(request)
     try:
-        resolved = await catalog_svc.resolve_entity_handle(ctx, provider_cap_id)
+        resolved = await catalog_svc.resolve_entity_handle(ctx, entity_id)
     except (NotFoundError, ValidationError) as exc:
         raise map_catalog_error(exc) from exc
     ref = await svc.get_active_adoption(
@@ -229,7 +229,7 @@ _mut_mr = HttpMethodRouter(mutation_router, mode=_mode, separator=_sep)
 
 
 async def _unadopt_capability(
-    provider_cap_id: Annotated[str, Path(description="Provider capability UUID or slug")],
+    entity_id: Annotated[str, Path(description="Provider capability UUID or slug")],
     adoption_id: uuid.UUID,
     request: Request,
     ctx: TenantContext = Depends(_adopt_required),
@@ -244,7 +244,7 @@ async def _unadopt_capability(
     catalog_svc = get_service(request)
     svc = _svc(request)
     try:
-        await catalog_svc.resolve_entity_handle(ctx, provider_cap_id)
+        await catalog_svc.resolve_entity_handle(ctx, entity_id)
         await svc.unadopt(ctx=ctx, adoption_id=adoption_id)
     except (NotFoundError, PermissionError) as exc:
         raise map_catalog_error(exc) from exc
@@ -252,7 +252,7 @@ async def _unadopt_capability(
 
 
 _mut_mr.add_mutation_route(
-    path="/{provider_cap_id}/adoptions/{adoption_id}",
+    path="/{entity_id}/adoptions/{adoption_id}",
     action="unadopt",
     handler=_unadopt_capability,
     verb="DELETE",
