@@ -201,6 +201,20 @@ class BindingService:
                     "now": now,
                 },
             )
+            # The ids themselves, not only their digest. A digest verifies a set
+            # somebody already has; it cannot produce one. Without these rows the
+            # question "which extensions is this tenant governed by" has no answer
+            # in the schema, and the only workaround -- enumerating the tenant's
+            # extensions and checking the digest matches -- also finds the ones
+            # they published and never bound.
+            for extension_revision_id in sorted(set(extension_revision_ids)):
+                await session.execute(
+                    text(
+                        "INSERT INTO profile_binding_extensions (binding_id, extension_revision_id) "
+                        "VALUES (:bid, :eid)"
+                    ),
+                    {"bid": binding_id, "eid": extension_revision_id},
+                )
             await session.commit()
 
         binding = await self.get_binding(tenant_id=tenant_id, binding_id=binding_id)

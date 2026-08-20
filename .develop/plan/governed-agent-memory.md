@@ -764,13 +764,29 @@ Acceptance:
 
 ### E17-T2 — Scoring overrides in the extension schema and binding lifecycle
 
-**Kind:** task · **Status:** pending · **Blocked by:** E17-T1 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E17-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: a tenant extension may carry scoring-magnitude overrides — same forms
 and validation the registry enforces, reasons included — published and
 activated through the existing `plan → validate → activate → rollback`
 lifecycle, with an integration test proving a planned-but-unactivated override
 governs nothing and a rolled-back one restores the prior value.
+
+**A schema gap surfaced doing this, so the task is a migrations hotspot after
+all.** `profile_bindings` recorded only `extension_set_digest` — a hash over the
+extension ids — and discarded the ids `plan_binding` was handed. A digest can
+verify a set somebody already has and cannot produce one, so the schema had no
+answer to "which extensions is this tenant governed by". Nothing needed the
+answer until a resolver had to read a bound extension's contents.
+
+The first implementation worked around it by enumerating the tenant's extensions
+against the bound core revision and checking the digest matched. That is wrong in
+a way that looks right: enumeration also finds extensions the tenant published
+and never bound, so a tenant with one bound and one shelved extension produced a
+mismatch and was refused for an ordinary configuration. The rollback test caught
+it — the case the lifecycle exists for. `0059` adds
+`profile_binding_extensions`; the digest stays as an integrity check over a set
+the schema can now state.
 
 Acceptance:
     env CONTEXTPLANE_TEST_PG=testcontainers .venv/bin/python -m pytest tests/integration/test_profile_bindings.py tests/integration/test_scoring_overrides.py -q

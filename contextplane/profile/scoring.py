@@ -15,16 +15,21 @@ failure this module exists to make impossible to write by accident, and it is wh
 `resolve_weights` returns the core value itself rather than `None`: a caller that
 has to fall back manually is a caller who will forget.
 
-**Extensions are enumerated and then verified, never inferred.** A binding stores
-`extension_set_digest` and not the extension ids, so the set that was activated
-cannot be read back directly. The accessor finds the tenant's extensions in the
-scoring namespace targeting the bound core revision, re-derives the digest over
-those ids, and **refuses if it does not match the binding**. A mismatch means the
-set found is not the set that was activated — a tenant has published something
-since, or an extension was retired — and scoring a tenant by an extension nobody
-bound is precisely the ungoverned override the binding lifecycle exists to
-prevent. Refusing is louder than falling back to core, and it has to be: falling
-back would present an unbound override's absence as normal operation.
+**The bound set is read, not inferred.** `profile_binding_extensions` names the
+extensions each binding activated, and the resolver joins through it. The first
+implementation could not: the binding stored only `extension_set_digest`, so the
+accessor enumerated the tenant's extensions against the bound core revision and
+checked the digest matched. That is wrong in a way that looks right — enumeration
+also finds extensions the tenant published and never bound, so a tenant with one
+bound extension and one shelved one produced a digest mismatch and got refused
+for having an ordinary configuration. The rollback case is what caught it, which
+is the case the lifecycle exists for.
+
+The digest is still checked, and it now does the job it was always suited to: an
+integrity check over a set the schema can state. A mismatch means the membership
+rows and the digest disagree about what was bound, which is a corrupted binding
+rather than a tenant's ordinary state, and the resolver refuses rather than
+picking one of the two to believe.
 
 **A tenant with no active binding resolves to core, and that is not an error.**
 Most tenants have no extension and never will. `unbound` is the common case, not
@@ -34,7 +39,7 @@ a degraded one.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
 from sqlalchemy import text
@@ -57,7 +62,77 @@ SOURCE_EXTENSION: Final = "extension"
 
 
 class ScoringOverrideRefused(RuntimeError):
-    """The tenant's bound extension set could not be established with certainty."""
+    """A scoring override could not be established, published, or trusted."""
+
+
+#: Mirrors `ranking.py`'s rule, and mirrors its reasoning too: a magnitude
+#: without a stated reason is the literal it replaced, moved. A tenant override
+#: is held to the same bar as the committed core precisely because it is easier
+#: to publish than the core is to change -- if anything, the looser artifact
+#: needs the tighter rule.
+MIN_REASON_WORDS: Final = 20
+
+
+def validate_overrides(overrides: Mapping[str, Mapping[str, Any]]) -> dict[str, dict[str, float]]:
+    """Check a tenant's proposed overrides against everything the registry checks.
+
+    Refuses an unknown magnitude, a payload whose keys do not match the core's,
+    a non-numeric weight, a set that does not sum to one, and a reason under
+    twenty words. Returns the weight maps, keyed by magnitude, ready to store.
+
+    **The key set must match the core exactly.** A partial override -- naming
+    three of six weights -- would leave the other three at their core values
+    while summing to something that is not one, so a tenant would silently be
+    scoring on a scale nobody designed. Naming all six is more typing and it is
+    the only form whose meaning is unambiguous.
+    """
+    validated: dict[str, dict[str, float]] = {}
+    for model_id, payload in overrides.items():
+        # Refused by the registry itself rather than by a second list here. Two
+        # places deciding which magnitudes exist is two registries.
+        core = ranking.weights(model_id)
+
+        parameters = payload.get("parameters")
+        if not isinstance(parameters, Mapping) or not parameters:
+            msg = f"{model_id}: an override carries a non-empty `parameters` map"
+            raise ScoringOverrideRefused(msg)
+
+        if set(parameters) != set(core):
+            missing = sorted(set(core) - set(parameters))
+            unknown = sorted(set(parameters) - set(core))
+            msg = (
+                f"{model_id}: an override names every weight the core names, exactly. "
+                f"missing={missing} unknown={unknown}. A partial override leaves the rest at core "
+                "values and sums to something that is not one, which is a scale nobody designed."
+            )
+            raise ScoringOverrideRefused(msg)
+
+        try:
+            weights = {str(k): float(v) for k, v in parameters.items()}
+        except (TypeError, ValueError) as bad:
+            msg = f"{model_id}: every weight is a number; got {parameters!r}"
+            raise ScoringOverrideRefused(msg) from bad
+
+        if any(value < 0 for value in weights.values()):
+            msg = f"{model_id}: a negative weight inverts the signal it names rather than lowering it"
+            raise ScoringOverrideRefused(msg)
+        if abs(sum(weights.values()) - 1.0) > 1e-6:
+            msg = (
+                f"{model_id}: weights sum to {sum(weights.values()):.6f} rather than 1.0, so this tenant's "
+                "scores would not be comparable with any other tenant's or with their own history"
+            )
+            raise ScoringOverrideRefused(msg)
+
+        reason = str(payload.get("reason") or "")
+        if len(reason.split()) < MIN_REASON_WORDS:
+            msg = (
+                f"{model_id}: an override states why it holds its value, in at least "
+                f"{MIN_REASON_WORDS} words. The core entry does; a tenant's is not held to a lower bar."
+            )
+            raise ScoringOverrideRefused(msg)
+
+        validated[model_id] = weights
+    return validated
 
 
 class ResolvedMagnitude:
@@ -75,15 +150,20 @@ class ResolvedMagnitude:
 
 
 _ACTIVE_BINDING_SQL = """
-SELECT profile_revision_id, extension_set_digest
+SELECT binding_id, extension_set_digest
 FROM profile_bindings
 WHERE tenant_id = :tid AND state = 'active'
 """
 
+#: Joined through membership rather than filtered by namespace and target. The
+#: binding decides what is bound; the namespace filter only decides which of the
+#: bound extensions carry scoring, and an extension in another namespace simply
+#: has no `magnitudes` key to contribute.
 _BOUND_EXTENSIONS_SQL = """
-SELECT extension_revision_id, canonical_document
-FROM profile_extensions
-WHERE tenant_id = :tid AND namespace = :ns AND target_core_revision_id = :core
+SELECT e.extension_revision_id, e.canonical_document
+FROM profile_binding_extensions m
+JOIN profile_extensions e ON e.extension_revision_id = m.extension_revision_id
+WHERE m.binding_id = :bid AND e.tenant_id = :tid
 """
 
 
@@ -104,20 +184,21 @@ async def resolve_weights(session: AsyncSession, *, tenant_id: uuid.UUID, model_
     rows = (
         await session.execute(
             text(_BOUND_EXTENSIONS_SQL),
-            {"tid": tenant_id, "ns": SCORING_NAMESPACE, "core": binding.profile_revision_id},
+            {"bid": binding.binding_id, "tid": tenant_id},
         )
     ).all()
 
-    # Verify before reading. The digest is over the *set* of extension ids the
-    # binding activated, so re-deriving it is the only way to know the rows found
-    # here are the rows that were bound.
+    # An integrity check, not a discovery mechanism. The membership rows say what
+    # was bound; the digest says what the planner intended to bind. They disagree
+    # only if something wrote one without the other, which is a corrupted binding
+    # -- and picking one of the two to believe would be choosing silently between
+    # a governance record and a hash.
     found = [row.extension_revision_id for row in rows]
     if extension_set_digest(found) != binding.extension_set_digest:
         msg = (
-            f"tenant {tenant_id}: the {SCORING_NAMESPACE!r} extensions published against the bound core "
-            f"revision do not digest to the set this binding activated. Scoring with them would apply an "
-            f"override nobody bound; scoring without them would present that silently as normal. "
-            f"Re-plan the binding, or retire the extension that was published outside it."
+            f"tenant {tenant_id}: binding {binding.binding_id} lists extensions that do not digest to its "
+            f"recorded `extension_set_digest`. The membership rows and the digest disagree about what this "
+            f"binding activated, and scoring on either would be choosing one without saying so."
         )
         raise ScoringOverrideRefused(msg)
 
@@ -158,10 +239,12 @@ def _magnitude_from(rows: Sequence[Any], *, model_id: str) -> dict[str, float] |
 
 
 __all__ = [
+    "MIN_REASON_WORDS",
     "SCORING_NAMESPACE",
     "SOURCE_CORE",
     "SOURCE_EXTENSION",
     "ResolvedMagnitude",
     "ScoringOverrideRefused",
     "resolve_weights",
+    "validate_overrides",
 ]

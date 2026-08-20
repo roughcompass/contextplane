@@ -18,7 +18,6 @@ import pytest
 from contextplane import ranking
 from contextplane.profile.bindings import extension_set_digest
 from contextplane.profile.scoring import (
-    SCORING_NAMESPACE,
     SOURCE_CORE,
     SOURCE_EXTENSION,
     ScoringOverrideRefused,
@@ -27,11 +26,19 @@ from contextplane.profile.scoring import (
 
 _MODEL = "salience-weights@1"
 _TENANT = uuid.uuid4()
-_CORE_REVISION = uuid.uuid4()
+_BINDING = uuid.uuid4()
 
 
 def _extension(extension_id: uuid.UUID, document: dict[str, Any]) -> Any:
     return MagicMock(extension_revision_id=extension_id, canonical_document=document)
+
+
+def _binding(*extension_ids: uuid.UUID, digest: str | None = None) -> Any:
+    """An active binding over *extension_ids*, digest consistent unless overridden."""
+    return MagicMock(
+        binding_id=_BINDING,
+        extension_set_digest=digest if digest is not None else extension_set_digest(list(extension_ids)),
+    )
 
 
 def _session(*, binding: Any | None, extensions: list[Any] | None = None) -> AsyncMock:
@@ -49,9 +56,13 @@ def _session(*, binding: Any | None, extensions: list[Any] | None = None) -> Asy
         if "FROM profile_bindings" in sql:
             result.one_or_none = MagicMock(return_value=binding)
             return result
-        if "FROM profile_extensions" in sql:
+        if "FROM profile_binding_extensions" in sql:
             assert params is not None
-            assert params["ns"] == SCORING_NAMESPACE
+            # Joined through membership, keyed on the binding. A resolver that
+            # went back to filtering `profile_extensions` by namespace would find
+            # the tenant's unbound extensions too.
+            assert params["bid"] == _BINDING
+            assert params["tid"] == _TENANT
             result.all = MagicMock(return_value=rows)
             return result
         raise AssertionError(f"unexpected SQL in the scoring accessor: {sql}")
@@ -77,9 +88,7 @@ async def test_a_bound_extension_overrides_the_core() -> None:
     extension_id = uuid.uuid4()
     override = {"state_change": 0.5, "outcome_decisive": 0.5}
     session = _session(
-        binding=MagicMock(
-            profile_revision_id=_CORE_REVISION, extension_set_digest=extension_set_digest([extension_id])
-        ),
+        binding=_binding(extension_id),
         extensions=[_extension(extension_id, {"magnitudes": {_MODEL: override}})],
     )
 
@@ -104,9 +113,7 @@ async def test_a_bound_extension_that_names_another_magnitude_leaves_this_one_al
     core the default rather than a fallback."""
     extension_id = uuid.uuid4()
     session = _session(
-        binding=MagicMock(
-            profile_revision_id=_CORE_REVISION, extension_set_digest=extension_set_digest([extension_id])
-        ),
+        binding=_binding(extension_id),
         extensions=[_extension(extension_id, {"magnitudes": {"entity-search-hybrid-fusion@1": {"semantic": 1.0}}})],
     )
 
@@ -124,11 +131,11 @@ async def test_a_binding_whose_extension_set_does_not_verify_is_refused() -> Non
     without them presents that as normal operation. Both are worse than stopping.
     """
     session = _session(
-        binding=MagicMock(profile_revision_id=_CORE_REVISION, extension_set_digest="a-digest-of-something-else"),
+        binding=_binding(digest="a-digest-of-something-else"),
         extensions=[_extension(uuid.uuid4(), {"magnitudes": {_MODEL: {"state_change": 1.0}}})],
     )
 
-    with pytest.raises(ScoringOverrideRefused, match="do not digest to the set this binding activated"):
+    with pytest.raises(ScoringOverrideRefused, match="do not digest to its"):
         await resolve_weights(session, tenant_id=_TENANT, model_id=_MODEL)
 
 
@@ -136,10 +143,7 @@ async def test_a_binding_whose_extension_set_does_not_verify_is_refused() -> Non
 async def test_a_binding_with_no_extensions_verifies_and_resolves_to_core() -> None:
     """`bound to core with no extensions` is a real configuration, and the empty
     set has a digest precisely so it does not read as three-valued."""
-    session = _session(
-        binding=MagicMock(profile_revision_id=_CORE_REVISION, extension_set_digest=extension_set_digest([])),
-        extensions=[],
-    )
+    session = _session(binding=_binding(), extensions=[])
 
     resolved = await resolve_weights(session, tenant_id=_TENANT, model_id=_MODEL)
     assert resolved.source == SOURCE_CORE
@@ -151,9 +155,7 @@ async def test_two_extensions_overriding_one_magnitude_are_refused() -> None:
     get a different weighting depending on how the planner felt."""
     first, second = uuid.uuid4(), uuid.uuid4()
     session = _session(
-        binding=MagicMock(
-            profile_revision_id=_CORE_REVISION, extension_set_digest=extension_set_digest([first, second])
-        ),
+        binding=_binding(first, second),
         extensions=[
             _extension(first, {"magnitudes": {_MODEL: {"state_change": 1.0}}}),
             _extension(second, {"magnitudes": {_MODEL: {"state_change": 0.1}}}),
@@ -174,22 +176,23 @@ async def test_an_unknown_magnitude_is_refused_by_the_registry_not_invented_here
 
 
 @pytest.mark.asyncio
-async def test_extensions_are_read_only_against_the_bound_core_revision() -> None:
-    """An extension targeting a core revision the tenant is not bound to has not
-    been activated, and reading it would apply governance from a profile that is
-    not in force."""
+async def test_extensions_are_read_through_the_binding_that_activated_them() -> None:
+    """The property the first implementation could not have.
+
+    Reading through membership is what distinguishes a bound extension from one
+    the tenant published and shelved. Filtering `profile_extensions` by namespace
+    instead finds both, and then a tenant with one shelved extension is refused
+    for having an ordinary configuration.
+    """
     captured: dict[str, Any] = {}
 
     async def execute(statement: Any, params: dict[str, Any] | None = None) -> Any:
         sql = str(statement)
         result = MagicMock()
         if "FROM profile_bindings" in sql:
-            result.one_or_none = MagicMock(
-                return_value=MagicMock(
-                    profile_revision_id=_CORE_REVISION, extension_set_digest=extension_set_digest([])
-                )
-            )
+            result.one_or_none = MagicMock(return_value=_binding())
             return result
+        assert "FROM profile_binding_extensions" in sql, "the bound set is read through membership"
         captured.update(params or {})
         result.all = MagicMock(return_value=[])
         return result
@@ -197,5 +200,16 @@ async def test_extensions_are_read_only_against_the_bound_core_revision() -> Non
     session = AsyncMock()
     session.execute = execute
     await resolve_weights(session, tenant_id=_TENANT, model_id=_MODEL)
-    assert captured["core"] == _CORE_REVISION
+    assert captured["bid"] == _BINDING
     assert captured["tid"] == _TENANT
+
+
+@pytest.mark.asyncio
+async def test_an_extension_the_tenant_published_but_never_bound_is_invisible() -> None:
+    """The case that broke the first design. A shelved extension is not part of
+    the bound set, so it neither overrides nor causes a refusal."""
+    session = _session(binding=_binding(), extensions=[])
+
+    resolved = await resolve_weights(session, tenant_id=_TENANT, model_id=_MODEL)
+    assert resolved.source == SOURCE_CORE
+    assert resolved.value == ranking.weights(_MODEL)
