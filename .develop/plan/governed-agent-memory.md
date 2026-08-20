@@ -1116,6 +1116,59 @@ Acceptance:
     pnpm --filter admin-dashboard test -- -t "graph"
     pnpm lint && pnpm type-check && pnpm test && pnpm build
 
+### E19-T5 — `target_revision` is required and read by nothing
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — `openapi.json` if the field moves · **Repo:** contextplane
+
+Found while building E19-T1c's authoring UI, which has to put something in the
+field and found nothing true to put there.
+
+Every generic write — `POST /v1/entities`, `POST /v1/relationships` and both
+their updates — requires `target_revision.profile_revision`. `TargetRevisionV1`
+says why in its own docstring:
+
+> Sent by the caller rather than assumed from whatever is currently bound,
+> because a body composed against one revision and validated against another
+> passes or fails for reasons the caller cannot see.
+
+Nothing reads it. `grep -rn target_revision contextplane/ --include='*.py'`
+returns the declaration on `ProfileWriteRequest` and a same-named `code=`
+constant in four profile schemas, and no handler, service or validator anywhere
+compares the value to the revision the tenant is bound to. The field is a
+required argument whose stated purpose is unimplemented, so a caller composing
+against a stale revision gets exactly the outcome the docstring says the field
+exists to prevent.
+
+**The UI cannot even supply a plausible value.** The only revision identifier a
+client can read is `BindingResponse.profile_revision_id`, a UUID.
+`target_revision.profile_revision` is an unconstrained non-blank string that the
+integration suite fills with `"1.0.0"` — a semantic version. A caller has no
+route from what it can read to what the field appears to want, which is further
+evidence nothing consumes it: an unread field cannot fail a caller who guesses.
+
+Three shapes, and the choice is a governance decision rather than a cleanup:
+
+1. **Enforce it.** Compare against the binding and refuse a mismatch with
+   `incompatible_target_revision`, the code four profile schemas already define.
+   This is what the docstring promises and it will start refusing writes that
+   succeed today, so it needs a rollout posture — advisory first, like the
+   binding modes — rather than flipping on.
+2. **Make it optional and enforce when present.** Cheaper, and honest: a caller
+   that can attest to a revision gets the check, one that cannot is no worse off
+   than today. Costs the guarantee for every caller that omits it.
+3. **Remove it.** A required field nobody reads is a required field every client
+   must fabricate, and fabricating one is how the ecosystem learns the value does
+   not matter. Removing it is an `openapi.json` break and admits the property was
+   never had.
+
+Not decided here. What is decided is that E19-T1c does not get to invent an
+answer: its authoring UI sends the bound `profile_revision_id` with a comment
+naming this task, because that is the only value a client can truthfully attest
+to, and a UI shipping `"1.0.0"` because the tests do would be manufacturing
+agreement with a check that does not run.
+
+Acceptance depends on the shape chosen and is written when it is.
+
 ### E19-T4 — Entity resolution in global search
 
 **Kind:** task · **Status:** done · **Blocked by:** E18-T5 · **Hotspot:** no · **Repo:** contextplane-ui
