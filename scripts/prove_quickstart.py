@@ -386,9 +386,9 @@ def _check_capability_by_name(stdout: str) -> str | None:
 
 # The clone destination name. `run_path` below advances its working
 # directory into this same name once the `clone` step succeeds -- the two
-# must agree, since a step's `cd registry` only affects that one throwaway
+# must agree, since a step's `cd contextplane` only affects that one throwaway
 # bash subprocess, never the *next* step's subprocess.
-CLONE_DEST_NAME = "registry"
+CLONE_DEST_NAME = "contextplane"
 
 
 def clone_step(source: str, *, doc: str) -> Step:
