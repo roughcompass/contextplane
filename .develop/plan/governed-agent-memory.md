@@ -324,7 +324,7 @@ eight times in one pass. E1's claimable frontier *is* its decisions.
 
 ### E1-T1 — ADR 0005: envelope rollout is advisory before it is enforcing
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: record the rollout decision the earlier audit found missing: landing
 "no envelope, no authority" as specified breaks every existing deployment on
@@ -339,7 +339,7 @@ Acceptance:
 
 ### E1-T2 — ADR 0006: the data-sensitivity tier vocabulary and where it lives
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: close the vocabulary (the tier names and their order) and decide its
 placement so the import contract accepts it — the earlier audit showed the
@@ -354,7 +354,7 @@ Acceptance:
 
 ### E1-T3 — ADR 0007: grant projection lifetime and suspend propagation
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: decide how a ProvenanceGrant projection is bounded and how suspension
 reaches a holder, honestly against what exists: there is no server-to-agent
@@ -368,7 +368,7 @@ Acceptance:
 
 ### E1-T4 — ADR 0008: cold-start authority and initial posture
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: name who approves the first envelope when no conformance history exists
 and what the initial posture is. The bank-plan adjudication settled the shape
@@ -463,7 +463,7 @@ Acceptance:
 
 ### E9-T2 — The required check: no validated-only consumer on an unvalidated magnitude
 
-**Kind:** task · **Status:** pending · **Blocked by:** E9-T1 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E9-T1 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `scripts/check_governed_magnitudes.py` and a `make governed-magnitudes`
 target wired into the CI lint job. It asserts every registry entry carries a
@@ -481,7 +481,7 @@ Acceptance:
 
 ### E15-T1 — Rename SearchResult.score to fused_rank_score
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — openapi.json · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — openapi.json · **Repo:** contextplane
 
 Goal: per ADR-0002, no bare `score` field survives where the three scoring
 quantities can reach. Rename the dataclass field and every call site, export
@@ -495,20 +495,33 @@ Acceptance:
 
 ### E15-T2 — UI contract pin bump for the rename
 
-**Kind:** task · **Status:** pending · **Blocked by:** E15-T1 · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
+**Kind:** task · **Status:** deferred — nothing to do · **Blocked by:** E15-T1 · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
 
 Goal: one PR updating the vendored contract pin and the regenerated client
 together, per the contract-bump procedure in `contracts/README.md`. No UI code
 reads `.score` today, so the change is the pin, the client, and the pin-hash
 note.
 
-Acceptance:
-    pnpm generate:api && git diff --exit-code -- apps/admin-dashboard/src/shared/api/generated/
-    pnpm lint && pnpm type-check && pnpm test && pnpm build
+**Closed without work: the rename did not move the wire contract.** The task was
+cut on the assumption that renaming `SearchResult.score` changes what the API
+emits. It does not. `contextplane.types.SearchResult` is an internal dataclass,
+and the API maps it onto `SearchResultItem.score` in the response model — a
+different class that did not change. `openapi.json` is byte-identical before and
+after E15-T1, verified by the drift gate at the time, so there is no pin to bump
+and regenerating the client would produce no diff.
+
+This is recorded rather than deleted because "we decided not to" and "nobody got
+to it" look the same in a task list a month later, and because the assumption
+that an internal rename reaches the contract is one the next reader is likely to
+make again.
+
+Acceptance: none. The check that this stays true is the existing `openapi.json`
+drift gate in the service repo's conformance tier, which fails if the rename
+ever does reach the wire.
 
 ### E15-T3 — The five write-time salience signals
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: pure functions computing five of the six signals from a session's event
 window at extraction time — state_change, outcome_decisive, human_engagement,
