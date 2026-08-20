@@ -125,7 +125,11 @@ async def _seed(pg_url: str, tenant_slug: str, definition: RelationshipTypeDefin
                 },
             )
             ids = {}
-            for role, entity_type in (("source", f"{_NS}:{_SRC_TYPE}"), ("destination", f"{_NS}:{_DST_TYPE}")):
+            for role, entity_type in (
+                ("source", f"{_NS}:{_SRC_TYPE}"),
+                ("destination", f"{_NS}:{_DST_TYPE}"),
+                ("other_destination", f"{_NS}:{_DST_TYPE}"),
+            ):
                 entity_id = uuid.uuid4()
                 await session.execute(
                     text(
@@ -529,3 +533,287 @@ async def test_the_staged_routes_are_where_property_rules_get_checked_at_all(
     assert response.status_code == 201, response.text
     validation = response.json()["validation"]
     assert any("undeclared_property" in message for message in validation["violations"]), validation
+
+
+# --- an update supersedes the row it names ------------------------------------------
+
+
+async def _patch(client: AsyncClient, persona: TenantPersona, relationship_id: str, body: dict[str, object]):
+    return await client.patch(
+        f"/v1/relationships/{relationship_id}", json=body, headers=bearer_headers(tenant_slug=persona.slug)
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_update_ends_the_named_row_and_starts_its_replacement(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    """The path id is the subject, not a 404 gate.
+
+    Before this, `update_relationship` used its path id only to check the row
+    existed and then asserted whatever the body described. A PATCH on one edge
+    could create an unrelated second one and leave the named row untouched — so
+    the response's `relationship_id` was a row the caller had not addressed, and
+    the endpoint named "supersede" superseded nothing.
+    """
+    persona = await _persona(harness, pg_container)
+    ids = await _seed(pg_container, persona.slug, _definition())
+    async with AsyncClient(transport=ASGITransport(app=harness.app), base_url="http://test") as client:
+        harness.configure_fetcher_for(persona)
+        with patch_validator_for_actor(persona):
+            created = await _post(client, persona, _body("authorized_approval", ids, approval_reference="review-1"))
+            assert created.status_code == 201, created.text
+            original = created.json()["relationship_id"]
+
+            amended = await _patch(
+                client,
+                persona,
+                original,
+                _body("authorized_approval", ids, approval_reference="review-2"),
+            )
+            assert amended.status_code == 200, amended.text
+            replacement = amended.json()["relationship_id"]
+
+            after = await client.get(f"/v1/relationships/{original}", headers=bearer_headers(tenant_slug=persona.slug))
+
+    assert replacement != original, "a supersession writes a new row rather than mutating the old one"
+    assert after.status_code == 200, after.text
+    assert after.json()["temporal"]["effective_to"] is not None, "the named row was not ended"
+
+
+@pytest.mark.asyncio
+async def test_an_update_may_not_move_the_edge_it_supersedes(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    """Type and endpoints are the assertion's identity, so changing them is two acts.
+
+    A body that moved the edge would make the path id decorative again: the
+    caller would name one row and write another, which is exactly the confusion
+    this endpoint had.
+    """
+    persona = await _persona(harness, pg_container)
+    ids = await _seed(pg_container, persona.slug, _definition())
+    moved = dict(ids)
+    moved["destination"] = ids["other_destination"]
+    async with AsyncClient(transport=ASGITransport(app=harness.app), base_url="http://test") as client:
+        harness.configure_fetcher_for(persona)
+        with patch_validator_for_actor(persona):
+            created = await _post(client, persona, _body("authorized_approval", ids, approval_reference="review-1"))
+            assert created.status_code == 201, created.text
+            original = created.json()["relationship_id"]
+
+            response = await _patch(
+                client, persona, original, _body("authorized_approval", moved, approval_reference="review-2")
+            )
+
+            after = await client.get(f"/v1/relationships/{original}", headers=bearer_headers(tenant_slug=persona.slug))
+
+    assert response.status_code == 422, response.text
+    assert "superseded_relationship_identity_differs" in response.text
+    assert after.json()["temporal"]["effective_to"] is None, "a refused supersession must not have ended the row"
+
+
+@pytest.mark.asyncio
+async def test_superseding_the_same_row_twice_is_refused_the_second_time(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    """A row already ended cannot be ended again, and says so by name."""
+    persona = await _persona(harness, pg_container)
+    ids = await _seed(pg_container, persona.slug, _definition())
+    async with AsyncClient(transport=ASGITransport(app=harness.app), base_url="http://test") as client:
+        harness.configure_fetcher_for(persona)
+        with patch_validator_for_actor(persona):
+            created = await _post(client, persona, _body("authorized_approval", ids, approval_reference="review-1"))
+            original = created.json()["relationship_id"]
+            first = await _patch(
+                client, persona, original, _body("authorized_approval", ids, approval_reference="review-2")
+            )
+            assert first.status_code == 200, first.text
+            second = await _patch(
+                client, persona, original, _body("authorized_approval", ids, approval_reference="review-3")
+            )
+
+    assert second.status_code == 422, second.text
+    assert "superseded_relationship_not_in_force" in second.text
+
+
+@pytest.mark.asyncio
+async def test_a_supersession_is_not_refused_as_a_duplicate_of_the_row_it_replaces(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    """The predecessor is closed before the aggregate checks run.
+
+    `count_in_force` treats the interval as half-open, so a row ending exactly at
+    `at` is already not counted. Ending one assertion and starting its
+    replacement at the same instant needs no special case — but only if the close
+    happens first, which is the ordering this pins.
+    """
+    persona = await _persona(harness, pg_container)
+    ids = await _seed(pg_container, persona.slug, _definition(max_cardinality=1))
+    async with AsyncClient(transport=ASGITransport(app=harness.app), base_url="http://test") as client:
+        harness.configure_fetcher_for(persona)
+        with patch_validator_for_actor(persona):
+            created = await _post(client, persona, _body("authorized_approval", ids, approval_reference="review-1"))
+            assert created.status_code == 201, created.text
+            amended = await _patch(
+                client,
+                persona,
+                created.json()["relationship_id"],
+                _body("authorized_approval", ids, approval_reference="review-2"),
+            )
+
+    assert amended.status_code == 200, amended.text
+    assert "duplicate_refused" not in amended.text
+    assert "maximum_cardinality_exceeded" not in amended.text
+
+
+@pytest.mark.asyncio
+async def test_an_update_naming_a_row_that_does_not_exist_is_not_found(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    persona = await _persona(harness, pg_container)
+    ids = await _seed(pg_container, persona.slug, _definition())
+    async with AsyncClient(transport=ASGITransport(app=harness.app), base_url="http://test") as client:
+        harness.configure_fetcher_for(persona)
+        with patch_validator_for_actor(persona):
+            response = await _patch(
+                client, persona, str(uuid.uuid4()), _body("authorized_approval", ids, approval_reference="r")
+            )
+
+    assert response.status_code == 404, response.text
+
+
+# --- optimistic concurrency ----------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_detail_read_hands_back_a_validator_the_update_accepts(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    persona = await _persona(harness, pg_container)
+    ids = await _seed(pg_container, persona.slug, _definition())
+    async with AsyncClient(transport=ASGITransport(app=harness.app), base_url="http://test") as client:
+        harness.configure_fetcher_for(persona)
+        with patch_validator_for_actor(persona):
+            created = await _post(client, persona, _body("authorized_approval", ids, approval_reference="review-1"))
+            original = created.json()["relationship_id"]
+            read = await client.get(f"/v1/relationships/{original}", headers=bearer_headers(tenant_slug=persona.slug))
+            etag = read.headers.get("etag")
+            amended = await client.patch(
+                f"/v1/relationships/{original}",
+                json=_body("authorized_approval", ids, approval_reference="review-2"),
+                headers={**bearer_headers(tenant_slug=persona.slug), "If-Match": etag or ""},
+            )
+
+    assert etag, "the detail read emitted no ETag"
+    assert etag.startswith('W/"'), etag
+    assert amended.status_code == 200, amended.text
+
+
+@pytest.mark.asyncio
+async def test_a_second_editor_holding_the_older_validator_is_refused(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    """The lost update this exists to prevent, played out.
+
+    Two editors read the same row. The first supersedes it. The second still
+    holds the validator from before that happened, and must be told to look
+    again rather than have its amendment land on top of a row that is no longer
+    the one it was composed against.
+    """
+    persona = await _persona(harness, pg_container)
+    ids = await _seed(pg_container, persona.slug, _definition())
+    async with AsyncClient(transport=ASGITransport(app=harness.app), base_url="http://test") as client:
+        harness.configure_fetcher_for(persona)
+        with patch_validator_for_actor(persona):
+            created = await _post(client, persona, _body("authorized_approval", ids, approval_reference="review-1"))
+            original = created.json()["relationship_id"]
+            read = await client.get(f"/v1/relationships/{original}", headers=bearer_headers(tenant_slug=persona.slug))
+            stale = read.headers["etag"]
+
+            first = await client.patch(
+                f"/v1/relationships/{original}",
+                json=_body("authorized_approval", ids, approval_reference="review-2"),
+                headers={**bearer_headers(tenant_slug=persona.slug), "If-Match": stale},
+            )
+            assert first.status_code == 200, first.text
+
+            second = await client.patch(
+                f"/v1/relationships/{original}",
+                json=_body("authorized_approval", ids, approval_reference="review-3"),
+                headers={**bearer_headers(tenant_slug=persona.slug), "If-Match": stale},
+            )
+
+    assert second.status_code == 412, second.text
+    assert "precondition_failed" in second.text
+
+
+@pytest.mark.asyncio
+async def test_the_validator_changes_when_the_row_is_superseded(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    """`effective_to` is in the ETag inputs, and this is why.
+
+    A supersession does not touch the row it ends except to close it. An ETag
+    over the transaction time alone would be unchanged by the one event a
+    concurrent editor most needs to hear about.
+    """
+    persona = await _persona(harness, pg_container)
+    ids = await _seed(pg_container, persona.slug, _definition())
+    async with AsyncClient(transport=ASGITransport(app=harness.app), base_url="http://test") as client:
+        harness.configure_fetcher_for(persona)
+        with patch_validator_for_actor(persona):
+            created = await _post(client, persona, _body("authorized_approval", ids, approval_reference="review-1"))
+            original = created.json()["relationship_id"]
+            before = (
+                await client.get(f"/v1/relationships/{original}", headers=bearer_headers(tenant_slug=persona.slug))
+            ).headers["etag"]
+            await client.patch(
+                f"/v1/relationships/{original}",
+                json=_body("authorized_approval", ids, approval_reference="review-2"),
+                headers=bearer_headers(tenant_slug=persona.slug),
+            )
+            after = (
+                await client.get(f"/v1/relationships/{original}", headers=bearer_headers(tenant_slug=persona.slug))
+            ).headers["etag"]
+
+    assert before != after
+
+
+@pytest.mark.asyncio
+async def test_an_update_with_no_validator_still_proceeds(harness: EntitlementAuthHarness, pg_container: str) -> None:
+    """Advisory, like the rest of this API. A caller that sends nothing is not refused."""
+    persona = await _persona(harness, pg_container)
+    ids = await _seed(pg_container, persona.slug, _definition())
+    async with AsyncClient(transport=ASGITransport(app=harness.app), base_url="http://test") as client:
+        harness.configure_fetcher_for(persona)
+        with patch_validator_for_actor(persona):
+            created = await _post(client, persona, _body("authorized_approval", ids, approval_reference="review-1"))
+            amended = await _patch(
+                client,
+                persona,
+                created.json()["relationship_id"],
+                _body("authorized_approval", ids, approval_reference="review-2"),
+            )
+
+    assert amended.status_code == 200, amended.text
+
+
+@pytest.mark.asyncio
+async def test_a_wildcard_validator_matches_whatever_is_current(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    """RFC 7232 §3.1: `*` means "any current representation", not "no precondition"."""
+    persona = await _persona(harness, pg_container)
+    ids = await _seed(pg_container, persona.slug, _definition())
+    async with AsyncClient(transport=ASGITransport(app=harness.app), base_url="http://test") as client:
+        harness.configure_fetcher_for(persona)
+        with patch_validator_for_actor(persona):
+            created = await _post(client, persona, _body("authorized_approval", ids, approval_reference="review-1"))
+            amended = await client.patch(
+                f"/v1/relationships/{created.json()['relationship_id']}",
+                json=_body("authorized_approval", ids, approval_reference="review-2"),
+                headers={**bearer_headers(tenant_slug=persona.slug), "If-Match": "*"},
+            )
+
+    assert amended.status_code == 200, amended.text

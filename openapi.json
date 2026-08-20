@@ -28359,7 +28359,7 @@
     },
     "/v1/relationships/{relationship_id}": {
       "get": {
-        "description": "Return the stored row together with its profile, provenance and readiness.",
+        "description": "Return the stored row together with its profile, provenance and readiness.\n\nEmits an `ETag` over the row id and the later of its `recorded_at` and\n`effective_to`. `effective_to` is in the inputs because a supersession does\nnot touch the row it ends except to close it: an ETag over the transaction\ntime alone would be unchanged by the one event a concurrent editor most\nneeds to hear about.",
         "operationId": "get_relationship_v1_relationships__relationship_id__get",
         "parameters": [
           {
@@ -28382,7 +28382,15 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "ETag": {
+                "description": "Weak validator for this row's current version. Echo it as `If-Match` on a subsequent update to be refused with 412 rather than superseding a row that changed after it was read.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "422": {
             "content": {
@@ -28401,7 +28409,7 @@
         ]
       },
       "patch": {
-        "description": "Update by the same three routes a create takes.\n\nAn observation that could amend a canonical edge directly would be a way\naround the intent split, so this adds nothing to the routing but the subject.",
+        "description": "Supersede the named assertion, by the same three routes a create takes.\n\nAn observation that could amend a canonical edge directly would be a way\naround the intent split, so this adds nothing to the routing but the subject.\n\nOnly the canonical route supersedes. The staged routes mint a claim id and\na review-entry id and persist neither \u2014 they are placeholders for a staging\nsurface that does not exist yet \u2014 so an observation or a request against\nthis path records nothing that names the edge it was about. That is the\nbehaviour a create already has, unchanged here rather than quietly widened.",
         "operationId": "update_relationship",
         "parameters": [
           {
@@ -28412,6 +28420,24 @@
               "format": "uuid",
               "title": "Relationship Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "The `ETag` from this relationship's detail read. When present and stale the update is refused with 412; when absent the update proceeds, which is the advisory mode the rest of this API uses.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The `ETag` from this relationship's detail read. When present and stale the update is refused with 412; when absent the update proceeds, which is the advisory mode the rest of this API uses.",
+              "title": "If-Match"
             }
           }
         ],

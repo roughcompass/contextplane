@@ -316,6 +316,18 @@ RULES: tuple[Rule, ...] = (
                 # the unlocked count-then-write this whole path exists to prevent,
                 # and no gate can check that for you.
                 "contextplane/relationships/service.py",
+                # The statements the governed path emits, split out of
+                # `service.py` when it reached the line ceiling. The decisions
+                # stayed there; this file only writes what they decided, and it
+                # is reachable from nowhere else in the package.
+                #
+                # It holds the one `UPDATE edges` in the tree: a supersession
+                # ends the row it names by setting `t_valid_to`, under the same
+                # aggregate lock and in the same transaction as the replacement
+                # it starts. An update rather than a delete because the history
+                # is the point — a superseded edge stays readable `at` a time it
+                # was in force.
+                "contextplane/relationships/rows.py",
             }
         ),
         guidance=(
