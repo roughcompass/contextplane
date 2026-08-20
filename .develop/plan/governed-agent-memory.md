@@ -446,7 +446,7 @@ Acceptance:
 
 ### E9-T2 — The required check: no validated-only consumer on an unvalidated magnitude
 
-**Kind:** task · **Status:** pending · **Blocked by:** E9-T1 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E9-T1 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `scripts/check_governed_magnitudes.py` and a `make governed-magnitudes`
 target wired into the CI lint job. It asserts every registry entry carries a
