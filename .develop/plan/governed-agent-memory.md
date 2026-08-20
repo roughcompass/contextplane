@@ -849,7 +849,7 @@ Acceptance:
 
 ### E18-T1 — ADR 0009: how a published HTTP surface is renamed
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: decide the dual-alias window E13 assumes and E18-T4 needs, before the
 first rename rather than during it. The ADR fixes how long an alias lives, how
@@ -860,6 +860,16 @@ a second implementation — and what actually retires one. The honest constraint
 to record: neither this repository nor the UI can currently see third-party
 callers, so retirement cannot rest on an observed-zero-usage claim it has no
 instrument for. All six MADR sections, dissent included.
+
+**That constraint was stated wrongly and the ADR corrects it.** There *is* an
+instrument: `usage_events.operation` holds the route template per tenant, so
+"has anyone called this path" is a query that runs today. It is the wrong
+instrument for two reasons the tree already records — the usage tier is
+deliberately lossy, so zero observed and zero are different facts, and
+`check_usage_boundary.py` forbids any decision path reading it. A retirement is a
+decision. The correction matters because "we cannot see" invites somebody to
+build the instrument and then use it, while "we can see and must not decide from
+it" is the rule that survives the instrument existing.
 
 Acceptance:
     test -f .develop/adr/0009-renaming-a-published-surface.md
