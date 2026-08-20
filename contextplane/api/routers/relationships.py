@@ -188,17 +188,23 @@ async def update_relationship(
     body: RelationshipWriteRequestV1,
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
 ) -> RelationshipWriteResultV1:
-    """Update by the same three routes a create takes.
+    """Supersede the named assertion, by the same three routes a create takes.
 
     An observation that could amend a canonical edge directly would be a way
     around the intent split, so this adds nothing to the routing but the subject.
+
+    Only the canonical route supersedes. The staged routes mint a claim id and
+    a review-entry id and persist neither — they are placeholders for a staging
+    surface that does not exist yet — so an observation or a request against
+    this path records nothing that names the edge it was about. That is the
+    behaviour a create already has, unchanged here rather than quietly widened.
     """
     services = _services(request)
     async with services.session_factory() as session:
         exists = (await session.execute(_EXISTS_SQL, {"tenant": ctx.tenant_id, "rid": relationship_id})).first()
     if exists is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="relationship not found")
-    return await _routed_write(request, body, ctx)
+    return await _routed_write(request, body, ctx, supersedes=relationship_id)
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +216,8 @@ async def _routed_write(
     request: Request,
     body: RelationshipWriteRequestV1,
     ctx: TenantContext,
+    *,
+    supersedes: uuid.UUID | None = None,
 ) -> RelationshipWriteResultV1:
     services = _services(request)
     try:
@@ -232,7 +240,7 @@ async def _routed_write(
     )
 
     if routed.effect == EFFECT_CANONICAL_ASSERTION_WRITE:
-        return await _canonical(services, ctx, body, routed, validation)
+        return await _canonical(services, ctx, body, routed, validation, supersedes=supersedes)
     if routed.effect == EFFECT_STAGED_CLAIM:
         return RelationshipWriteResultV1(
             intent=routed.intent,
@@ -256,6 +264,8 @@ async def _canonical(
     body: RelationshipWriteRequestV1,
     routed: RoutedProfileWrite,
     validation: RelationshipValidationResult,
+    *,
+    supersedes: uuid.UUID | None = None,
 ) -> RelationshipWriteResultV1:
     """Write through the transactional relationship service, which owns the lock.
 
@@ -266,16 +276,29 @@ async def _canonical(
     service = RelationshipWriteService(endpoints=_CatalogEndpointResolver(services, ctx))
     try:
         async with services.session_factory() as session, session.begin():
-            asserted = await service.assert_relationship(
-                session,
-                tenant_id=ctx.tenant_id,
-                actor_id=ctx.actor_id,
-                relationship_type=body.subject_type,
-                source_entity_id=body.endpoints.source_entity_id,
-                destination_entity_id=body.endpoints.destination_entity_id,
-                properties=dict(body.properties),
-                now=services.clock.now(),
-            )
+            if supersedes is None:
+                asserted = await service.assert_relationship(
+                    session,
+                    tenant_id=ctx.tenant_id,
+                    actor_id=ctx.actor_id,
+                    relationship_type=body.subject_type,
+                    source_entity_id=body.endpoints.source_entity_id,
+                    destination_entity_id=body.endpoints.destination_entity_id,
+                    properties=dict(body.properties),
+                    now=services.clock.now(),
+                )
+            else:
+                asserted = await service.supersede_relationship(
+                    session,
+                    tenant_id=ctx.tenant_id,
+                    actor_id=ctx.actor_id,
+                    relationship_id=supersedes,
+                    relationship_type=body.subject_type,
+                    source_entity_id=body.endpoints.source_entity_id,
+                    destination_entity_id=body.endpoints.destination_entity_id,
+                    properties=dict(body.properties),
+                    now=services.clock.now(),
+                )
     except RelationshipWriteRefused as refused:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
