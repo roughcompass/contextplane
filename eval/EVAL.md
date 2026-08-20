@@ -1527,3 +1527,168 @@ simultaneous optional degradation (with both reason buckets populated
 independently of the final status); multiple blocked reasons reported
 together, sorted; and a capability-scoped rule matching on overlap rather
 than exact-set equality.
+
+## Extraction ground truth
+
+**Fixture:** `fixtures/extraction_ground_truth.json` — 30 transcript excerpts
+labeled with the claims a correct extraction over the `capability_observation`
+strategy yields. 43 claims, 6 excerpts whose correct answer is silence, and 22
+of the strategy's 23 permitted predicates exercised (`depends_on_version` is
+uncovered). Loaded, sized and scored by
+`tests/integration/test_extraction_ground_truth.py`, which asserts the file holds
+exactly 30 cases before measuring anything. **Frozen after the first measurement
+below**, on the same rule the retrieval fixtures follow: a fixture edited after
+the fact measures nothing, because the number it produces can always be improved
+by moving the target.
+
+### How the labels were produced
+
+Six independent authors wrote five cases each over disjoint predicate slices,
+then a seventh through twelfth labeler re-labeled each slice **blind** — given
+the excerpts and the ontology, never the first labeler's answers. Agreement was
+27 of 30 cases exact; the fixture keeps only claims both labelers produced, so a
+disputed claim never became ground truth. Recorded because a ground truth whose
+inter-annotator agreement nobody measured is one nobody can calibrate against.
+
+Six cases were marked *arguable* by the second labeler. Every concern reduced to
+one thing: **the ontology types a value but does not constrain its shape.**
+`POST /v1/sends` and `/v1/sends` are the same operation and different strings, and
+`escalation_contact` is single-valued while real escalation is a ladder. Matching
+therefore normalises case and whitespace and nothing else, so a differently-shaped
+value counts as a miss and appears in the report as one. That is a stated limit of
+this fixture, not a defect it hides.
+
+### The first measurement was wrong, and why
+
+The first run reported precision 0.148 / recall 0.186. It was a fixture defect,
+not a model result. Eighteen of the thirty excerpts discussed a service in prose
+(`ledger-sync`) while the label named it by reference (`service:ledger-sync`), and
+the strategy instructs a provider to use the reference *exactly as it appeared in
+the data* and never to invent one — so those labels were unreachable by any correct
+extraction. Every case now opens with a `catalog_lookup` tool result naming the
+entities in scope by canonical reference, added to all thirty rather than the
+eighteen that needed it so its presence correlates with nothing. It reveals no
+predicate and no value.
+
+`test_every_labelled_subject_appears_verbatim_in_its_excerpt` is the gate that
+would have caught this, and it is in the suite now. The episode is the argument for
+report-first: a threshold set alongside that first number would have been set
+against a measurement of the fixture's own bug.
+
+### Measurement
+
+| Date | Model | Cases | Precision | Recall | tp/fp/fn |
+|------|-------|-------|-----------|--------|----------|
+| 2026-08-19 | `claude-haiku-4-5-20251001` | 30 | 0.788 | 0.953 | 41/11/2 |
+
+Per-predicate precision is 1.000 on `owned_by_team`, `on_call_rotation`,
+`composes`, `provides_to`, `conflicts_with`, `decision_status`,
+`deployment_environment`, `deprecated_after`, `interface_version`,
+`request_timeout_seconds`, `recovery_time_objective_seconds` and
+`target_availability`, and 0.500–0.667 on `depends_on`, `lifecycle_state`,
+`decided_at`, `interface_specification_url`, `max_request_bytes`,
+`is_publicly_callable`, `runbook_url`, `decision_record_url` and
+`exposes_operation`. The shape of the error is over-extraction: 11 inventions
+against 2 misses. Recall is high because the excerpts state their facts; precision
+is the number to move, and the cases it fails on are the ones where something was
+discussed without being settled.
+
+**No threshold is asserted.** What to demand of extraction is a decision to make
+after seeing what it does, and a threshold chosen in the same commit as the first
+measurement is a threshold chosen to pass.
+
+### What is not measured here
+
+Not run against the `local-rules` provider. That module's own docstring says a
+benchmark against it measures the regexes, and a precision figure derived from the
+demo patterns filed under "extraction quality" would be exactly the kind of
+self-consistent non-measurement this fixture exists to replace. The measurement is
+opt-in on a real credential, following `test_extraction_live_provider.py`: no key,
+no run. CI runs the fixture contract and the scoring arithmetic, which need
+neither a database nor a provider.
+
+## Retrieval precision, joined through receipts
+
+**Fixture:** `fixtures/retrieval_relevance.json` — for each of the 50 search
+questions, the **complete** set of relevant entity ids. Distinct from
+`search_questions.json`'s `expected_entity_ids`, which is an any-one-of set: the
+right shape for recall, and the wrong shape for precision, which needs to know
+what counts as a false positive. 77 relevant across 50 questions, plus 4 marked
+borderline and excluded from scoring. Loaded and sized by
+`tests/integration/test_retrieval_relevance.py`.
+
+Judged twice independently over five blocks of ten, with agreement of 50/50
+exact. That figure is weaker evidence than it looks: both passes were the same
+model under the same prompt, so it measures prompt stability more than it
+measures whether the judgments are right. The four borderline entries are the
+ones the judges flagged themselves; disputed entries were moved to borderline
+rather than kept as relevant, because a wrongly-relevant entity inflates
+precision while a borderline one costs nothing either way.
+
+The judged sets added four entities beyond the recall sets and dropped none.
+
+### The finding, which is worth more than the numbers
+
+**A receipt records which items were served, not the order they were served in.**
+`context_receipt_items` has columns for the item's identity, block, source and
+trust, and none for rank, score or position. So precision@k is not
+receipt-derivable for any k below the served count — computing it requires an
+order the audit record does not have.
+
+**The envelope's item order is not rank order either.** `ordered_items` sorts a
+block by the receipt-item digest, deliberately, so that two resolutions over
+unchanged data produce the same order — which it does, and which is a hash of the
+entity id. A consumer reading the canonical block top-down is reading a hash. The
+fused rank survives only inside each item's `payload["score"]`.
+
+Two consequences follow. The assembler's `DEFAULT_ITEM_CAP` truncates a block by
+that hash rather than by rank, so an over-full arm drops arbitrary items rather
+than its worst ones. And an auditor holding a receipt can answer "was this
+entity in the answer" but not "what did the agent see first".
+
+Neither is fixed here. Both are recorded so the next person to read a precision
+figure knows which question it answers.
+
+### Two orderings were missing a tiebreaker, and that is fixed
+
+Found while establishing that the measurement reproduces: the same query against
+unchanged data returned different results between runs. The semantic arm ordered
+by `emb.vector <=> query` and the lexical arm by `rank DESC`, neither with a
+second key, so a tied `LIMIT` kept different rows on different runs — and ties
+are the common case here, because `StubEmbedder` returns zero vectors and makes
+every distance identical. Both now tiebreak on `lower(name)` then `fact_id`, and
+the fusion sort does the same. Name before id deliberately: both give a total
+order, but an id is a random UUID, so ordering by it is fixed for one dataset and
+arbitrary across any two.
+
+Verified: same corpus queried twice, identical; two independent seedings, 50/50
+questions in identical order; the figures below repeat exactly across runs.
+
+### Measurement
+
+Against `StubEmbedder` (zero vectors, lexical-dominant), 2026-08-19:
+
+| Read | Metric | Value |
+|------|--------|-------|
+| receipt (set) | precision | 0.129 (64 relevant of 498 served) |
+| receipt (set) | recall@10 | 0.960 (48/50) |
+| envelope (rank) | R-precision | 0.325 (25 of 77) |
+| envelope (rank) | precision@1 | 0.220 (11 of 50) |
+
+Set precision is capped by the corpus and should be read with that in mind: 50
+questions with 77 relevant entities between them cannot fill 500 slots, so 0.129
+mostly measures that the canonical arm returns a full page whatever the query.
+R-precision and precision@1 are the comparable figures, and 0.220 means the top
+result is right about one time in five with the semantic arm dead.
+
+**No precision threshold is asserted.** The only assertion is the existing
+recall floor of 0.70, recomputed here from the receipt so that a receipt which
+stops recording what was served fails a quality gate and not only an audit one.
+
+### The recorded recall figure was stale
+
+The table at the top of this file records recall@10 = 0.840 from P2. Measured
+today, the same gate reports **0.940** through direct search and **0.960**
+through the resolve path. Retrieval improved and nobody updated the number.
+Recorded here rather than edited above, because that table is a per-phase
+history and rewriting a phase row would lose what was true then.

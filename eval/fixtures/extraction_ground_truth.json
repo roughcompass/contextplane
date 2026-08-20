@@ -1,0 +1,1495 @@
+{
+  "fixture_version": 1,
+  "strategy_id": "capability_observation",
+  "case_count": 30,
+  "cases": [
+    {
+      "case_id": "gt-a1",
+      "difficulty": "plain",
+      "note": "Tests the base case where two operations and a contract version are asserted outright in one answer; getting the operation strings or the version wrong here would mean the extractor cannot handle even the easiest interface-contract statement.",
+      "entities": [
+        {
+          "reference": "service:ledger-api",
+          "display_name": "Ledger API"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:ledger-api  Ledger API"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "recon job has to write back into the ledger and the docs page only lists reads. is there genuinely no post path or am i looking at something stale"
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "Stale — that page hasn't been regenerated since March. There is a write path: POST /v1/journal-entries on service:ledger-api. The read you already found is GET /v1/accounts/{account_id}/entries. Contract's at 3.1.0, and anything generated before that won't send the idempotency header, so check what your client is built from before you wire the job up."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:ledger-api",
+          "predicate": "exposes_operation",
+          "value": "POST /v1/journal-entries",
+          "event_ids": [
+            "e2"
+          ]
+        },
+        {
+          "subject_reference": "service:ledger-api",
+          "predicate": "exposes_operation",
+          "value": "GET /v1/accounts/{account_id}/entries",
+          "event_ids": [
+            "e2"
+          ]
+        },
+        {
+          "subject_reference": "service:ledger-api",
+          "predicate": "interface_version",
+          "value": "3.1.0",
+          "event_ids": [
+            "e2"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-a2",
+      "difficulty": "indirect",
+      "note": "Tests that the version is taken from the OpenAPI document the tool actually returned rather than from the stale number the user quoted from the catalog; extracting 2.4.0 here would write a known-wrong contract version back into the catalog it came from.",
+      "entities": [
+        {
+          "reference": "service:pricing-engine",
+          "display_name": "Pricing Engine"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:pricing-engine  Pricing Engine"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "generated client gives me a Quote with no expires_at. the catalog row for service:pricing-engine still claims contract 2.4.0 and i don't buy it, the field is coming back in responses"
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_action",
+          "tool_name": "Bash",
+          "body": "kubectl port-forward svc/pricing-engine 8080:80 >/dev/null 2>&1 &\nsleep 2\ncurl -s localhost:8080/openapi.json | jq -r '.info.version'"
+        },
+        {
+          "event_id": "e3",
+          "kind": "tool_result",
+          "tool_name": "Bash",
+          "body": "2.6.1"
+        },
+        {
+          "event_id": "e4",
+          "kind": "agent_message",
+          "body": "So the catalog row is just behind — that's what the deployment is serving. Your generator pin is the thing to fix, the response model is fine."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:pricing-engine",
+          "predicate": "interface_version",
+          "value": "2.6.1",
+          "event_ids": [
+            "e2",
+            "e3"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-a3",
+      "difficulty": "distractor",
+      "note": "Tests that an image tag and a client library version sitting next to a spec URL do not get promoted into interface_version; a version number scraped from the wrong artifact is indistinguishable from a real one once it is staged.",
+      "entities": [
+        {
+          "reference": "service:consent-registry",
+          "display_name": "Consent Registry"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:consent-registry  Consent Registry"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "where does the real spec for service:consent-registry live? i keep getting bounced to the swagger ui and it won't hand me a file i can feed the generator"
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "Published doc is https://api.acme.com/specs/consent-registry/openapi.yaml — that's what the gateway serves and what the SDK build pulls down. The swagger page is just a viewer sitting on top of it.\n\nOne warning since people trip on this weekly: the image tag on the box is 4.2.1 and the python client in your venv is 1.9.3. Neither of those numbers is the contract."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:consent-registry",
+          "predicate": "interface_specification_url",
+          "value": "https://api.acme.com/specs/consent-registry/openapi.yaml",
+          "event_ids": [
+            "e2"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-a4",
+      "difficulty": "negative",
+      "note": "Tests that an excerpt which discusses an endpoint's existence and a contract version without resolving either yields silence; anything staged here would be a guess presented to the next reader as an observation.",
+      "entities": [
+        {
+          "reference": "service:fulfillment-api",
+          "display_name": "Fulfillment API"
+        },
+        {
+          "reference": "service:label-printer",
+          "display_name": "Label Printer"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:fulfillment-api  Fulfillment API\nservice:label-printer  Label Printer"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "does service:fulfillment-api have a bulk endpoint or is it one shipment per call? want to know before i write the batching layer twice"
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "Can't tell you from here. There's a bulk_create handler in the module but it sits behind a flag that reads as off in every config I can see, and the committed spec has no path for it. Could be half-built, could be deliberately dark. The commit that added it is unattributed in the mirror so I can't even point you at a person."
+        },
+        {
+          "event_id": "e3",
+          "kind": "user_message",
+          "body": "park it then. i'll assume single shipment and ask in the channel tomorrow. no clue whether service:label-printer is even on the same contract line, nobody's checked that in a year"
+        }
+      ],
+      "expected_claims": []
+    },
+    {
+      "case_id": "gt-a5",
+      "difficulty": "indirect",
+      "note": "Tests that the refuted endpoint from the agent's own plan is dropped and only the corrected operation survives; recording an endpoint a human explicitly said does not exist is the worst kind of catalog entry because it reads as verified.",
+      "entities": [
+        {
+          "reference": "service:notification-dispatch",
+          "display_name": "Notification Dispatch"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:notification-dispatch  Notification Dispatch"
+        },
+        {
+          "event_id": "e1",
+          "kind": "agent_message",
+          "body": "Plan: retry worker calls POST /v1/notifications/resend on service:notification-dispatch with the original message id, backs off on 429."
+        },
+        {
+          "event_id": "e2",
+          "kind": "user_message",
+          "body": "that route doesn't exist. resend got folded into the normal send path last quarter — you post to /v1/sends with replay_of set to the original id. there is no /resend anymore, the redirect got dropped too"
+        },
+        {
+          "event_id": "e3",
+          "kind": "agent_message",
+          "body": "Understood — POST /v1/sends with replay_of. I'll leave the backoff as is."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:notification-dispatch",
+          "predicate": "exposes_operation",
+          "value": "POST /v1/sends",
+          "event_ids": [
+            "e2",
+            "e3"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-b1",
+      "difficulty": "plain",
+      "note": "A caller timeout stated outright in minutes, so the label exercises the seconds conversion the ontology demands rather than storing the human phrasing.",
+      "entities": [
+        {
+          "reference": "service:ledger-export",
+          "display_name": "ledger-export"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:ledger-export  ledger-export"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "writing the partner integration notes for ledger-export — it's the batch CSV pull, caller holds the connection open the whole time it streams. what do I tell them to set for their client timeout?"
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "Two minutes. That's the caller timeout ledger-export publishes. The big tenants' exports run past 60s and a 30s client cuts them off mid-stream — that's where the truncated-file tickets last month came from."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:ledger-export",
+          "predicate": "request_timeout_seconds",
+          "value": 120,
+          "event_ids": [
+            "e2"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-b2",
+      "difficulty": "indirect",
+      "note": "Both limits exist only in gateway route output, and timeout_ms must land as 45 seconds — reading it as-is would publish a 45000-second contract.",
+      "entities": [
+        {
+          "reference": "service:doc-ingest",
+          "display_name": "doc-ingest"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:doc-ingest  doc-ingest"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "partner is getting 413s from doc-ingest. runbook just says \"a few MB\", which is useless. what's the actual cap?"
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_action",
+          "tool_name": "Bash",
+          "body": "rg -n -A5 'id: doc-ingest' gateway/routes/ingest.yaml"
+        },
+        {
+          "event_id": "e3",
+          "kind": "tool_result",
+          "tool_name": "Bash",
+          "body": "gateway/routes/ingest.yaml\n41:  - id: doc-ingest\n42:    upstream: http://doc-ingest.svc.cluster.local:8080\n43:    max_body_bytes: 10485760\n44:    timeout_ms: 45000\n45:    retries: 0"
+        },
+        {
+          "event_id": "e4",
+          "kind": "agent_message",
+          "body": "10485760, so 10 MiB, and the caller timeout is 45s. Their file is 14 MB — the edge rejects it before doc-ingest ever sees the request."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:doc-ingest",
+          "predicate": "max_request_bytes",
+          "value": 10485760,
+          "event_ids": [
+            "e3",
+            "e4"
+          ]
+        },
+        {
+          "subject_reference": "service:doc-ingest",
+          "predicate": "request_timeout_seconds",
+          "value": 45,
+          "event_ids": [
+            "e3",
+            "e4"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-b3",
+      "difficulty": "distractor",
+      "note": "Publishing a reference page on a developer portal is predicate-adjacent but establishes nothing about reachability; conflating the two would mark an internal service as public API surface.",
+      "entities": [
+        {
+          "reference": "service:search-index",
+          "display_name": "search-index"
+        },
+        {
+          "reference": "service:geo-lookup",
+          "display_name": "geo-lookup"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:search-index  search-index\nservice:geo-lookup  geo-lookup"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "portal team wants the search-index spec up on the public developer site. does putting it there make it a public API?"
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "No — the reference page is just docs. search-index only takes calls from inside our own network, there's no external route to it and none planned. geo-lookup is the one that's actually open: it sits on the edge and any partner with a key calls it directly."
+        },
+        {
+          "event_id": "e3",
+          "kind": "user_message",
+          "body": "ok so the portal page needs an \"internal use\" banner on it. filing that now."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:search-index",
+          "predicate": "is_publicly_callable",
+          "value": false,
+          "event_ids": [
+            "e2"
+          ]
+        },
+        {
+          "subject_reference": "service:geo-lookup",
+          "predicate": "is_publicly_callable",
+          "value": true,
+          "event_ids": [
+            "e2"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-b4",
+      "difficulty": "negative",
+      "note": "Every limit here is proposed and the current enforced values are explicitly unknown, so the only correct extraction is silence.",
+      "entities": [
+        {
+          "reference": "service:media-transcode",
+          "display_name": "media-transcode"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:media-transcode  media-transcode"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "platform sync floated a hard body cap on media-transcode — 10 MB was the number someone said out loud. there was talk of tightening the timeout too."
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "Both could be reasonable, but nothing's settled, and I can't tell you what that route enforces today either. The config moved to the mesh repo last quarter and I haven't found where the values ended up."
+        },
+        {
+          "event_id": "e3",
+          "kind": "user_message",
+          "body": "yeah. I'll write it up as an RFC, we argue about it Thursday, nothing changes before then."
+        }
+      ],
+      "expected_claims": []
+    },
+    {
+      "case_id": "gt-b5",
+      "difficulty": "indirect",
+      "note": "A correction supplies an exact byte cap and the absence of an external route; the client's own chunk size must not be mistaken for the capability's limit.",
+      "entities": [
+        {
+          "reference": "service:asset-store",
+          "display_name": "asset-store"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:asset-store  asset-store"
+        },
+        {
+          "event_id": "e1",
+          "kind": "agent_message",
+          "body": "Bumping the uploader's chunk size to 8 MB on the asset-store path — fewer round trips for the big media files."
+        },
+        {
+          "event_id": "e2",
+          "kind": "user_message",
+          "body": "that'll just 413. asset-store's cap on a single request body is 4194304 — 4 MiB, it's in the ingress annotation. and it's VPC-only anyway, there's no external route to it, nothing outside our network can call it."
+        },
+        {
+          "event_id": "e3",
+          "kind": "agent_message",
+          "body": "Right, dropping to 2 MiB chunks then, well under it."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:asset-store",
+          "predicate": "max_request_bytes",
+          "value": 4194304,
+          "event_ids": [
+            "e2"
+          ]
+        },
+        {
+          "subject_reference": "service:asset-store",
+          "predicate": "is_publicly_callable",
+          "value": false,
+          "event_ids": [
+            "e2"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-c1",
+      "difficulty": "plain",
+      "note": "Baseline depends_on: two real outbound dependencies stated outright by the agent, one of which the user's diagram had missed, so recall must pick up both rather than only the obvious one.",
+      "entities": [
+        {
+          "reference": "service:checkout-api",
+          "display_name": "checkout-api"
+        },
+        {
+          "reference": "service:payments-api",
+          "display_name": "payments-api"
+        },
+        {
+          "reference": "service:pricing-api",
+          "display_name": "pricing-api"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:checkout-api  checkout-api\nservice:payments-api  payments-api\nservice:pricing-api  pricing-api"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "before I write the ADR for the checkout rewrite — outbound calls from checkout-api, payments-api is the only one right? that's all the old diagram shows"
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "Not quite. payments-api is there for the auth hold, that's the one everyone remembers. But every quote also does a synchronous read against pricing-api. There's a 30s local cache in front of it so it looks optional on the dashboards, but on a cold cache a pricing-api 500 turns straight into a failed checkout. Both are hard dependencies in the hot path — the diagram predates the pricing split."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:checkout-api",
+          "predicate": "depends_on",
+          "value": "service:payments-api",
+          "event_ids": [
+            "e2"
+          ]
+        },
+        {
+          "subject_reference": "service:checkout-api",
+          "predicate": "depends_on",
+          "value": "service:pricing-api",
+          "event_ids": [
+            "e2"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-c2",
+      "difficulty": "indirect",
+      "note": "Direction test: the user asserts notifications-api calls mailer-worker, and the span output plus the agent's correction establish the opposite edge, so a naive extraction records the dependency backwards.",
+      "entities": [
+        {
+          "reference": "service:notifications-api",
+          "display_name": "notifications-api"
+        },
+        {
+          "reference": "service:mailer-worker",
+          "display_name": "mailer-worker"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:notifications-api  notifications-api\nservice:mailer-worker  mailer-worker"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "notifications-api is paging on p99 again. mailer-worker is the obvious suspect, it's the noisiest thing in that namespace — can you confirm notifications-api is calling into it?"
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_action",
+          "tool_name": "Bash",
+          "body": "tempo-cli query --service notifications-api --since 20m --group-by peer.service"
+        },
+        {
+          "event_id": "e3",
+          "kind": "tool_result",
+          "tool_name": "Bash",
+          "body": "peer.service     direction   spans    p50     route\nmailer-worker    inbound     41388    180ms   GET /v1/templates\n\noutbound peers in window: none"
+        },
+        {
+          "event_id": "e4",
+          "kind": "agent_message",
+          "body": "Backwards from what we assumed. notifications-api makes zero outbound calls in that window — it's mailer-worker hitting GET /v1/templates, one lookup per send, 41k of them in 20 minutes. The worker is the client here; our p99 is the template read buckling under its fan-out."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:mailer-worker",
+          "predicate": "depends_on",
+          "value": "service:notifications-api",
+          "event_ids": [
+            "e3",
+            "e4"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-c3",
+      "difficulty": "distractor",
+      "note": "schema-registry is discussed at length as a possible blocker but is explicitly not called today, so only the cdc-streamer/legacy-sync-agent replication-slot conflict may be recorded.",
+      "entities": [
+        {
+          "reference": "service:cdc-streamer",
+          "display_name": "cdc-streamer"
+        },
+        {
+          "reference": "service:legacy-sync-agent",
+          "display_name": "legacy-sync-agent"
+        },
+        {
+          "reference": "service:schema-registry",
+          "display_name": "schema-registry"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:cdc-streamer  cdc-streamer\nservice:legacy-sync-agent  legacy-sync-agent\nservice:schema-registry  schema-registry"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "flipping cdc-streamer on in staging this afternoon. anything in the way? schema-registry is mid-upgrade but we're not writing avro yet"
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "schema-registry doesn't matter for this — cdc-streamer only talks to it once avro encoding is switched on, and that flag is off in every env, so nothing to coordinate with them. The real blocker is that cdc-streamer can't coexist with legacy-sync-agent: they both want the `orders_repl` slot and Postgres hands a slot to one consumer at a time. cdc-streamer will boot, fail to acquire, and crash-loop until legacy-sync-agent is drained off the primary."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:cdc-streamer",
+          "predicate": "conflicts_with",
+          "value": "service:legacy-sync-agent",
+          "event_ids": [
+            "e2"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-c4",
+      "difficulty": "plain",
+      "note": "Tests composes (an umbrella catalog capability made up of three deploy units) against provides_to (a one-way publish where the consumer never calls back), the two relationship shapes most often collapsed into depends_on.",
+      "entities": [
+        {
+          "reference": "capability:ledger-platform",
+          "display_name": "ledger-platform"
+        },
+        {
+          "reference": "service:ledger-writer",
+          "display_name": "ledger-writer"
+        },
+        {
+          "reference": "service:ledger-reader",
+          "display_name": "ledger-reader"
+        },
+        {
+          "reference": "service:ledger-reconciler",
+          "display_name": "ledger-reconciler"
+        },
+        {
+          "reference": "app:finance-portal",
+          "display_name": "finance-portal"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\ncapability:ledger-platform  ledger-platform\nservice:ledger-writer  ledger-writer\nservice:ledger-reader  ledger-reader\nservice:ledger-reconciler  ledger-reconciler\napp:finance-portal  finance-portal"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "onboarding question — the runbook index lists ledger-platform but I can't find a repo or a deploy for it anywhere. is it dead?"
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "Not dead, and not a deploy unit. ledger-platform is the umbrella name we use in the catalog; underneath it's exactly three services — ledger-writer, ledger-reader and ledger-reconciler. Nothing ships as \"ledger-platform\"."
+        },
+        {
+          "event_id": "e3",
+          "kind": "user_message",
+          "body": "ok. and the nightly balance file finance keeps asking about?"
+        },
+        {
+          "event_id": "e4",
+          "kind": "agent_message",
+          "body": "ledger-reconciler produces it and pushes the snapshot into finance-portal at 02:15. finance-portal has no credentials to call us and never has — it's a one-way publish, they just render whatever landed."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "capability:ledger-platform",
+          "predicate": "composes",
+          "value": "service:ledger-writer",
+          "event_ids": [
+            "e2"
+          ]
+        },
+        {
+          "subject_reference": "capability:ledger-platform",
+          "predicate": "composes",
+          "value": "service:ledger-reader",
+          "event_ids": [
+            "e2"
+          ]
+        },
+        {
+          "subject_reference": "capability:ledger-platform",
+          "predicate": "composes",
+          "value": "service:ledger-reconciler",
+          "event_ids": [
+            "e2"
+          ]
+        },
+        {
+          "subject_reference": "service:ledger-reconciler",
+          "predicate": "provides_to",
+          "value": "app:finance-portal",
+          "event_ids": [
+            "e4"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-c5",
+      "difficulty": "negative",
+      "note": "Precision guard: a dependency question is asked and every piece of evidence comes back inconclusive, so the only correct output is no claims at all.",
+      "entities": [
+        {
+          "reference": "service:quote-service",
+          "display_name": "quote-service"
+        },
+        {
+          "reference": "service:pricing-api",
+          "display_name": "pricing-api"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:quote-service  quote-service\nservice:pricing-api  pricing-api"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "does anything still read from quote-service, or can I stop backporting the tax fix into it?"
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "Honestly can't tell you yet. There's a client stub for it in the pricing-api repo, but it sits behind a flag and I can't find a value set for that flag in any env file — last commit touching it is March. Access logs only retain 7 days and they're empty for that window, which either means nobody calls it or means the LB is stripping the route before it gets logged. I'd ask #pricing before you drop it; grep isn't going to settle this one."
+        }
+      ],
+      "expected_claims": []
+    },
+    {
+      "case_id": "gt-d1",
+      "difficulty": "plain",
+      "note": "Tests the straightforward case where a handoff message states owner, paging rotation, and escalation path outright, including a superseded owner that is explicitly negated and must not be labeled.",
+      "entities": [
+        {
+          "reference": "service:ledger-sync",
+          "display_name": "Ledger Sync"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:ledger-sync  Ledger Sync"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "before you touch anything in ledger-sync — heads up it's not Payments Core's problem anymore. Settlements took it over in the June reorg. Pages go to settlements-primary now. If they sit on it for more than a few minutes, escalate to #settlements-leads and someone there will grab it."
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "Understood. I'll point the failing-batch alert at settlements-primary instead of the old payments-core alias, and I'll leave a comment on the alert with the #settlements-leads escalation so the next person doesn't have to dig."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:ledger-sync",
+          "predicate": "owned_by_team",
+          "value": "Settlements",
+          "event_ids": [
+            "e1"
+          ]
+        },
+        {
+          "subject_reference": "service:ledger-sync",
+          "predicate": "on_call_rotation",
+          "value": "settlements-primary",
+          "event_ids": [
+            "e1"
+          ]
+        },
+        {
+          "subject_reference": "service:ledger-sync",
+          "predicate": "escalation_contact",
+          "value": "#settlements-leads",
+          "event_ids": [
+            "e1"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-d2",
+      "difficulty": "indirect",
+      "note": "Tests extraction of ownership and paging facts from a config file dumped by a tool rather than from anyone's sentence, which is how on-call routing is usually discovered mid-incident.",
+      "entities": [
+        {
+          "reference": "service:receipt-renderer",
+          "display_name": "Receipt Renderer"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:receipt-renderer  Receipt Renderer"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "receipt-renderer is throwing 500s on the PDF path and I don't know who to wake up. the runbook link on the wiki 404s."
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_action",
+          "tool_name": "Bash",
+          "body": "rg -A3 '^  receipt-renderer:' ops/pagerduty/routes.yaml"
+        },
+        {
+          "event_id": "e3",
+          "kind": "tool_result",
+          "tool_name": "Bash",
+          "body": "  receipt-renderer:\n    team: media-platform\n    page: mediaplat-oncall\n    escalation: eng-manager-oncall@roughcompass.io"
+        },
+        {
+          "event_id": "e4",
+          "kind": "agent_message",
+          "body": "Routes file answers it. Page mediaplat-oncall; if nobody acks, it goes to eng-manager-oncall@roughcompass.io. The wiki page predates this file so I'd trust the routes entry."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:receipt-renderer",
+          "predicate": "owned_by_team",
+          "value": "media-platform",
+          "event_ids": [
+            "e3"
+          ]
+        },
+        {
+          "subject_reference": "service:receipt-renderer",
+          "predicate": "on_call_rotation",
+          "value": "mediaplat-oncall",
+          "event_ids": [
+            "e3"
+          ]
+        },
+        {
+          "subject_reference": "service:receipt-renderer",
+          "predicate": "escalation_contact",
+          "value": "eng-manager-oncall@roughcompass.io",
+          "event_ids": [
+            "e3"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-d3",
+      "difficulty": "negative",
+      "note": "Tests that an ownership conversation which explicitly ends unresolved — with a stale CODEOWNERS entry pointing at a dissolved team — produces no claims at all.",
+      "entities": [
+        {
+          "reference": "service:order-events",
+          "display_name": "Order Events"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:order-events  Order Events"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "the dead-letter queue on order-events has ~40k messages sitting in it and nobody has drained it since spring. who actually owns that"
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "Can't tell you from the repo. git log on the terraform module is almost all bot commits, and the CODEOWNERS line points at @roughcompass/infra-legacy, which doesn't resolve — that group was dissolved. Could be Platform by default, could be whoever owns the producer side. I'd be guessing either way."
+        },
+        {
+          "event_id": "e3",
+          "kind": "user_message",
+          "body": "yeah, don't guess. I'll ask in #eng-general and we can write it down once someone actually claims it."
+        }
+      ],
+      "expected_claims": []
+    },
+    {
+      "case_id": "gt-d4",
+      "difficulty": "distractor",
+      "note": "Tests that a hedged ownership guess (\"I think that's platform?\") is left unlabeled while a settled ownership and rotation statement in the same excerpt is captured.",
+      "entities": [
+        {
+          "reference": "service:quota-broker",
+          "display_name": "Quota Broker"
+        },
+        {
+          "reference": "service:edge-router",
+          "display_name": "Edge Router"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:quota-broker  Quota Broker\nservice:edge-router  Edge Router"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "I need owners for two rows in the migration doc. quota-broker is… I think that's Platform? or maybe Capacity picked it up, not sure."
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "Nothing in the repo pins quota-broker to a team — no CODEOWNERS entry, no service manifest. I'll leave that cell blank rather than write a guess into the doc."
+        },
+        {
+          "event_id": "e3",
+          "kind": "user_message",
+          "body": "fine, leave it. edge-router is definitely ours though — Traffic Engineering. We took it from Networking in April, transfer PR is merged. Page traffic-eng-primary for anything on it."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:edge-router",
+          "predicate": "owned_by_team",
+          "value": "Traffic Engineering",
+          "event_ids": [
+            "e3"
+          ]
+        },
+        {
+          "subject_reference": "service:edge-router",
+          "predicate": "on_call_rotation",
+          "value": "traffic-eng-primary",
+          "event_ids": [
+            "e3"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-d5",
+      "difficulty": "indirect",
+      "note": "Tests a correction that both invalidates a named escalation contact and establishes a two-step escalation ladder plus a confirmed rotation, where labeling the corrected value would route future pages to someone who left the company.",
+      "entities": [
+        {
+          "reference": "service:invoice-export",
+          "display_name": "Invoice Export"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:invoice-export  Invoice Export"
+        },
+        {
+          "event_id": "e1",
+          "kind": "agent_message",
+          "body": "Draft of the incident review, escalation section reads: \"If billing-oncall has not acknowledged within 10 minutes, escalate to Dana Okoro (Billing EM).\""
+        },
+        {
+          "event_id": "e2",
+          "kind": "user_message",
+          "body": "Dana left in May, so that line is wrong and it's been wrong in three docs now. For invoice-export escalation goes to #billing-leads first, and if that channel is quiet past half an hour it goes to directors-oncall@roughcompass.io. billing-oncall is correct though, that's still the rotation we page."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:invoice-export",
+          "predicate": "escalation_contact",
+          "value": "#billing-leads",
+          "event_ids": [
+            "e2"
+          ]
+        },
+        {
+          "subject_reference": "service:invoice-export",
+          "predicate": "on_call_rotation",
+          "value": "billing-oncall",
+          "event_ids": [
+            "e1",
+            "e2"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-e1",
+      "difficulty": "plain",
+      "note": "Exercises the two unit conversions this slice depends on — \"three nines\" to 0.999 and a thirty-minute RTO to 1800 seconds — where both facts are stated outright, so any miss here is a pure conversion failure.",
+      "entities": [
+        {
+          "reference": "service:invoice-render",
+          "display_name": "invoice-render"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:invoice-render  invoice-render"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "slo doc for invoice-render finally got signed off this morning. availability target is three nines — 99.9% measured monthly — and the DR appendix commits to a thirty minute RTO."
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "Understood. Three nines monthly is roughly 43 minutes of error budget, which is tighter than what the current burn-rate alerts assume. Worth revisiting those thresholds separately, but that does not change the target."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:invoice-render",
+          "predicate": "target_availability",
+          "value": 0.999,
+          "event_ids": [
+            "e1"
+          ]
+        },
+        {
+          "subject_reference": "service:invoice-render",
+          "predicate": "recovery_time_objective_seconds",
+          "value": 1800,
+          "event_ids": [
+            "e1"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-e2",
+      "difficulty": "indirect",
+      "note": "The deployment environments are established only by the deploy tool's output — the human turn is a question, not an assertion — so this tests whether extraction reads tool results as evidence without inventing an environment from the phrase \"local only\".",
+      "entities": [
+        {
+          "reference": "service:fraud-scorer",
+          "display_name": "fraud-scorer"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:fraud-scorer  fraud-scorer"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "is fraud-scorer actually running anywhere yet or is it still local only"
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_action",
+          "tool_name": "Bash",
+          "body": "cpctl deployments list --service fraud-scorer"
+        },
+        {
+          "event_id": "e3",
+          "kind": "tool_result",
+          "tool_name": "Bash",
+          "body": "ENV         REVISION  STATUS   SINCE\nstaging     r481      healthy  6d\nproduction  r479      healthy  2d"
+        },
+        {
+          "event_id": "e4",
+          "kind": "agent_message",
+          "body": "Both are up. production is a revision behind staging — the roll-forward is queued behind the schema migration, nothing is failing."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:fraud-scorer",
+          "predicate": "deployment_environment",
+          "value": "staging",
+          "event_ids": [
+            "e3"
+          ]
+        },
+        {
+          "subject_reference": "service:fraud-scorer",
+          "predicate": "deployment_environment",
+          "value": "production",
+          "event_ids": [
+            "e3"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-e3",
+      "difficulty": "indirect",
+      "note": "A stale catalog read says \"active\" and the human corrects it to retired; recording the tool output instead of the correction would push a withdrawn service back into the graph as live.",
+      "entities": [
+        {
+          "reference": "service:search-indexer",
+          "display_name": "search-indexer"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:search-indexer  search-indexer"
+        },
+        {
+          "event_id": "e1",
+          "kind": "agent_action",
+          "tool_name": "get_capability",
+          "body": "get_capability(reference=\"service:search-indexer\")"
+        },
+        {
+          "event_id": "e2",
+          "kind": "tool_result",
+          "tool_name": "get_capability",
+          "body": "reference: service:search-indexer\nlifecycle_state: active\nlast_reviewed: 2025-11-04"
+        },
+        {
+          "event_id": "e3",
+          "kind": "user_message",
+          "body": "that row is stale. search-indexer was retired back in June — last consumer moved off before that and the nodes are gone. nobody updated the catalog entry, which is half of why we're doing this pass."
+        },
+        {
+          "event_id": "e4",
+          "kind": "agent_message",
+          "body": "Then the catalog entry is wrong and I'll treat it as retired for the rest of this review."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:search-indexer",
+          "predicate": "lifecycle_state",
+          "value": "retired",
+          "event_ids": [
+            "e3"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-e4",
+      "difficulty": "distractor",
+      "note": "One deprecation is pinned to a concrete UTC instant and the other is only \"end of Q3\" with no date chosen; inventing a timestamp for the second would announce a withdrawal that nobody has committed to.",
+      "entities": [
+        {
+          "reference": "service:legacy-webhooks",
+          "display_name": "legacy-webhooks"
+        },
+        {
+          "reference": "service:pricing-cache",
+          "display_name": "pricing-cache"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:legacy-webhooks  legacy-webhooks\nservice:pricing-cache  pricing-cache"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "writing the deprecation notices today. legacy-webhooks is the easy one — the notice we published last week has it deprecated from 2026-10-01T00:00:00Z onward, and that's the date customers already have in their inbox."
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "And pricing-cache? The tracker has it in the same batch."
+        },
+        {
+          "event_id": "e3",
+          "kind": "user_message",
+          "body": "leadership said end of Q3 for pricing-cache but nobody has picked an actual date. it stays out of the notice until someone commits to one — I'm not putting a guess in front of customers."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:legacy-webhooks",
+          "predicate": "deprecated_after",
+          "value": "2026-10-01T00:00:00Z",
+          "event_ids": [
+            "e1"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-e5",
+      "difficulty": "negative",
+      "note": "Two conflicting, unratified availability figures and an explicitly non-committal RTO — the excerpt is entirely about slice-e predicates and settles none of them, so the only correct extraction is an empty list.",
+      "entities": [
+        {
+          "reference": "service:checkout-orchestrator",
+          "display_name": "checkout-orchestrator"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:checkout-orchestrator  checkout-orchestrator"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "before I write the SLO section for checkout-orchestrator — do we have a committed number anywhere? the platform deck says three nines, the runbook header says 99.95%."
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "Neither is signed off. There's no SLO doc for it in the repo and no review that approved either figure — the runbook line has been unchanged since the service was scaffolded, so I'd treat it as placeholder text."
+        },
+        {
+          "event_id": "e3",
+          "kind": "user_message",
+          "body": "park it then. I'll get the owners to commit to something before any of it goes in writing. same story for recovery — the DR page just says best effort."
+        }
+      ],
+      "expected_claims": []
+    },
+    {
+      "case_id": "gt-f1",
+      "difficulty": "plain",
+      "note": "Tests the simplest runbook_url case — an absolute URL stated outright — while a competing but unlinked \"wiki copy\" is mentioned; a wrong extraction here means the base case for operational-link capture is broken.",
+      "entities": [
+        {
+          "reference": "service:ledger-sync",
+          "display_name": "ledger-sync"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:ledger-sync  ledger-sync"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "before you touch anything on ledger-sync: the failover runbook is https://runbooks.acme.internal/ledger-sync/failover — bookmark it. half the team still opens the old wiki copy during incidents and the wiki copy is wrong."
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "Bookmarked. I'll work from the runbooks.acme.internal page and won't touch the failover path until I've read the pre-checks section."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:ledger-sync",
+          "predicate": "runbook_url",
+          "value": "https://runbooks.acme.internal/ledger-sync/failover",
+          "event_ids": [
+            "e1"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-f2",
+      "difficulty": "indirect",
+      "note": "The runbook_url only becomes determinable after the user corrects the agent, so the claim must follow the correction and must not record the superseded wiki link; extracting the first URL would pin on-call to a page the user just said is a stub.",
+      "entities": [
+        {
+          "reference": "service:invoice-renderer",
+          "display_name": "invoice-renderer"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:invoice-renderer  invoice-renderer"
+        },
+        {
+          "event_id": "e1",
+          "kind": "agent_message",
+          "body": "Alert routing for invoice-renderer looks correct. I'll drop the runbook link from the repo README into the incident channel: https://wiki.acme.internal/eng/invoice-renderer-runbook"
+        },
+        {
+          "event_id": "e2",
+          "kind": "user_message",
+          "body": "no, don't — that wiki page has been a stub since the docs migration, it's literally two headings. live one is https://runbooks.acme.internal/invoice-renderer/index. README is stale, i'll open a PR for it later this week."
+        },
+        {
+          "event_id": "e3",
+          "kind": "agent_message",
+          "body": "Understood, posting the runbooks.acme.internal link instead."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:invoice-renderer",
+          "predicate": "runbook_url",
+          "value": "https://runbooks.acme.internal/invoice-renderer/index",
+          "event_ids": [
+            "e2"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-f3",
+      "difficulty": "distractor",
+      "note": "A runbook is discussed at length but only as a repo-relative path with no published URL, so it must yield nothing, while an absolute ADR link in the same excerpt must yield decision_record_url; fabricating a runbook_url from a file path would put an unfetchable value in the graph.",
+      "entities": [
+        {
+          "reference": "service:payment-gateway",
+          "display_name": "payment-gateway"
+        },
+        {
+          "reference": "repo:acme/payments",
+          "display_name": "acme/payments"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:payment-gateway  payment-gateway\nrepo:acme/payments  acme/payments"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "where does the payment-gateway failover runbook actually live? on-call spent twenty minutes looking for it last night."
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "Only copy I can find is docs/runbooks/failover.md in acme/payments. It isn't published anywhere — the docs site build excludes that directory, so there's no link to hand out."
+        },
+        {
+          "event_id": "e3",
+          "kind": "user_message",
+          "body": "figures. fine, i'll chase that separately. while you're in the postmortem doc, link the ADR too — https://adr.acme.internal/0112-active-active-gateway. reviewers always ask why the gateway runs dual-region."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:payment-gateway",
+          "predicate": "decision_record_url",
+          "value": "https://adr.acme.internal/0112-active-active-gateway",
+          "event_ids": [
+            "e3"
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "gt-f4",
+      "difficulty": "negative",
+      "note": "A decision is actively being debated and explicitly not yet made or written down, so the correct output is silence — recording a decision_status or a deprecation here would invent governance that does not exist.",
+      "entities": [
+        {
+          "reference": "service:billing-api",
+          "display_name": "billing-api"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:billing-api  billing-api"
+        },
+        {
+          "event_id": "e1",
+          "kind": "user_message",
+          "body": "do we need an actual ADR for dropping the v1 endpoints on billing-api, or is that just a thing we do quietly"
+        },
+        {
+          "event_id": "e2",
+          "kind": "agent_message",
+          "body": "I'd write one. Right now the only trace is a Slack thread and two comments on the deprecation issue — nothing under the ADR directory mentions billing-api at all, so in six months nobody will know why the endpoints went."
+        },
+        {
+          "event_id": "e3",
+          "kind": "user_message",
+          "body": "yeah ok. i'll draft something this week, probably. depends whether marta agrees the v1 traffic is really zero — she thinks the mobile build still hits it."
+        }
+      ],
+      "expected_claims": []
+    },
+    {
+      "case_id": "gt-f5",
+      "difficulty": "indirect",
+      "note": "Three decision facts are established only by ADR front matter in tool output rather than by any sentence, and the superseded prior record must not be labeled (no URL, and it is not the governing decision) — over-reading it would attach a 'superseded' status to a service that is bound by an accepted one.",
+      "entities": [
+        {
+          "reference": "service:order-events",
+          "display_name": "order-events"
+        },
+        {
+          "reference": "repo:acme/platform",
+          "display_name": "acme/platform"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "e0",
+          "kind": "tool_result",
+          "tool_name": "catalog_lookup",
+          "body": "entities in scope for this session:\nservice:order-events  order-events\nrepo:acme/platform  acme/platform"
+        },
+        {
+          "event_id": "e1",
+          "kind": "agent_action",
+          "tool_name": "Bash",
+          "body": "gh api repos/acme/platform/contents/docs/adr/0203-single-writer-outbox.md --jq .content | base64 -d | head -12"
+        },
+        {
+          "event_id": "e2",
+          "kind": "tool_result",
+          "tool_name": "Bash",
+          "body": "---\nid: ADR-0203\ntitle: Single-writer outbox for order-events\napplies_to: service:order-events\nstatus: accepted\ndecided_at: 2026-03-11T15:40:00Z\nsupersedes: ADR-0177\ncanonical_url: https://adr.acme.internal/0203-single-writer-outbox\n---\n\n## Context\n\nTwo writers to the outbox table produced duplicate emissions during"
+        },
+        {
+          "event_id": "e3",
+          "kind": "agent_message",
+          "body": "That's the governing record. The dual-writer wording people keep quoting at you is from the older record this one replaced, which is why the code and the doc disagree."
+        }
+      ],
+      "expected_claims": [
+        {
+          "subject_reference": "service:order-events",
+          "predicate": "decision_record_url",
+          "value": "https://adr.acme.internal/0203-single-writer-outbox",
+          "event_ids": [
+            "e2"
+          ]
+        },
+        {
+          "subject_reference": "service:order-events",
+          "predicate": "decision_status",
+          "value": "accepted",
+          "event_ids": [
+            "e2"
+          ]
+        },
+        {
+          "subject_reference": "service:order-events",
+          "predicate": "decided_at",
+          "value": "2026-03-11T15:40:00Z",
+          "event_ids": [
+            "e2"
+          ]
+        }
+      ]
+    }
+  ],
+  "subject_reference_note": "Every case opens with a catalog_lookup result naming the entities in scope by their canonical reference. Without it the excerpts name services in prose ('ledger-sync') while the labels use the reference form ('service:ledger-sync'), and the strategy tells a provider to use the reference exactly as it appeared in the data -- so eighteen of thirty cases carried subject labels no correct extraction could have produced. The lookup is added to all thirty rather than the eighteen that needed it, so its presence correlates with nothing. It reveals no predicate and no value: what it removes is the guessing of an identifier, which is a separate question from whether a claim was found."
+}
