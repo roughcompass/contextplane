@@ -4824,6 +4824,35 @@
     "title": "FieldProvenanceInput",
     "type": "object"
   },
+  "GraphPromotionRequest": {
+    "additionalProperties": false,
+    "description": "Body for `POST /v1/arc/sources/graph-promotions`: admits a claim the\ncanonical graph already carries, vouched for by its promotion rather\nthan by a signature over bytes this deployment fetched.\n\nNo `claim`, `verifier_id`, or `proof`: every field those carry is read\nfrom the promotion itself. Accepting them from the caller would let a\nrequest assert an approving authority the graph does not record.",
+    "properties": {
+      "claim_id": {
+        "format": "uuid",
+        "title": "Claim Id",
+        "type": "string"
+      },
+      "review_expires_at": {
+        "description": "When this citation must be revisited. A graph fact carries no deadline of its own, and every source evidence row has one.",
+        "format": "date-time",
+        "title": "Review Expires At",
+        "type": "string"
+      },
+      "source_system": {
+        "description": "The upstream system the promoted claim's evidence points into, e.g. `bitbucket.org/acme/adr`. Not derived: an evidence ref names a revision, not the system that issued it.",
+        "title": "Source System",
+        "type": "string"
+      }
+    },
+    "required": [
+      "claim_id",
+      "source_system",
+      "review_expires_at"
+    ],
+    "title": "GraphPromotionRequest",
+    "type": "object"
+  },
   "JudgmentAuthor": {
     "additionalProperties": false,
     "description": "Response-only. See Appendix A.4: recorded authors, server-written.",
@@ -8322,7 +8351,8 @@
         "description": "How a source's bytes entered the system.",
         "enum": [
           "connector_fetch",
-          "authorized_upload"
+          "authorized_upload",
+          "graph_promotion"
         ],
         "title": "AdmissionMethod",
         "type": "string"
@@ -8340,10 +8370,11 @@
         "type": "string"
       },
       "VerificationMethod": {
-        "description": "How an `ApprovalProof` is checked: a detached signature or a\ntrusted provider's attestation.",
+        "description": "How a source's approval is checked.\n\nTwo of these three name an `ApprovalProof` variant. `GRAPH_PROMOTION`\ndoes not, and deliberately has no variant in that union: the authority\nis a promotion journal row this service reads itself, so there is no\nproof for a caller to supply and no way for one to assert this method\non a request.",
         "enum": [
           "detached_signature",
-          "verifier_attestation"
+          "verifier_attestation",
+          "graph_promotion"
         ],
         "title": "VerificationMethod",
         "type": "string"

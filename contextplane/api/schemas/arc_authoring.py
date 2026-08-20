@@ -211,6 +211,7 @@ from contextplane.api.schemas.arc_authoring_shared import (
 )
 from contextplane.api.schemas.arc_authoring_source_admission import (
     ConnectorFetchRequest,
+    GraphPromotionRequest,
     SourceConnectorRegistration,
     SourceConnectorResponse,
     SourceEvidenceResponse,
@@ -254,6 +255,7 @@ REQUEST_COMPONENTS: tuple[type[BaseModel], ...] = (
     FieldProvenanceInput,
     UploadAdmissionRequest,
     ConnectorFetchRequest,
+    GraphPromotionRequest,
     SourceConnectorRegistration,
     SourceUploadPolicyRegistration,
     ArtifactFamilyCreate,
@@ -343,6 +345,7 @@ __all__ = [
     "ChangeKind",
     "Citation",
     "ConnectorFetchRequest",
+    "GraphPromotionRequest",
     "DeltaCode",
     "DeltaCodeCounter",
     "DetachedSignatureProof",

@@ -68,6 +68,7 @@ from contextplane.api.routers import arc_approval as arc_approval_router
 from contextplane.api.routers import arc_authoring as arc_authoring_router
 from contextplane.api.routers import arc_drafting as arc_drafting_router
 from contextplane.api.routers import arc_observation as arc_observation_router
+from contextplane.api.routers import arc_sources_graph as arc_sources_graph_router
 from contextplane.api.routers import context as context_router
 from contextplane.api.routers import context_feedback as context_feedback_router
 from contextplane.api.routers import intent_memory as task_memory_router
@@ -193,6 +194,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(arc_observation_router.router)
     app.include_router(arc_activation_router.router)
     app.include_router(arc_drafting_router.router)
+    app.include_router(arc_sources_graph_router.router)
     app.include_router(admin_operational_health.router)
     app.include_router(admin_usage.router)
     app.include_router(usage_router.router)
