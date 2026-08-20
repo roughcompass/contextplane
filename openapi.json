@@ -28340,7 +28340,7 @@
         ]
       },
       "patch": {
-        "description": "Update by the same three routes a create takes.\n\nAn observation that could amend a canonical edge directly would be a way\naround the intent split, so this adds nothing to the routing but the subject.",
+        "description": "Supersede the named assertion, by the same three routes a create takes.\n\nAn observation that could amend a canonical edge directly would be a way\naround the intent split, so this adds nothing to the routing but the subject.\n\nOnly the canonical route supersedes. The staged routes mint a claim id and\na review-entry id and persist neither \u2014 they are placeholders for a staging\nsurface that does not exist yet \u2014 so an observation or a request against\nthis path records nothing that names the edge it was about. That is the\nbehaviour a create already has, unchanged here rather than quietly widened.",
         "operationId": "update_relationship",
         "parameters": [
           {
