@@ -16649,7 +16649,7 @@
         },
         "summary": "Get Autopromote Allowlist",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -16691,7 +16691,7 @@
         },
         "summary": "Allow Autopromote Predicate",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -16733,7 +16733,7 @@
         },
         "summary": "Revoke Autopromote Predicate",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -16759,7 +16759,7 @@
         },
         "summary": "List Memory Calibration",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -16801,7 +16801,7 @@
         },
         "summary": "Refit Memory Calibration",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -16823,7 +16823,7 @@
         },
         "summary": "Get Promotion Policy",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       },
       "put": {
@@ -16863,7 +16863,7 @@
         },
         "summary": "Put Promotion Policy",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -16889,7 +16889,7 @@
         },
         "summary": "List Memory Sources",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       },
       "post": {
@@ -16929,7 +16929,7 @@
         },
         "summary": "Declare Memory Source",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -16983,7 +16983,7 @@
         },
         "summary": "Patch Memory Source",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -17027,7 +17027,7 @@
         },
         "summary": "Reset Memory Source Breaker",
         "tags": [
-          "admin: memory curation"
+          "admin: memory-curation"
         ]
       }
     },
@@ -21674,7 +21674,8 @@
         },
         "summary": "List Capabilities",
         "tags": [
-          "retrieval"
+          "retrieval",
+          "capabilities"
         ]
       },
       "post": {
@@ -21749,343 +21750,6 @@
         "summary": "Create Capability",
         "tags": [
           "capabilities"
-        ]
-      }
-    },
-    "/v1/capabilities/{capability_id}/interface": {
-      "get": {
-        "description": "Return the active interface surface at ``as_of`` (or current truth).\n\nThe path segment accepts a UUID or slug-form name.\n\n``?view=audit`` is accepted for API consistency but is currently a no-op \u2014\nthe interface service returns a composed record rather than raw attribute\nrows, so no additional bitemporal metadata is available to surface.",
-        "operationId": "get_interface_v1_capabilities__capability_id__interface_get",
-        "parameters": [
-          {
-            "description": "Capability UUID or slug",
-            "in": "path",
-            "name": "capability_id",
-            "required": true,
-            "schema": {
-              "description": "Capability UUID or slug",
-              "title": "Capability Id",
-              "type": "string"
-            }
-          },
-          {
-            "description": "ISO-8601 UTC for time-travel",
-            "in": "query",
-            "name": "as_of",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "ISO-8601 UTC for time-travel",
-              "title": "As Of"
-            }
-          },
-          {
-            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
-            "in": "query",
-            "name": "view",
-            "required": false,
-            "schema": {
-              "default": "default",
-              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
-              "enum": [
-                "default",
-                "audit"
-              ],
-              "title": "View",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InterfaceReadResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Read the capability's declared interface surface",
-        "tags": [
-          "interface"
-        ]
-      },
-      "put": {
-        "description": "Normalize, soft-supersede prior versions, then write the new pair.\n\nThe path segment accepts a UUID or slug-form name.",
-        "operationId": "put_interface_v1_capabilities__capability_id__interface_put",
-        "parameters": [
-          {
-            "description": "Capability UUID or slug",
-            "in": "path",
-            "name": "capability_id",
-            "required": true,
-            "schema": {
-              "description": "Capability UUID or slug",
-              "title": "Capability Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/InterfacePutRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InterfaceSurfaceResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Replace the capability's declared interface surface",
-        "tags": [
-          "interface"
-        ]
-      }
-    },
-    "/v1/capabilities/{capability_id}/preview-version": {
-      "post": {
-        "description": "Read-only advisory: normalize \u2192 semver \u2192 diff \u2192 blast-radius \u2192 filter.\n\nThe path segment accepts a UUID or slug-form name.\n\nReturns the diff classification, the per-element changes, the\naffected-consumer list (cross-tenant entries anonymised), and a\nplain-text release-notes scaffold.",
-        "operationId": "preview_version_v1_capabilities__capability_id__preview_version_post",
-        "parameters": [
-          {
-            "description": "Capability UUID or slug",
-            "in": "path",
-            "name": "capability_id",
-            "required": true,
-            "schema": {
-              "description": "Capability UUID or slug",
-              "title": "Capability Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PreviewVersionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BreakingChangePreviewResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Preview the impact of a proposed version + interface change",
-        "tags": [
-          "breaking-change"
-        ]
-      }
-    },
-    "/v1/capabilities/{capability_id}/subscriptions": {
-      "get": {
-        "description": "Active subscriptions owned by ``ctx.tenant_id`` for this capability.\n\nThe path segment accepts a UUID or slug-form name. Tenants only see\ntheir own subscriptions through this endpoint.\n\nPass ``?view=audit`` to include bitemporal columns in the response.\n\nPagination: ``next_cursor`` is always ``None`` \u2014 subscriptions per\ncapability per tenant are bounded (typically 1\u20135 rows), so keyset\npagination is not wired. The envelope exists for client shape consistency.",
-        "operationId": "list_subscriptions_for_capability_v1_capabilities__capability_id__subscriptions_get",
-        "parameters": [
-          {
-            "description": "Capability UUID or slug",
-            "in": "path",
-            "name": "capability_id",
-            "required": true,
-            "schema": {
-              "description": "Capability UUID or slug",
-              "title": "Capability Id",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
-            "in": "query",
-            "name": "view",
-            "required": false,
-            "schema": {
-              "default": "default",
-              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
-              "enum": [
-                "default",
-                "audit"
-              ],
-              "title": "View",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SubscriptionListResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List the caller's subscriptions for a capability",
-        "tags": [
-          "subscriptions"
-        ]
-      },
-      "post": {
-        "description": "Create an active subscription owned by the caller's tenant.\n\nThe path segment accepts a UUID or slug-form name. Visibility is enforced\nbefore the row is written. Returns ``{\"subscription_id\": \"<uuid>\"}``; the\nfull record can be retrieved via the list endpoint.\n\nHonours ``X-Idempotency-Key``: same key + same body replays the\noriginal response; same key + different body returns 409.",
-        "operationId": "create_subscription_v1_capabilities__capability_id__subscriptions_post",
-        "parameters": [
-          {
-            "description": "Capability UUID or slug",
-            "in": "path",
-            "name": "capability_id",
-            "required": true,
-            "schema": {
-              "description": "Capability UUID or slug",
-              "title": "Capability Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SubscriptionCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Create Subscription V1 Capabilities  Capability Id  Subscriptions Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create a subscription for a capability",
-        "tags": [
-          "subscriptions"
         ]
       }
     },
@@ -22306,6 +21970,216 @@
         "summary": "Patch Capability",
         "tags": [
           "capabilities"
+        ]
+      }
+    },
+    "/v1/capabilities/{entity_id}/adoptions": {
+      "get": {
+        "description": "Return the calling tenant's active adoption for this capability,\nif any.\n\nScoped to the caller's tenant \u2014 listing other tenants' adoptions for\nthe same capability is not supported through this endpoint (use the\nprojection endpoints for the provider-side view).\n\nPass ``?view=audit`` to include bitemporal columns in the response.\n\nPagination: ``next_cursor`` is always ``None`` \u2014 adoptions per capability\nper tenant are bounded (at most one active row), so keyset pagination is\nnot wired. The envelope exists for client shape consistency.",
+        "operationId": "list_adoptions_v1_capabilities__entity_id__adoptions_get",
+        "parameters": [
+          {
+            "description": "Provider capability UUID or slug",
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "description": "Provider capability UUID or slug",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
+              "title": "View",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdoptionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List active adoptions for a capability",
+        "tags": [
+          "adoptions"
+        ]
+      },
+      "post": {
+        "description": "Record an adoption event + provides_to edge.\n\nThe path segment accepts a UUID or a slug-form name. The consumer\ntenant is ``ctx.tenant_id``. Returns ``201`` with the newly-created\nadoption row. ``409`` if an active adoption already exists for the\n(consumer, capability) pair (uniqueness constraint).\n\nPass ``?view=audit`` to include bitemporal columns in the response.\nHonours ``X-Idempotency-Key``: same key + same body replays the\noriginal response; same key + different body returns 409.",
+        "operationId": "adopt_capability_v1_capabilities__entity_id__adoptions_post",
+        "parameters": [
+          {
+            "description": "Provider capability UUID or slug",
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "description": "Provider capability UUID or slug",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
+              "title": "View",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdoptionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdoptionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Adopt a provider capability (cross-tenant)",
+        "tags": [
+          "adoptions"
+        ]
+      }
+    },
+    "/v1/capabilities/{entity_id}/adoptions/{adoption_id}": {
+      "delete": {
+        "description": "Soft-delete by setting t_invalidated_at. The provides_to edge is\nretained so historical bi-temporal traversal still surfaces the\nrelationship.\n\nIdempotent: calling on an already-invalidated adoption is a no-op\n(returns 204).",
+        "operationId": "_unadopt_capability_v1_capabilities__entity_id__adoptions__adoption_id__delete",
+        "parameters": [
+          {
+            "description": "Provider capability UUID or slug",
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "description": "Provider capability UUID or slug",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "adoption_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Adoption Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Soft-delete (unadopt) an adoption",
+        "tags": [
+          "adoptions"
         ]
       }
     },
@@ -23033,6 +22907,138 @@
         ]
       }
     },
+    "/v1/capabilities/{entity_id}/interface": {
+      "get": {
+        "description": "Return the active interface surface at ``as_of`` (or current truth).\n\nThe path segment accepts a UUID or slug-form name.\n\n``?view=audit`` is accepted for API consistency but is currently a no-op \u2014\nthe interface service returns a composed record rather than raw attribute\nrows, so no additional bitemporal metadata is available to surface.",
+        "operationId": "get_interface_v1_capabilities__entity_id__interface_get",
+        "parameters": [
+          {
+            "description": "Capability UUID or slug",
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "description": "Capability UUID or slug",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ISO-8601 UTC for time-travel",
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO-8601 UTC for time-travel",
+              "title": "As Of"
+            }
+          },
+          {
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
+              "title": "View",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterfaceReadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read the capability's declared interface surface",
+        "tags": [
+          "interface"
+        ]
+      },
+      "put": {
+        "description": "Normalize, soft-supersede prior versions, then write the new pair.\n\nThe path segment accepts a UUID or slug-form name.",
+        "operationId": "put_interface_v1_capabilities__entity_id__interface_put",
+        "parameters": [
+          {
+            "description": "Capability UUID or slug",
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "description": "Capability UUID or slug",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterfacePutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterfaceSurfaceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace the capability's declared interface surface",
+        "tags": [
+          "interface"
+        ]
+      }
+    },
     "/v1/capabilities/{entity_id}/lifecycle": {
       "patch": {
         "description": "Apply a lifecycle state transition to a capability.\n\nThe path segment accepts a UUID or slug-form name.\n\nRequires ``admin`` or ``producer`` role.  When ``successor`` is a UUID the\nservice creates a ``replaced_by`` edge via ``CatalogService.create_edge``\nafter committing the attribute row.  When ``successor`` is ``\"none\"`` the\nentity is deprecated without a replacement.\n\nHonours the ``If-Match`` request header (advisory): if present and stale,\nreturns 412 Precondition Failed; if absent, logs a debug warning and\naccepts the write.  ETag is computed from the entity's current state before\nthe transition so a stale precondition fails fast.\n\nReturns 422 on policy violation (invalid transition, invalid successor value),\n404 if the entity does not exist.",
@@ -23085,6 +23091,211 @@
         "summary": "Patch Capability Lifecycle",
         "tags": [
           "lifecycle"
+        ]
+      }
+    },
+    "/v1/capabilities/{entity_id}/preview-version": {
+      "post": {
+        "description": "Read-only advisory: normalize \u2192 semver \u2192 diff \u2192 blast-radius \u2192 filter.\n\nThe path segment accepts a UUID or slug-form name.\n\nReturns the diff classification, the per-element changes, the\naffected-consumer list (cross-tenant entries anonymised), and a\nplain-text release-notes scaffold.",
+        "operationId": "preview_version_v1_capabilities__entity_id__preview_version_post",
+        "parameters": [
+          {
+            "description": "Capability UUID or slug",
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "description": "Capability UUID or slug",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BreakingChangePreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview the impact of a proposed version + interface change",
+        "tags": [
+          "breaking-change"
+        ]
+      }
+    },
+    "/v1/capabilities/{entity_id}/subscriptions": {
+      "get": {
+        "description": "Active subscriptions owned by ``ctx.tenant_id`` for this capability.\n\nThe path segment accepts a UUID or slug-form name. Tenants only see\ntheir own subscriptions through this endpoint.\n\nPass ``?view=audit`` to include bitemporal columns in the response.\n\nPagination: ``next_cursor`` is always ``None`` \u2014 subscriptions per\ncapability per tenant are bounded (typically 1\u20135 rows), so keyset\npagination is not wired. The envelope exists for client shape consistency.",
+        "operationId": "list_subscriptions_for_capability_v1_capabilities__entity_id__subscriptions_get",
+        "parameters": [
+          {
+            "description": "Capability UUID or slug",
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "description": "Capability UUID or slug",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
+              "title": "View",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List the caller's subscriptions for a capability",
+        "tags": [
+          "subscriptions"
+        ]
+      },
+      "post": {
+        "description": "Create an active subscription owned by the caller's tenant.\n\nThe path segment accepts a UUID or slug-form name. Visibility is enforced\nbefore the row is written. Returns ``{\"subscription_id\": \"<uuid>\"}``; the\nfull record can be retrieved via the list endpoint.\n\nHonours ``X-Idempotency-Key``: same key + same body replays the\noriginal response; same key + different body returns 409.",
+        "operationId": "create_subscription_v1_capabilities__entity_id__subscriptions_post",
+        "parameters": [
+          {
+            "description": "Capability UUID or slug",
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "description": "Capability UUID or slug",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Create Subscription V1 Capabilities  Entity Id  Subscriptions Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a subscription for a capability",
+        "tags": [
+          "subscriptions"
         ]
       }
     },
@@ -23141,216 +23352,6 @@
         ]
       }
     },
-    "/v1/capabilities/{provider_cap_id}/adoptions": {
-      "get": {
-        "description": "Return the calling tenant's active adoption for this capability,\nif any.\n\nScoped to the caller's tenant \u2014 listing other tenants' adoptions for\nthe same capability is not supported through this endpoint (use the\nprojection endpoints for the provider-side view).\n\nPass ``?view=audit`` to include bitemporal columns in the response.\n\nPagination: ``next_cursor`` is always ``None`` \u2014 adoptions per capability\nper tenant are bounded (at most one active row), so keyset pagination is\nnot wired. The envelope exists for client shape consistency.",
-        "operationId": "list_adoptions_v1_capabilities__provider_cap_id__adoptions_get",
-        "parameters": [
-          {
-            "description": "Provider capability UUID or slug",
-            "in": "path",
-            "name": "provider_cap_id",
-            "required": true,
-            "schema": {
-              "description": "Provider capability UUID or slug",
-              "title": "Provider Cap Id",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
-            "in": "query",
-            "name": "view",
-            "required": false,
-            "schema": {
-              "default": "default",
-              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
-              "enum": [
-                "default",
-                "audit"
-              ],
-              "title": "View",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdoptionListResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List active adoptions for a capability",
-        "tags": [
-          "adoptions"
-        ]
-      },
-      "post": {
-        "description": "Record an adoption event + provides_to edge.\n\nThe path segment accepts a UUID or a slug-form name. The consumer\ntenant is ``ctx.tenant_id``. Returns ``201`` with the newly-created\nadoption row. ``409`` if an active adoption already exists for the\n(consumer, capability) pair (uniqueness constraint).\n\nPass ``?view=audit`` to include bitemporal columns in the response.\nHonours ``X-Idempotency-Key``: same key + same body replays the\noriginal response; same key + different body returns 409.",
-        "operationId": "adopt_capability_v1_capabilities__provider_cap_id__adoptions_post",
-        "parameters": [
-          {
-            "description": "Provider capability UUID or slug",
-            "in": "path",
-            "name": "provider_cap_id",
-            "required": true,
-            "schema": {
-              "description": "Provider capability UUID or slug",
-              "title": "Provider Cap Id",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
-            "in": "query",
-            "name": "view",
-            "required": false,
-            "schema": {
-              "default": "default",
-              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
-              "enum": [
-                "default",
-                "audit"
-              ],
-              "title": "View",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AdoptionCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdoptionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Adopt a provider capability (cross-tenant)",
-        "tags": [
-          "adoptions"
-        ]
-      }
-    },
-    "/v1/capabilities/{provider_cap_id}/adoptions/{adoption_id}": {
-      "delete": {
-        "description": "Soft-delete by setting t_invalidated_at. The provides_to edge is\nretained so historical bi-temporal traversal still surfaces the\nrelationship.\n\nIdempotent: calling on an already-invalidated adoption is a no-op\n(returns 204).",
-        "operationId": "_unadopt_capability_v1_capabilities__provider_cap_id__adoptions__adoption_id__delete",
-        "parameters": [
-          {
-            "description": "Provider capability UUID or slug",
-            "in": "path",
-            "name": "provider_cap_id",
-            "required": true,
-            "schema": {
-              "description": "Provider capability UUID or slug",
-              "title": "Provider Cap Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "adoption_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Adoption Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Soft-delete (unadopt) an adoption",
-        "tags": [
-          "adoptions"
-        ]
-      }
-    },
     "/v1/checkpoints/by-digest/{digest}": {
       "get": {
         "description": "One checkpoint by content digest.\n\nAddressed outside any task path on purpose: a digest names the content, and\na caller holding one from a receipt does not necessarily know which task it\nbelongs to. Authorization is unchanged -- the service still refuses a\ncheckpoint on a task this actor does not participate in.",
@@ -23390,7 +23391,7 @@
         },
         "summary": "Get Checkpoint By Digest",
         "tags": [
-          "task memory"
+          "intent"
         ]
       }
     },
@@ -23741,14 +23742,15 @@
         },
         "summary": "Resume Context",
         "tags": [
-          "context receipts"
+          "context: receipts"
         ]
       }
     },
     "/v1/entities": {
       "get": {
-        "description": "Return the entity mapped to ``(external_system, external_id)`` for the tenant.\n\nReturns ``404 Not Found`` when no mapping exists.  The ``external_system``\nand ``external_id`` query parameters are both required.",
-        "operationId": "lookup_entity_by_external_id_v1_entities_get",
+        "deprecated": true,
+        "description": "The pre-rename path. Delegates; retires on the date in the contract.",
+        "operationId": "lookup_entity_by_external_id_deprecated_v1_entities_get",
         "parameters": [
           {
             "description": "External system slug (registered via /v1/admin/external-systems)",
@@ -23795,10 +23797,12 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Lookup entity by external system slug and external ID",
+        "summary": "Deprecated: use GET /v1/entities:lookup",
         "tags": [
           "external-ids"
-        ]
+        ],
+        "x-successor": "/v1/entities:lookup",
+        "x-sunset-on": "2026-11-20"
       },
       "post": {
         "description": "Route one generic entity write by its stated intent.",
@@ -24222,6 +24226,62 @@
         ]
       }
     },
+    "/v1/entities:lookup": {
+      "get": {
+        "description": "Return the entity mapped to ``(external_system, external_id)`` for the tenant.\n\nReturns ``404 Not Found`` when no mapping exists.  The ``external_system``\nand ``external_id`` query parameters are both required.",
+        "operationId": "lookup_entity_by_external_id_v1_entities_lookup_get",
+        "parameters": [
+          {
+            "description": "External system slug (registered via /v1/admin/external-systems)",
+            "in": "query",
+            "name": "external_system",
+            "required": true,
+            "schema": {
+              "description": "External system slug (registered via /v1/admin/external-systems)",
+              "title": "External System",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The raw external ID string as it appears in the upstream system",
+            "in": "query",
+            "name": "external_id",
+            "required": true,
+            "schema": {
+              "description": "The raw external ID string as it appears in the upstream system",
+              "title": "External Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityRefResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lookup entity by external system slug and external ID",
+        "tags": [
+          "external-ids"
+        ]
+      }
+    },
     "/v1/entities:resolve": {
       "get": {
         "description": "Look a handle up, qualified by type when the caller supplied one.\n\nA bare name matching two types is refused rather than resolved. The refusal\ncarries `identity_ambiguous` so a client can branch on it without matching\nmessage text, and so the fix \u2014 qualify the handle \u2014 is obvious from the code.",
@@ -24607,7 +24667,7 @@
         },
         "summary": "Append Checkpoint",
         "tags": [
-          "task memory"
+          "intent"
         ]
       }
     },
@@ -24661,7 +24721,7 @@
         },
         "summary": "Get Checkpoint",
         "tags": [
-          "task memory"
+          "intent"
         ]
       }
     },
@@ -24705,7 +24765,7 @@
         },
         "summary": "List Participants",
         "tags": [
-          "task memory"
+          "intent"
         ]
       },
       "post": {
@@ -24757,7 +24817,7 @@
         },
         "summary": "Add Participant",
         "tags": [
-          "task memory"
+          "intent"
         ]
       }
     },
@@ -24803,7 +24863,7 @@
         },
         "summary": "Remove Participant",
         "tags": [
-          "task memory"
+          "intent"
         ]
       }
     },
@@ -24965,7 +25025,7 @@
         },
         "summary": "List Capability Requests",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       },
       "post": {
@@ -25005,7 +25065,7 @@
         },
         "summary": "Raise Capability Request",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25049,7 +25109,7 @@
         },
         "summary": "Get Capability Request",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       },
       "patch": {
@@ -25101,7 +25161,7 @@
         },
         "summary": "Transition Capability Request",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25145,7 +25205,7 @@
         },
         "summary": "Get Capability Request History",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25199,7 +25259,7 @@
         },
         "summary": "Link Capability Request To Promotion",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25433,7 +25493,8 @@
         },
         "summary": "Assert Claim",
         "tags": [
-          "memory curation"
+          "memory: curation",
+          "memory"
         ]
       }
     },
@@ -25504,7 +25565,7 @@
         },
         "summary": "Get Believed Claims",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25721,7 +25782,7 @@
         },
         "summary": "Get Claim History",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25775,7 +25836,7 @@
         },
         "summary": "Adjudicate Claim",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25819,7 +25880,7 @@
         },
         "summary": "Confirm Claim",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25873,7 +25934,7 @@
         },
         "summary": "Discard Claim",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25927,7 +25988,7 @@
         },
         "summary": "Link Claim Subject",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -25977,7 +26038,7 @@
         },
         "summary": "List Contradiction Groups",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -26055,7 +26116,7 @@
         },
         "summary": "List Curation Cases",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       },
       "post": {
@@ -26095,7 +26156,7 @@
         },
         "summary": "Open Curation Case",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -26139,7 +26200,7 @@
         },
         "summary": "Get Curation Case",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -26193,7 +26254,7 @@
         },
         "summary": "Record Case Disposition",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -26247,7 +26308,7 @@
         },
         "summary": "Route Curation Case",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -26327,7 +26388,7 @@
         },
         "summary": "Get Curation Queue",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -26405,7 +26466,7 @@
         },
         "summary": "List Promotion Proposals",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -26449,7 +26510,7 @@
         },
         "summary": "Get Promotion Proposal",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       },
       "patch": {
@@ -26501,7 +26562,7 @@
         },
         "summary": "Review Promotion Proposal",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -26555,7 +26616,7 @@
         },
         "summary": "Reverse Promotion",
         "tags": [
-          "memory curation"
+          "memory: curation"
         ]
       }
     },
@@ -28102,7 +28163,7 @@
         },
         "summary": "Receipts By Reference",
         "tags": [
-          "context receipts"
+          "context: receipts"
         ]
       }
     },
@@ -28146,7 +28207,7 @@
         },
         "summary": "Get Receipt",
         "tags": [
-          "context receipts"
+          "context: receipts"
         ]
       }
     },
@@ -28206,7 +28267,7 @@
         },
         "summary": "Get Receipt Exclusions",
         "tags": [
-          "context receipts"
+          "context: receipts"
         ]
       }
     },
@@ -28250,7 +28311,7 @@
         },
         "summary": "Get Receipt References",
         "tags": [
-          "context receipts"
+          "context: receipts"
         ]
       }
     },

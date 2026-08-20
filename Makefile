@@ -63,7 +63,7 @@ TEST_ROOT   := tests
 # Default target — print help.
 .DEFAULT_GOAL := help
 
-.PHONY: help install-dev lint governed-magnitudes format format-check typecheck doc-refs doc-links test-hygiene \
+.PHONY: help install-dev lint governed-magnitudes contract-tags format format-check typecheck doc-refs doc-links test-hygiene \
         privileged-writes usage-boundary env-documented helm-env calibration-report coverage-exemptions \
 		auth-consolidation-gate reachability-audit \
         test-unit test-coverage test-integration test-conformance test-native-provider arc-vectors test-perf test-airgap test-smoke test all \
@@ -144,6 +144,9 @@ lint: ## Run ruff, the file-size, approval-writer and magnitude guards, and the 
 
 governed-magnitudes: ## Verify no validation-gated magnitude rides a grandfathered value.
 	$(PYTHON) scripts/check_governed_magnitudes.py
+
+contract-tags: ## Verify openapi.json tags still group it: tagged, one delimiter, no split path.
+	$(PYTHON) scripts/check_contract_tags.py
 
 format: ## Apply ruff format to the whole tree (writes).
 	$(RUFF) format .
@@ -418,7 +421,7 @@ test-airgap: ## Prove the image embeds and searches with no network egress.
 
 test: test-coverage ## Run the fast test gates (unit + conformance, under the ratchet).
 
-all: lint format-check typecheck doc-refs doc-links test-hygiene privileged-writes usage-boundary reachability-audit env-documented helm-env seeds-validate coverage-exemptions test ## Run every gate a PR must pass.
+all: lint format-check typecheck doc-refs doc-links test-hygiene privileged-writes usage-boundary reachability-audit env-documented helm-env contract-tags seeds-validate coverage-exemptions test ## Run every gate a PR must pass.
 
 # The whole integration tier, end to end on the integrated tree, plus every gate
 # `all` runs. Separate from `all` because the tier needs Docker and takes

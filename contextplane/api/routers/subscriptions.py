@@ -2,8 +2,8 @@
 
 Surface:
 
-  POST   /v1/capabilities/{capability_id}/subscriptions  → 201 + {subscription_id}
-  GET    /v1/capabilities/{capability_id}/subscriptions  → list[SubscriptionResponse]
+  POST   /v1/capabilities/{entity_id}/subscriptions  → 201 + {subscription_id}
+  GET    /v1/capabilities/{entity_id}/subscriptions  → list[SubscriptionResponse]
   PATCH  /v1/subscriptions/{subscription_id}             → SubscriptionResponse
   DELETE /v1/subscriptions/{subscription_id}             → 204
 
@@ -135,12 +135,12 @@ router = APIRouter(prefix="/v1/capabilities", tags=["subscriptions"])
 
 
 @router.post(
-    "/{capability_id}/subscriptions",
+    "/{entity_id}/subscriptions",
     status_code=status.HTTP_201_CREATED,
     summary="Create a subscription for a capability",
 )
 async def create_subscription(
-    capability_id: Annotated[str, Path(description="Capability UUID or slug")],
+    entity_id: Annotated[str, Path(description="Capability UUID or slug")],
     body: SubscriptionCreate,
     request: Request,
     idem: IdempotencyContext = Depends(get_idempotency_context),
@@ -162,7 +162,7 @@ async def create_subscription(
     catalog_svc = get_service(request)
     svc = _svc(request)
     try:
-        resolved = await catalog_svc.resolve_entity_handle(ctx, capability_id)
+        resolved = await catalog_svc.resolve_entity_handle(ctx, entity_id)
         sid = await svc.create_subscription(
             ctx=ctx,
             capability_id=resolved.entity_id,
@@ -182,14 +182,14 @@ async def create_subscription(
 
 
 @router.get(
-    "/{capability_id}/subscriptions",
+    "/{entity_id}/subscriptions",
     response_model=SubscriptionListResponse,
     response_model_exclude_unset=True,
     response_model_by_alias=True,
     summary="List the caller's subscriptions for a capability",
 )
 async def list_subscriptions_for_capability(
-    capability_id: Annotated[str, Path(description="Capability UUID or slug")],
+    entity_id: Annotated[str, Path(description="Capability UUID or slug")],
     request: Request,
     view: ViewParam = "default",
     ctx: TenantContext = Depends(_sub_required),
@@ -209,7 +209,7 @@ async def list_subscriptions_for_capability(
     catalog_svc = get_service(request)
     svc = _svc(request)
     try:
-        resolved = await catalog_svc.resolve_entity_handle(ctx, capability_id)
+        resolved = await catalog_svc.resolve_entity_handle(ctx, entity_id)
     except (NotFoundError, ValidationError) as exc:
         raise map_catalog_error(exc) from exc
     refs = await svc.list_subscriptions(ctx=ctx, capability_id=resolved.entity_id)

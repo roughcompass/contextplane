@@ -1,6 +1,6 @@
 """Breaking-change advisor REST endpoint.
 
-  POST /v1/capabilities/{capability_id}/preview-version
+  POST /v1/capabilities/{entity_id}/preview-version
        body: {proposed_version, proposed_interface, interface_format}
        → 200 + BreakingChangePreviewResponse
 
@@ -61,12 +61,12 @@ router = APIRouter(prefix="/v1/capabilities", tags=["breaking-change"])
 
 
 @router.post(
-    "/{capability_id}/preview-version",
+    "/{entity_id}/preview-version",
     response_model=BreakingChangePreviewResponse,
     summary="Preview the impact of a proposed version + interface change",
 )
 async def preview_version(
-    capability_id: Annotated[str, Path(description="Capability UUID or slug")],
+    entity_id: Annotated[str, Path(description="Capability UUID or slug")],
     body: PreviewVersionRequest,
     request: Request,
     ctx: TenantContext = Depends(_producer_or_admin),
@@ -82,7 +82,7 @@ async def preview_version(
     catalog_svc = get_service(request)
     svc = _svc(request)
     try:
-        resolved = await catalog_svc.resolve_entity_handle(ctx, capability_id)
+        resolved = await catalog_svc.resolve_entity_handle(ctx, entity_id)
         preview = await svc.preview_version(
             ctx=ctx,
             capability_id=resolved.entity_id,
