@@ -60,6 +60,7 @@ from contextplane.arc import (
     DrafterService,
     EnrollmentService,
     ExceptionService,
+    GraphPromotionAdmissionService,
     JitService,
     OperationalChainService,
     PreflightRegistry,
@@ -216,6 +217,7 @@ class Services:
     arc_artifacts: ArtifactService
     arc_exceptions: ExceptionService
     arc_source_admission: SourceAdmissionService
+    arc_graph_source_admission: GraphPromotionAdmissionService
     arc_source_status: SourceStatusService
     arc_proposals: ProposalService
     arc_provenance: ProvenanceService

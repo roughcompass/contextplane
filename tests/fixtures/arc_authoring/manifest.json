@@ -1,5 +1,5 @@
 {
-  "manifest_version": 1,
+  "manifest_version": 2,
   "profiles": [
     {
       "cases": [
@@ -3460,6 +3460,20 @@
           },
           "input_path": "source_approval_evidence_v1/negative/equivalent_timezone_offset.json",
           "kind": "negative"
+        },
+        {
+          "case_id": "graph_promoted",
+          "expected": {
+            "canonical_bytes_base64": "eyJhZG1pc3Npb25fbWV0aG9kIjoiZ3JhcGhfcHJvbW90aW9uIiwiYWRtaXNzaW9uX3JlcXVlc3RfcGF5bG9hZF9kaWdlc3QiOiIzZjJiOWM0N2E4ZjM1ZjljMTg0MTcwYTg4YmUyYmFhNDUzNmRmOWQ4OTJmMDcyNDAzYjEyMzZlOTc0NjhjYzc2IiwiYWRtaXR0ZWRfYXQiOiIyMDI2LTAxLTA1VDEyOjEwOjAwWiIsImFkbWl0dGVkX2J5X2lzc3VlciI6Imh0dHBzOi8vaWRwLnJlZ2lzdHJ5LmV4YW1wbGUvIiwiYWRtaXR0ZWRfYnlfc3ViamVjdCI6InN2Yy1hcmMtYWRtaXNzaW9uIiwiY2xhaW0iOnsiYXBwcm92YWxfbG9jYXRvciI6ImRvY3MtY21zOi8vcG9saWN5L2RhdGEtcmV0ZW50aW9uL3Jldi00Mi9hcHByb3ZhbC83IiwiYXBwcm92YWxfc2NvcGUiOiJkb2NzLWNtczpwb2xpY3k6ZGF0YS1yZXRlbnRpb24iLCJhcHByb3ZlZF9hdCI6IjIwMjYtMDEtMDVUMTI6MDA6MDBaIiwiYXBwcm92aW5nX2F1dGhvcml0eV9pc3N1ZXIiOiJodHRwczovL2lkcC51cHN0cmVhbS5leGFtcGxlLyIsImFwcHJvdmluZ19hdXRob3JpdHlfc3ViamVjdCI6InBvbGljeS1vd25lcjpkYXRhLWdvdmVybmFuY2UiLCJleHBpcmVzX2F0IjoiMjAyNi0wNy0wNVQxMjowMDowMFoiLCJwcm9maWxlIjoiYXJjX3NvdXJjZV9hcHByb3ZhbF9jbGFpbV92MSIsInNvdXJjZV9jb250ZW50X2RpZ2VzdCI6ImQxYjA4M2FlZDUxZWU3ZGQyYmIyNDJjZTg3MjU2MmQ3ZDk4OTQ4M2UxMWI5ODZhNDE1M2U3M2QxZjNmYjVjMzEiLCJzb3VyY2VfY29udGVudF9kaWdlc3RfYWxnb3JpdGhtIjoic2hhMjU2Iiwic291cmNlX2NvbnRlbnRfdHlwZSI6InRleHQvbWFya2Rvd24iLCJzb3VyY2VfcmV2aXNpb25fbG9jYXRvciI6ImRvY3MtY21zOi8vcG9saWN5L2RhdGEtcmV0ZW50aW9uL3Jldi00MiIsInNvdXJjZV9zeXN0ZW0iOiJkb2NzLWNtcyJ9LCJjbGFpbV9kaWdlc3QiOiI4MWMyOWQ2MjZiNDMxNTNlZGZkZTYzMDllMmM2OWZhMjYyZGRjYjk4NzQ0ZmQ4ZGUxNTk3M2I2N2NkNTE3YjY4IiwiY29ubmVjdG9yX2lkIjpudWxsLCJldmlkZW5jZV9pZCI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAzMCIsImlkZW1wb3RlbmN5X2tleV9kaWdlc3QiOiI1MzEzYjIxMTgwMmIxOTYwOTIxMjEzNGIyOTU5MjExMzIwYzUwMDAzNDAyOGRjMzU1YjViNjVjZGY4NjU5OTJlIiwicHJvZmlsZSI6ImFyY19zb3VyY2VfYXBwcm92YWxfZXZpZGVuY2VfdjEiLCJzaWduYXR1cmUiOm51bGwsInZlcmlmaWNhdGlvbl9tZXRob2QiOiJncmFwaF9wcm9tb3RlZCIsInZlcmlmaWVkX2F0IjoiMjAyNi0wMS0wNVQxMjoxMDowNVoiLCJ2ZXJpZmllcl9hdHRlc3RhdGlvbiI6bnVsbCwidmVyaWZpZXJfaWQiOiJwcm9tb3Rpb246MDE5NWY0YzEtOGYwMC03YTExLWIzZDItNmEyZjljNGUxZDcwIn0=",
+            "decision": "accept",
+            "digest": "9f603f2d286f756f70d14a13a92c9506acd2c013f1110567bbce11f3a602c1ee",
+            "refusal_code": null,
+            "signature_base64": null,
+            "signature_input_base64": null,
+            "signing_domain": null
+          },
+          "input_path": "source_approval_evidence_v1/positive/graph_promoted.json",
+          "kind": "typical"
         },
         {
           "case_id": "maximal",

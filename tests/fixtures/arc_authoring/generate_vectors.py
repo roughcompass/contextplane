@@ -58,7 +58,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 FIXTURE_ROOT = Path(__file__).resolve().parent
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
 
 # ---------------------------------------------------------------------------
 # Shared value formats
@@ -919,11 +919,11 @@ def build_profiles() -> dict[str, ProfileFixture]:
             "evidence_id": UUID(),
             "claim": claim_schema,
             "claim_digest": DIGEST(),
-            "verification_method": ENUM("source_signed", "verifier_attested"),
+            "verification_method": ENUM("source_signed", "verifier_attested", "graph_promoted"),
             "verifier_id": STR(),
             "signature": nullable(STR()),
             "verifier_attestation": nullable(attestation_schema),
-            "admission_method": ENUM("configured_connector", "authorized_upload"),
+            "admission_method": ENUM("configured_connector", "authorized_upload", "graph_promotion"),
             "connector_id": nullable(STR()),
             "admitted_at": TS(),
             "admitted_by_issuer": STR(),
@@ -961,7 +961,21 @@ def build_profiles() -> dict[str, ProfileFixture]:
         "admission_method": "authorized_upload",
     }
     evidence_maximal = {**evidence_typical, "verifier_id": "verifier-docs-cms-régionale-1"}
+    # The third admission authority: vouched for by a promotion onto the
+    # canonical graph, so both proof representations are absent rather than
+    # one being present. Pinned as a vector because "neither" is exactly the
+    # combination the other two cases cannot exercise.
+    evidence_graph_promoted = {
+        **evidence_typical,
+        "verification_method": "graph_promoted",
+        "verifier_id": "promotion:0195f4c1-8f00-7a11-b3d2-6a2f9c4e1d70",
+        "signature": None,
+        "verifier_attestation": None,
+        "admission_method": "graph_promotion",
+        "connector_id": None,
+    }
     evidence_cases = [
+        positive_case("graph_promoted", "typical", evidence_schema, evidence_graph_promoted, None),
         positive_case("minimal", "minimal", evidence_schema, evidence_minimal, None),
         positive_case("typical", "typical", evidence_schema, evidence_typical, None),
         positive_case("maximal", "maximal", evidence_schema, evidence_maximal, None),

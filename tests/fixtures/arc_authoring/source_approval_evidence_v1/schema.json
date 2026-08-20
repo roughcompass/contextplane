@@ -4,7 +4,8 @@
     "admission_method": {
       "enum": [
         "configured_connector",
-        "authorized_upload"
+        "authorized_upload",
+        "graph_promotion"
       ],
       "type": "string"
     },
@@ -116,7 +117,8 @@
     "verification_method": {
       "enum": [
         "source_signed",
-        "verifier_attested"
+        "verifier_attested",
+        "graph_promoted"
       ],
       "type": "string"
     },

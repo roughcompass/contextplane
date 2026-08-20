@@ -48,6 +48,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.arc.schemas import authoring_profiles
 from contextplane.arc.schemas.authoring_profile_shapes import SOURCE_APPROVAL_CLAIM_PROFILE
+from contextplane.arc.service import source_admission_vocab as vocab
 from contextplane.arc.service.authorization import ArcAuthorizationService, ArtifactScope
 from contextplane.arc.service.queries import source_admission as queries
 from contextplane.arc.types import ArcRequestContext, AuthorityScope
@@ -69,23 +70,14 @@ _CHUNK_SIZE = 65_536
 _DEFAULT_MAX_REDIRECTS = 5
 _REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
 
-# Wire vocabulary <-> persisted-profile vocabulary. The wire enums
-# (`AdmissionMethod`, `VerificationMethod`) are the closed REST/MCP
-# contract; `configured_connector` / `source_signed` etc. are the exact
-# literals `arc_source_approval_evidence_v1` fixes and `authoring_profiles.py`
-# validates. Translating at this one boundary means neither side needs to
-# know the other's spelling.
-_ADMISSION_METHOD_TO_CANONICAL: dict[str, str] = {
-    "connector_fetch": "configured_connector",
-    "authorized_upload": "authorized_upload",
-}
-_ADMISSION_METHOD_FROM_CANONICAL: dict[str, str] = {v: k for k, v in _ADMISSION_METHOD_TO_CANONICAL.items()}
-
-_VERIFICATION_METHOD_TO_CANONICAL: dict[str, str] = {
-    "detached_signature": "source_signed",
-    "verifier_attestation": "verifier_attested",
-}
-_VERIFICATION_METHOD_FROM_CANONICAL: dict[str, str] = {v: k for k, v in _VERIFICATION_METHOD_TO_CANONICAL.items()}
+# Both directions of the wire <-> persisted-profile translation live in
+# `source_admission_vocab`, shared with the graph-promotion admission
+# service. Imported under the existing private names so every call site in
+# this module reads exactly as it did when the maps were declared here.
+_ADMISSION_METHOD_TO_CANONICAL = vocab.ADMISSION_METHOD_TO_CANONICAL
+_ADMISSION_METHOD_FROM_CANONICAL = vocab.ADMISSION_METHOD_FROM_CANONICAL
+_VERIFICATION_METHOD_TO_CANONICAL = vocab.VERIFICATION_METHOD_TO_CANONICAL
+_VERIFICATION_METHOD_FROM_CANONICAL = vocab.VERIFICATION_METHOD_FROM_CANONICAL
 
 
 # ---------------------------------------------------------------------------
@@ -457,7 +449,7 @@ class SourceAdmissionService:
         content_bytes, computed_digest, size = await _stream_and_hash(body, max_bytes)
         _assert_digest_matches(claim, computed_digest)
 
-        return await self._finish_admission(
+        return await self.finish_admission(
             ctx,
             claim=claim,
             verifier_id=admission.verifier_id,
@@ -510,7 +502,7 @@ class SourceAdmissionService:
         )
         _assert_digest_matches(claim, computed_digest)
 
-        return await self._finish_admission(
+        return await self.finish_admission(
             ctx,
             claim=claim,
             verifier_id=admission.verifier_id,
@@ -571,7 +563,7 @@ class SourceAdmissionService:
 
     # -- shared admission transaction ---------------------------------------
 
-    async def _finish_admission(
+    async def finish_admission(
         self,
         ctx: ArcRequestContext,
         *,
