@@ -138,6 +138,25 @@ def fit(
     )
 
 
+async def inspected_half_lives(session: AsyncSession) -> dict[str, float]:
+    """Every predicate with an inspected, believed rate, on a caller's session.
+
+    A free function taking the caller's session rather than a service method,
+    because the two write paths that need it are already inside a transaction and
+    the alternative is a second connection reading a table they may have just
+    written. Returns `{}` on every deployment until somebody inspects a fit, and
+    `{}` produces exactly the authored-category behaviour that shipped before
+    this existed.
+    """
+    rows = (
+        await session.execute(
+            text("SELECT predicate, half_life_days FROM memory_predicate_churn WHERE status = :active"),
+            {"active": STATUS_ACTIVE},
+        )
+    ).all()
+    return {row.predicate: float(row.half_life_days) for row in rows}
+
+
 class PredicateChurnService:
     """Measures supersession, stores fits, and refuses to select an uninspected one."""
 
@@ -271,6 +290,7 @@ __all__ = [
     "ChurnFit",
     "ChurnFitRefused",
     "PredicateChurnService",
+    "inspected_half_lives",
     "fit",
     "half_life_from_rate",
 ]

@@ -183,7 +183,9 @@ The immediate bug fixes formerly listed here are **shipped** (2026-08-19):
 scope statements, and the `cd registry` clone directory fixed in this repo
 along with the prover and fidelity test that had let three mutually-consistent
 copies of the wrong value pass. What remains of E10 is the ordered UI work
-above, nothing else.
+above. Catalog-side authoring is **E19**, cut separately rather than folded in
+here: it is unblocked by E5, and it belongs to the catalog domain rather than
+to this epic's memory-governance screens.
 
 ### E11 — Consumption legibility (suppression-compliant)
 
@@ -616,7 +618,7 @@ Acceptance:
 
 ### E16-T4 — Decay reads the per-predicate rate, category as fallback
 
-**Kind:** task · **Status:** pending · **Blocked by:** E16-T3 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E16-T3 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `confidence_decay.py` resolves half-life per predicate where an
 inspected fit exists, category-plus-subject otherwise, and its docstring — 

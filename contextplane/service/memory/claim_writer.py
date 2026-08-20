@@ -88,6 +88,7 @@ from contextplane.service.memory.confidence import (
 from contextplane.service.memory.confidence_decay import half_life_days
 from contextplane.service.memory.confidence_read import subject_change_profile
 from contextplane.service.memory.contest import ContestOutcome, detect_for_claim
+from contextplane.service.memory.predicate_churn import inspected_half_lives
 from contextplane.service.retrieval.embedding_index import project_claim
 from contextplane.types import Clock, JSONValue, TenantContext
 
@@ -216,6 +217,14 @@ class ClaimService(_ClaimResolutionMixin, _ClaimCuratorActionsMixin):
                 )
             half_life = half_life_days(
                 declared.claim_category,
+                predicate=predicate,
+                # Inspected per-predicate rates where they exist, the authored
+                # category figure everywhere else. Read here rather than inside
+                # the decay function, which stays pure so a stored score remains
+                # re-derivable from stored inputs. Empty on every deployment
+                # until somebody inspects a fit, and empty means today's
+                # behaviour exactly.
+                fitted_half_lives=await inspected_half_lives(session),
                 subject_median_change_days=median_change,
                 subject_change_observations=observations,
                 tenant_multiplier=policy.decay_multiplier,

@@ -160,3 +160,77 @@ def test_the_arithmetic_is_the_stated_formula() -> None:
         for window in (30, 90, 365):
             expected = window * math.log(2) / -math.log(1.0 - rate)
             assert half_life_from_rate(rate=rate, window_days=window) == pytest.approx(expected)
+
+
+# --- what decay does with a fitted rate ------------------------------------------
+
+
+class TestDecayReadsTheFittedRate:
+    """`half_life_days` with and without an inspected rate for the predicate."""
+
+    def test_no_fitted_rate_is_exactly_the_behaviour_that_shipped_before(self) -> None:
+        """The property that makes this safe to land before any fit is inspected:
+        an empty map is the old code path, not a new one that happens to agree."""
+        from contextplane.service.memory.confidence_decay import CATEGORY_HALF_LIFE_DAYS, half_life_days
+
+        for category in CATEGORY_HALF_LIFE_DAYS:
+            assert half_life_days(category) == half_life_days(category, predicate="anything", fitted_half_lives={})
+
+    def test_an_inspected_rate_replaces_the_category_figure(self) -> None:
+        from contextplane.service.memory.confidence_decay import half_life_days
+
+        measured = half_life_days(
+            "ownership_stewardship", predicate="owned_by_team", fitted_half_lives={"owned_by_team": 45.0}
+        )
+        assert measured == pytest.approx(45.0)
+
+    def test_a_predicate_with_no_fit_still_gets_its_category(self) -> None:
+        """Most predicates, on most deployments. The authored table is not dead
+        code; it is the answer for everything unmeasured."""
+        from contextplane.service.memory.confidence_decay import CATEGORY_HALF_LIFE_DAYS, half_life_days
+
+        assert half_life_days(
+            "ownership_stewardship", predicate="on_call_rotation", fitted_half_lives={"owned_by_team": 45.0}
+        ) == pytest.approx(CATEGORY_HALF_LIFE_DAYS["ownership_stewardship"])
+
+    def test_the_subject_modifier_still_applies_to_a_fitted_base(self) -> None:
+        """Category alone cannot distinguish two subjects that change at
+        different speeds, and that stays true of a measured base."""
+        from contextplane.service.memory.confidence_decay import half_life_days
+
+        plain = half_life_days("dependency", predicate="depends_on", fitted_half_lives={"depends_on": 100.0})
+        volatile = half_life_days(
+            "dependency",
+            predicate="depends_on",
+            fitted_half_lives={"depends_on": 100.0},
+            subject_median_change_days=7.0,
+            subject_change_observations=10,
+        )
+        assert volatile < plain
+
+    def test_the_tenant_multiplier_still_applies_to_a_fitted_base(self) -> None:
+        from contextplane.service.memory.confidence_decay import half_life_days
+
+        assert half_life_days(
+            "dependency", predicate="depends_on", fitted_half_lives={"depends_on": 100.0}, tenant_multiplier=2.0
+        ) == pytest.approx(200.0)
+
+    def test_a_non_positive_stored_rate_falls_back_rather_than_dividing_by_zero(self) -> None:
+        """The database refuses one, so seeing it means the map came from
+        somewhere else -- and a zero half-life is a worse outcome than the
+        category figure."""
+        from contextplane.service.memory.confidence_decay import CATEGORY_HALF_LIFE_DAYS, half_life_days
+
+        for bad in (0.0, -30.0):
+            assert half_life_days(
+                "dependency", predicate="depends_on", fitted_half_lives={"depends_on": bad}
+            ) == pytest.approx(CATEGORY_HALF_LIFE_DAYS["dependency"])
+
+    def test_the_module_no_longer_argues_against_what_it_now_does(self) -> None:
+        """ADR 0003 requires the reversal be recorded rather than leaving the
+        codebase with two contradictory explanations of one behaviour."""
+        import pathlib
+
+        source = pathlib.Path("contextplane/service/memory/confidence_decay.py").read_text()
+        assert "twenty-six figures" not in source
+        assert "predicate's measured one" in source
