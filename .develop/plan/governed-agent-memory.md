@@ -5,6 +5,15 @@ decomposition into ≤1-day tasks (by PR to this file) before any work is
 claimable. Sequencing that is safety-relevant is marked ⚙ and must land as a
 required check when the first dependent task is cut.
 
+**Supersession rule.** An epic that replaces a mechanism removes the replaced
+one in the same epic — formula, field, flag, tuning knob — or records in its
+body why the old path stays and until when. Nothing here relies on a dead-code
+gate to catch the leftovers, because none exists: ruff flags unused imports
+and variables, not unused functions or superseded branches, so a replaced
+mechanism left behind passes every gate this repository runs while giving one
+question two answers. Deletions ride the same PR as their replacement, where
+the reviewer can see both halves.
+
 ### E1 — Autonomy Envelope authority object
 
 **Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane
@@ -83,7 +92,7 @@ disposition surface.
 
 ### E9 — Governed magnitudes ⚙
 
-**Kind:** epic · **Status:** partly shipped · **Blocked by:** none · **Repo:** contextplane
+**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane
 
 Restated, because the original property could not be built. It read "no
 ungoverned score orders anything a user sees", enforced automatically. Three
@@ -103,9 +112,21 @@ population; three magnitudes governed, the artifact recording whether each
 consumer is `consumed` (reads at import) or `pinned` (a test asserts
 agreement). The boundary is stated in the module rather than implied.
 
-Remaining: bring each new scoring magnitude under it as E15–E17 land, and cover
-what the closure cannot — semantic ranking, UI-side reordering — by periodic
-review of new ordering sites rather than a gate pretending to be exhaustive.
+What was defeated is automatic **detection** of rankers nobody registered.
+What was never defeated — and stays, because E3 and E5 carry the ⚙ pointing
+here — is validation gating activation for **named** components: the registry
+entry for a magnitude E3 or E5 consumes must carry independent-validation
+evidence (who validated, against what data, with what result) before the
+consuming feature's flag turns on, and that is encoded as a required check
+when the first E3/E5 task is cut. Registration says a number is owned;
+validation says somebody checked it predicts. The core registry shipped with
+the first property only, so extending its schema with the evidence fields is
+part of this epic, not a separate one.
+
+Remaining otherwise: bring each new scoring magnitude under the registry as
+E15–E17 land, and cover what the closure cannot — semantic ranking, UI-side
+reordering — by periodic review of new ordering sites rather than a gate
+pretending to be exhaustive.
 
 ### E6 — Tamper-evident spine + records management
 
@@ -156,14 +177,13 @@ existing to promote; the harness does not, and comes first.
 
 Ordered: cockpit dispositions + quarantine/suspend screens → nav/DESIGN.md
 repositioning + ARC/PII operations out of the raw console → canon copy.
-Immediate bug fixes independent of the rest. In contextplane-ui: replace the
-nonexistent `traverse_dependencies` with the real `get_dependencies` and drop
-the false "usage data" attribution in
-`apps/admin-dashboard/src/features/getting-started/GettingStartedDialog.tsx`;
-remove "semantic data mesh" from the UI scope statement (`README.md`,
-`CLAUDE.md`). In contextplane: fix the stale `cd registry` clone directory in
-`README.md` and `docs/02-get-started/01-quickstart.md` — it is in this repo,
-not the UI repo.
+The immediate bug fixes formerly listed here are **shipped** (2026-08-19):
+`traverse_dependencies` replaced with the real `get_dependencies`, the false
+"usage data" attribution dropped, "semantic data mesh" removed from both UI
+scope statements, and the `cd registry` clone directory fixed in this repo
+along with the prover and fidelity test that had let three mutually-consistent
+copies of the wrong value pass. What remains of E10 is the ordered UI work
+above, nothing else.
 
 ### E11 — Consumption legibility (suppression-compliant)
 
@@ -205,7 +225,7 @@ control set does not.
 
 ### E15 — Salience: deciding what is worth keeping
 
-**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane
+**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane, contextplane-ui
 
 Nothing today decides what is worth remembering, so everything is kept — which
 is the assumption that fails first at machine write volume. Salience is a
@@ -217,8 +237,10 @@ only on the episode itself.
 
 Ships behind the naming rule first (ADR-0002): `SearchResult.score` is renamed
 before three more scores arrive, because a bare `score` is the precedent that
-teaches the next author one is acceptable. Eighteen call sites, no UI
-references, two contract occurrences.
+teaches the next author one is acceptable. The rename reaches the committed
+contract, so it lands with a coordinated UI contract-pin bump — one UI PR
+updating the pin and the regenerated client together, which is why this epic
+spans both repositories. No field named bare `score` survives the change.
 
 Weights are a governed magnitude in `contextplane/ranking_registry.json`, so
 they carry a stated reason and change by PR. Learned weights are deliberately
@@ -243,11 +265,18 @@ lineage-digested corroboration and bin-based calibration all ship today;
 `service/memory/calibration.py` already refuses an identity mapping and stores
 a fit that misses target without selecting it.
 
-Two additions. Corroborating sources combine by **noisy-OR** — `1 − Π(1 − pᵢ)` —
-rather than addition, over sources deduplicated by **originating event** rather
-than by record. Two extractions from one session are one observation counted
-twice, and getting that wrong inflates confidence exactly where honesty matters
-most; the lineage digest that makes this possible already exists.
+Two changes. Corroborating sources combine by **noisy-OR** — `1 − Π(1 − pᵢ)` —
+**replacing** the shipped saturating curve
+(`base + (1 − base) · headroom · (1 − e^(−mass/scale))` in
+`service/memory/confidence.py`), which is not additive but is also not a
+probability combination: it treats corroboration as mass against a tuned scale
+rather than as independent evidence, so two strong sources and five weak ones
+can land in the same place. The superseded formula and its `headroom`/`scale`
+tuning knobs are **removed in the same change** — a replaced combination rule
+left in place is two answers to one question. Sources are deduplicated by
+**originating event** rather than by record before combining: two extractions
+from one session are one observation counted twice, and the lineage digest
+that makes this possible already exists.
 
 Decay moves to **per-predicate**, from measured supersession churn rather than
 authored figures (ADR-0003, which reverses the recorded model). The assumption
@@ -261,7 +290,7 @@ three quantities that happen to share a scale.
 
 ### E17 — Tenant-scoped scoring configuration
 
-**Kind:** epic · **Status:** pending · **Blocked by:** E15 ⚙ · **Repo:** contextplane
+**Kind:** epic · **Status:** pending · **Blocked by:** E15 · **Repo:** contextplane
 
 Per ADR-0004: the committed registry holds the core default, and a tenant
 overrides by publishing a profile **extension** activated through the existing
