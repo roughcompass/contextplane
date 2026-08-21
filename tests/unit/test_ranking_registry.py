@@ -190,10 +190,12 @@ def test_a_fully_evidenced_validated_entry_is_accepted(tmp_path: Path) -> None:
 
 # --- validation gating: the refusal is the activation gate ----------------------
 #
-# There is no feature-flag mechanism to hang this on -- the repository has one
-# genuine feature switch and ADR-0005 rules out env-var flags that widen
-# authority -- so reading the number *is* the activation, and a magnitude that
-# cannot be read cannot serve.
+# There is no feature-flag mechanism to hang this on. The repository has one
+# genuine feature switch, every other toggle is a purpose-built column on a
+# purpose-built table, and an environment variable is not allowed to widen
+# authority -- a widening that no audit row names as anyone's decision is the
+# thing that rule exists to prevent. So reading the number *is* the activation,
+# and a magnitude that cannot be read cannot serve.
 
 
 def test_a_validation_gated_magnitude_cannot_load_unvalidated(tmp_path: Path) -> None:

@@ -2792,7 +2792,7 @@ serve.
 
 ### E9-T3 — `requires_validated` refuses at the read, because there is no flag to gate
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the coupling rule holds at runtime, not only in the pipeline, and it holds
 at the one place every consumer already passes through.
@@ -2848,6 +2848,16 @@ registry stays four `grandfathered` entries with `requires_validated: false`,
 and the refusals are proved against synthetic registries — the pattern
 `test_ranking_registry.py` already uses, and for the reason it states: a test
 that only inspects today's entries passes forever once they are correct.
+
+Landed as cut, with one thing learned on the way. The `doc-refs` gate refuses a
+bare ADR number in source, so the comment explaining why there is no flag to
+gate had to inline the constraint -- an environment variable may not widen
+authority, because a widening no audit row names as anyone's decision is what
+that rule prevents -- rather than cite the decision that records it. Which is
+the gate working: the reason now travels with the code that depends on it.
+
+Both new rules were verified load-bearing by disabling each and watching four
+tests fail between them.
 
 Acceptance:
     make governed-magnitudes
