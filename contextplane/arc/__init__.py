@@ -117,6 +117,22 @@ from contextplane.arc.service.authorization import (
     ArcAuthorizationError,
     ArcAuthorizationService,
 )
+from contextplane.arc.service.autonomy_decision import (
+    AuthorityDecision,
+    AutonomyDecisionService,
+    EnvelopeVerdict,
+)
+from contextplane.arc.service.autonomy_enforcement import (
+    AutonomyEnforcementService,
+    EnforcementOutcome,
+    EnforcementStage,
+)
+from contextplane.arc.service.autonomy_envelope import (
+    AutonomyEnvelopeService,
+    BoundEnvelope,
+    EnvelopeGrant,
+    WorkloadIdentity,
+)
 from contextplane.arc.service.challenge import ChallengeService
 from contextplane.arc.service.checkpoint_export import CheckpointExportService
 from contextplane.arc.service.corpus import CorpusReader
@@ -246,9 +262,12 @@ from contextplane.arc.service.verifier_registry import (
     VerifierRegistry,
 )
 from contextplane.arc.types import (
+    ActionClass,
     ArcRequestContext,
     ArcVocabularyError,
     AuthorityScope,
+    IntentKind,
+    IntentManifest,
 )
 from contextplane.arc.wiring import (
     ArcServices,
@@ -301,6 +320,9 @@ __all__ = [
     "ArcAuthorizationError",
     "ArcAuthorizationService",
     "ArcRequestContext",
+    "IntentManifest",
+    "IntentKind",
+    "ActionClass",
     "ArcServices",
     "ArcVocabularyError",
     "ArtifactFamily",
@@ -308,6 +330,16 @@ __all__ = [
     "ArtifactLifecycleError",
     "ArtifactMaterialisationService",
     "ArtifactService",
+    "WorkloadIdentity",
+    "EnvelopeVerdict",
+    "EnvelopeGrant",
+    "EnforcementStage",
+    "EnforcementOutcome",
+    "BoundEnvelope",
+    "AutonomyEnvelopeService",
+    "AutonomyEnforcementService",
+    "AutonomyDecisionService",
+    "AuthorityDecision",
     "AttestationEnvelope",
     "AttestationProofInput",
     "AttestationService",
