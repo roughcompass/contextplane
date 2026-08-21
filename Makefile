@@ -68,7 +68,7 @@ TEST_ROOT   := tests
 		auth-consolidation-gate reachability-audit \
         test-unit test-coverage test-integration test-conformance test-native-provider arc-vectors test-perf test-airgap test-smoke test all \
         eval \
-        migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean \
+        migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean scoring-accessor \
         build-docker helm-package \
         dev-up dev-down dev-status dev-reset dev-logs dev-url
 
@@ -140,10 +140,14 @@ lint: ## Run ruff, the file-size, approval-writer and magnitude guards, and the 
 	$(PYTHON) scripts/check_file_sizes.py
 	$(PYTHON) scripts/check_arc_approval_writers.py
 	$(MAKE) --no-print-directory governed-magnitudes
+	$(MAKE) --no-print-directory scoring-accessor
 	PYTHONPATH=$(CURDIR) $(LINT_IMPORTS)
 
 governed-magnitudes: ## Verify no validation-gated magnitude rides a grandfathered value.
 	$(PYTHON) scripts/check_governed_magnitudes.py
+
+scoring-accessor: ## Verify only the tenant-resolving accessor reads a weights magnitude.
+	$(PYTHON) scripts/check_scoring_accessor.py
 
 contract-tags: ## Verify openapi.json tags still group it: tagged, one delimiter, no split path.
 	$(PYTHON) scripts/check_contract_tags.py

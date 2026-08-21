@@ -61,9 +61,38 @@ def _stub_embedder(dim: int = 4) -> MagicMock:
     return emb
 
 
-def _null_session_factory() -> MagicMock:
-    """A session factory that should never be called in fusion-only tests."""
-    factory = MagicMock(side_effect=AssertionError("session factory must not be called"))
+class _AsyncCM:
+    """Minimal async context manager returning a fixed value."""
+
+    def __init__(self, value: Any) -> None:
+        self._value = value
+
+    async def __aenter__(self) -> Any:
+        return self._value
+
+    async def __aexit__(self, *args: Any) -> bool:
+        return False
+
+
+def _unbound_tenant_session_factory() -> MagicMock:
+    """A session that answers "this tenant has no active binding" and nothing else.
+
+    Was `_null_session_factory`, which asserted the factory was never called at
+    all -- a fair description of `search` until it started resolving its weights
+    for the caller's tenant instead of reading the deployment's core values.
+    These tests are fusion-only, so the arms are stubbed and the *only* query
+    that should reach a session is the accessor's binding lookup. Answering it
+    with "no binding" gives the core weights, which is what every assertion here
+    was written against, and anything else the code tried to read would come back
+    empty and fail loudly rather than silently.
+    """
+    session = AsyncMock()
+    result = MagicMock()
+    result.one_or_none = MagicMock(return_value=None)
+    session.execute = AsyncMock(return_value=result)
+
+    factory = MagicMock()
+    factory.side_effect = lambda: _AsyncCM(session)
     return factory
 
 
@@ -93,7 +122,7 @@ def _make_service(
     if embedder is None:
         embedder = _stub_embedder()
     if session_factory is None:
-        session_factory = _null_session_factory()
+        session_factory = _unbound_tenant_session_factory()
     clock = FakeClock(_NOW)
     return RetrievalService(
         session_factory=session_factory,

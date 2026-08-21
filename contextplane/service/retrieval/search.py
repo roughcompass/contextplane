@@ -48,8 +48,8 @@ from typing import Any, Final, Generic, TypeVar
 
 from sqlalchemy import RowMapping, text
 
-from contextplane import ranking
 from contextplane.embedding.targets import TARGET_FACT
+from contextplane.profile.scoring import resolve_weights
 from contextplane.service.retrieval._query_primitives import (
     _GRAPH_EDGE_TYPES,
     _RetrievalState,
@@ -249,10 +249,16 @@ class _SearchMethods(_RetrievalState):
         """Three-arm hybrid search.
 
         Arms run concurrently; a failing arm is excluded without raising.
-        Weights come from the governed registry, not from a literal here.
+        Weights are this tenant's, not the deployment's. `resolve_weights` returns
+        the tenant's bound override where one exists and the core default
+        otherwise, which is most tenants -- reading `ranking.weights` here
+        instead would serve every tenant the core value and give a tenant whose
+        override activated no way to tell it had not taken effect.
         Dedup by entity_id (max fused score wins). Final tenant assertion applied.
         """
-        base_weights = ranking.weights(_FUSION_MODEL_ID)
+        async with self._session_factory() as session:
+            resolved = await resolve_weights(session, tenant_id=ctx.tenant_id, model_id=_FUSION_MODEL_ID)
+        base_weights = resolved.value
 
         fused, _failed_arms = await fuse_hybrid_arms(
             arms={

@@ -240,8 +240,15 @@ WEIGHTS_MODEL_ID: Final = "salience-weights@1"
 NOVELTY: Final = "novelty"
 
 
-def combine(signals: dict[str, float], *, novelty: float | None = None) -> float:
+def combine(signals: dict[str, float], *, weights: dict[str, float], novelty: float | None = None) -> float:
     """The weighted sum, in `[0, 1]`, of everything known about an episode.
+
+    `weights` is required and has no default, which is the point. This function
+    used to read `ranking.weights(...)` itself and so scored every tenant on the
+    deployment's core values, silently ignoring an override the tenant had
+    published, validated and activated. A default here would put that path back
+    the first time somebody found the parameter inconvenient; requiring it means
+    a caller with no tenant to resolve for cannot call this at all.
 
     An absent novelty contributes **zero**, and its weight is not redistributed
     across the other five. Redistributing would mean a claim's salience *falls*
@@ -254,8 +261,6 @@ def combine(signals: dict[str, float], *, novelty: float | None = None) -> float
     supplies. Either is a rename that half-landed, and the failure mode without
     this is a silently lower score that still looks like a score.
     """
-    weights = ranking.weights(WEIGHTS_MODEL_ID)
-
     supplied = dict(signals)
     if novelty is not None:
         supplied[NOVELTY] = novelty

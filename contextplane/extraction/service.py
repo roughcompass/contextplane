@@ -41,6 +41,7 @@ from contextplane.extraction.containment import (
 )
 from contextplane.extraction.provider import CandidateClaim, ExtractionRequest, ExtractionResult
 from contextplane.extraction.strategies import Strategy
+from contextplane.profile.scoring import resolve_weights
 from contextplane.security.pii_guard import AdmissionRefused, admit_or_refuse
 from contextplane.service.memory.claim_authority import ClaimRejected, Evidence, StagedClaim
 from contextplane.service.memory.claim_writer import ClaimService
@@ -189,7 +190,17 @@ class ExtractionService:
         # two claims from one conversation would disagree about how much that
         # conversation was worth keeping.
         signals = salience_module.signal_vector(request.events)
-        episode_salience = salience_module.combine(signals)
+        # Resolved for this tenant, not read from the registry: a tenant that
+        # published and activated a salience override should have it applied to
+        # what it decides to keep. Resolved at write, so changing the weights
+        # does not rescore what is already staged -- salience is a property of
+        # the episode as it was judged, and a number that moved under an
+        # unchanged episode would make the reliability curve meaningless.
+        async with self._session_factory() as session:
+            salience_weights = await resolve_weights(
+                session, tenant_id=ctx.tenant_id, model_id=salience_module.WEIGHTS_MODEL_ID
+            )
+        episode_salience = salience_module.combine(signals, weights=salience_weights.value)
 
         staged: list[StagedClaim] = []
         refusals: list[tuple[str, str]] = []
