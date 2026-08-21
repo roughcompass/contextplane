@@ -96,9 +96,7 @@ class CapabilityVisibility(Protocol):
     of the resolution, not from a service that opens its own session.
     """
 
-    async def visible_capability_ids(
-        self, ctx: ArcRequestContext, capability_ids: Sequence[uuid.UUID]
-    ) -> list[uuid.UUID]: ...
+    async def visible_entity_ids(self, ctx: ArcRequestContext, entity_ids: Sequence[uuid.UUID]) -> list[uuid.UUID]: ...
 
 
 @dataclasses.dataclass(frozen=True)
@@ -123,8 +121,8 @@ class ArtifactScope:
         elif self.tenant_id is None:
             msg = f"a {self.scope} artifact requires a tenant_id"
             raise ValueError(msg)
-        if self.scope is AuthorityScope.CAPABILITY and self.capability_id is None:
-            msg = "a capability-scoped artifact requires a capability_id"
+        if self.scope is AuthorityScope.ENTITY and self.capability_id is None:
+            msg = "an entity-scoped artifact requires an entity id"
             raise ValueError(msg)
 
 
@@ -278,14 +276,12 @@ class ArcAuthorizationService:
 
     # -- capabilities ---------------------------------------------------------
 
-    async def visible_capability_ids(
-        self, ctx: ArcRequestContext, capability_ids: Sequence[uuid.UUID]
-    ) -> list[uuid.UUID]:
+    async def visible_entity_ids(self, ctx: ArcRequestContext, entity_ids: Sequence[uuid.UUID]) -> list[uuid.UUID]:
         """Delegate, deliberately. See this module's docstring."""
         self.assert_request_tenant(ctx)
-        if not capability_ids:
+        if not entity_ids:
             return []
-        return await self._visibility.visible_capability_ids(ctx, capability_ids)
+        return await self._visibility.visible_entity_ids(ctx, entity_ids)
 
     # -- protected actions ------------------------------------------------------
 

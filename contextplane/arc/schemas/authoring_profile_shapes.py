@@ -48,8 +48,8 @@ def _risk_classifications(narrowest: str) -> tuple[str, ...]:
         "tenant_non_mandatory",
         "domain_mandatory",
         "domain_non_mandatory",
-        "capability_mandatory",
-        "capability_non_mandatory",
+        "entity_mandatory",
+        "entity_non_mandatory",
         f"{narrowest}_mandatory",
         f"{narrowest}_non_mandatory",
     )
@@ -158,7 +158,7 @@ def _observation_class_predicate(literal: str, selector: str) -> Schema:
             "requested_action_classes": _nullable(_array(_string(), kind="set", min_items=1)),
             "environment": _nullable(_array(_string(), kind="set", min_items=1)),
             "data_sensitivity_tier": _nullable(_array(_string(), kind="set", min_items=1)),
-            "capability_ids": _nullable(_array(_uuid(), kind="set", min_items=1)),
+            "entity_ids": _nullable(_array(_uuid(), kind="set", min_items=1)),
             "domain_ids": _nullable(_array(_string(), kind="set", min_items=1)),
         },
     )
@@ -224,10 +224,10 @@ def _applicability_rule(narrowest_scope: str, selector: str) -> Schema:
     return _object(
         {
             "rule_id": _uuid(),
-            "scope": _enum("global", "tenant", "domain", "capability", narrowest_scope),
+            "scope": _enum("global", "tenant", "domain", "entity", narrowest_scope),
             "target_tenant_id": _nullable(_uuid()),
-            "capability_ids": _nullable(_array(_uuid(), kind="set")),
-            "capability_labels": _nullable(_array(_string(), kind="set")),
+            "entity_ids": _nullable(_array(_uuid(), kind="set")),
+            "entity_labels": _nullable(_array(_string(), kind="set")),
             "domain_ids": _nullable(_array(_string(), kind="set")),
             selector: _nullable(_array(_string(), kind="set")),
             "action_classes": _nullable(_array(_string(), kind="set")),

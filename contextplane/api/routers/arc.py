@@ -153,7 +153,7 @@ class ManifestBody(_Strict):
     session_id: str = Field(min_length=1, max_length=200)
     intent_kind: str = Field(min_length=1, max_length=64)
     requested_action_classes: list[str] = Field(default_factory=list)
-    capability_ids: list[str] = Field(default_factory=list)
+    entity_ids: list[str] = Field(default_factory=list)
     domain_ids: list[str] = Field(default_factory=list)
     environment: str = Field(min_length=1, max_length=64)
     data_sensitivity: str = Field(min_length=1, max_length=64)
@@ -297,7 +297,7 @@ async def resolve_context(
         session_id=body.manifest.session_id,
         intent_kind=body.manifest.intent_kind,
         requested_action_classes=tuple(body.manifest.requested_action_classes),
-        capability_ids=tuple(body.manifest.capability_ids),
+        entity_ids=tuple(body.manifest.entity_ids),
         domain_ids=tuple(body.manifest.domain_ids),
         environment=body.manifest.environment,
         data_sensitivity=body.manifest.data_sensitivity,

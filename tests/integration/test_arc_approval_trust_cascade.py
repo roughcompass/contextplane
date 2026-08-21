@@ -82,8 +82,8 @@ async def _cleanup_activation_evidence(factory: async_sessionmaker[AsyncSession]
 
 
 class _AllVisible:
-    async def visible_capability_ids(self, ctx: object, capability_ids: object) -> list[uuid.UUID]:
-        return list(capability_ids)  # type: ignore[arg-type]
+    async def visible_entity_ids(self, ctx: object, entity_ids: object) -> list[uuid.UUID]:
+        return list(entity_ids)  # type: ignore[arg-type]
 
 
 def _authorization() -> ArcAuthorizationService:

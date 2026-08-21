@@ -302,10 +302,10 @@ def test_every_matched_dimension_is_in_the_obligation_snapshot() -> None:
     selector means "matches any", so the rehydrated obligation applies more
     widely than the rule ever did.
 
-    `capability_labels` is the live example. It is in `ApplicabilityRule` and
+    `entity_labels` is the live example. It is in `ApplicabilityRule` and
     in the corpus query, but not in `ApplicabilityDraft` and not in the
     snapshot -- inert only because nothing populates the column and
-    `rule_applies` reads `capability_ids` instead. This test is what turns
+    `rule_applies` reads `entity_ids` instead. This test is what turns
     that into a failure the moment either changes.
     """
     import dataclasses
@@ -362,7 +362,7 @@ def test_a_draft_and_a_row_produce_the_same_applicability_digest() -> None:
         scope=AuthorityScope.TENANT,
         effective_from=_NOW,
         target_tenant_id=tenant,
-        capability_ids=(capability,),
+        entity_ids=(capability,),
         intent_kinds=("deployment",),
         action_classes=("deploy",),
     )
@@ -370,7 +370,7 @@ def test_a_draft_and_a_row_produce_the_same_applicability_digest() -> None:
     from_row = applicability_snapshot(
         scope="tenant",
         target_tenant_id=tenant,
-        capability_ids=[capability],
+        entity_ids=[capability],
         domain_ids=None,
         intent_kinds=["deployment"],
         action_classes=["deploy"],
@@ -391,7 +391,7 @@ def test_selector_ordering_does_not_change_the_applicability_digest() -> None:
     first = applicability_snapshot(
         scope="global",
         target_tenant_id=None,
-        capability_ids=None,
+        entity_ids=None,
         domain_ids=[a, b],
         intent_kinds=None,
         action_classes=None,
@@ -401,7 +401,7 @@ def test_selector_ordering_does_not_change_the_applicability_digest() -> None:
     second = applicability_snapshot(
         scope="global",
         target_tenant_id=None,
-        capability_ids=None,
+        entity_ids=None,
         domain_ids=[b, a],
         intent_kinds=None,
         action_classes=None,

@@ -46,8 +46,8 @@ _UUID2 = "00000000-0000-4000-8000-000000000002"
 
 
 class _AllowAll:
-    async def visible_capability_ids(self, ctx: object, capability_ids: Sequence[uuid.UUID]) -> list[uuid.UUID]:
-        return list(capability_ids)
+    async def visible_entity_ids(self, ctx: object, entity_ids: Sequence[uuid.UUID]) -> list[uuid.UUID]:
+        return list(entity_ids)
 
 
 def _ctx(*, tenant_id: uuid.UUID) -> ArcRequestContext:
@@ -155,8 +155,8 @@ def _candidate_rule(rule_id: str, *, intent_kinds: list[str] | None = None) -> d
         "rule_id": rule_id,
         "scope": "global",
         "target_tenant_id": None,
-        "capability_ids": None,
-        "capability_labels": None,
+        "entity_ids": None,
+        "entity_labels": None,
         "domain_ids": None,
         "intent_kinds": intent_kinds,
         "action_classes": None,

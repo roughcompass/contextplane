@@ -61,8 +61,8 @@ async def seed(factory: async_sessionmaker[AsyncSession]) -> ArcSeed:
 
 
 class _AllVisible:
-    async def visible_capability_ids(self, ctx: object, capability_ids: object) -> list[uuid.UUID]:
-        return list(capability_ids)  # type: ignore[arg-type]
+    async def visible_entity_ids(self, ctx: object, entity_ids: object) -> list[uuid.UUID]:
+        return list(entity_ids)  # type: ignore[arg-type]
 
 
 @pytest.fixture
@@ -419,10 +419,10 @@ async def test_a_capability_scoped_exception_requires_a_capability(
     directive_id, revision_id = await _seed_directive(factory, seed, delegable=True)
     verifier_id = await _seed_verifier(factory, seed)
 
-    with pytest.raises(ValidationError, match="lower_scope_capability_id"):
+    with pytest.raises(ValidationError, match="lower_scope_entity_id"):
         await service.approve_exception(
             _ctx(seed),
-            _draft(directive_id, revision_id, verifier_id, lower_scope_kind=AuthorityScope.CAPABILITY),
+            _draft(directive_id, revision_id, verifier_id, lower_scope_kind=AuthorityScope.ENTITY),
         )
 
 

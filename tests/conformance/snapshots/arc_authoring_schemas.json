@@ -601,37 +601,6 @@
         "default": null,
         "title": "Action Classes"
       },
-      "capability_ids": {
-        "anyOf": [
-          {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "type": "array"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Capability Ids"
-      },
-      "capability_labels": {
-        "anyOf": [
-          {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Capability Labels"
-      },
       "data_sensitivity_tiers": {
         "anyOf": [
           {
@@ -688,6 +657,37 @@
         "default": null,
         "title": "Effective Until"
       },
+      "entity_ids": {
+        "anyOf": [
+          {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Entity Ids"
+      },
+      "entity_labels": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Entity Labels"
+      },
       "environments": {
         "anyOf": [
           {
@@ -732,7 +732,7 @@
           "global",
           "tenant",
           "domain",
-          "capability",
+          "entity",
           "intent"
         ],
         "title": "Scope",
@@ -1338,37 +1338,6 @@
             "default": null,
             "title": "Action Classes"
           },
-          "capability_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Capability Ids"
-          },
-          "capability_labels": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Capability Labels"
-          },
           "data_sensitivity_tiers": {
             "anyOf": [
               {
@@ -1425,6 +1394,37 @@
             "default": null,
             "title": "Effective Until"
           },
+          "entity_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entity Ids"
+          },
+          "entity_labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entity Labels"
+          },
           "environments": {
             "anyOf": [
               {
@@ -1469,7 +1469,7 @@
               "global",
               "tenant",
               "domain",
-              "capability",
+              "entity",
               "intent"
             ],
             "title": "Scope",
@@ -1937,37 +1937,6 @@
             "default": null,
             "title": "Action Classes"
           },
-          "capability_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Capability Ids"
-          },
-          "capability_labels": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Capability Labels"
-          },
           "data_sensitivity_tiers": {
             "anyOf": [
               {
@@ -2024,6 +1993,37 @@
             "default": null,
             "title": "Effective Until"
           },
+          "entity_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entity Ids"
+          },
+          "entity_labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entity Labels"
+          },
           "environments": {
             "anyOf": [
               {
@@ -2068,7 +2068,7 @@
               "global",
               "tenant",
               "domain",
-              "capability",
+              "entity",
               "intent"
             ],
             "title": "Scope",
@@ -3115,37 +3115,6 @@
             "default": null,
             "title": "Action Classes"
           },
-          "capability_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Capability Ids"
-          },
-          "capability_labels": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Capability Labels"
-          },
           "data_sensitivity_tiers": {
             "anyOf": [
               {
@@ -3202,6 +3171,37 @@
             "default": null,
             "title": "Effective Until"
           },
+          "entity_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entity Ids"
+          },
+          "entity_labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entity Labels"
+          },
           "environments": {
             "anyOf": [
               {
@@ -3246,7 +3246,7 @@
               "global",
               "tenant",
               "domain",
-              "capability",
+              "entity",
               "intent"
             ],
             "title": "Scope",
@@ -4284,22 +4284,6 @@
         "additionalProperties": false,
         "description": "Exactly the closed `arc_observation_class_predicate_v2` profile object.",
         "properties": {
-          "capability_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Capability Ids"
-          },
           "data_sensitivity_tier": {
             "anyOf": [
               {
@@ -4329,6 +4313,22 @@
             ],
             "default": null,
             "title": "Domain Ids"
+          },
+          "entity_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entity Ids"
           },
           "environment": {
             "anyOf": [
@@ -4461,22 +4461,6 @@
         "additionalProperties": false,
         "description": "Exactly the closed `arc_observation_class_predicate_v2` profile object.",
         "properties": {
-          "capability_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Capability Ids"
-          },
           "data_sensitivity_tier": {
             "anyOf": [
               {
@@ -4506,6 +4490,22 @@
             ],
             "default": null,
             "title": "Domain Ids"
+          },
+          "entity_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entity Ids"
           },
           "environment": {
             "anyOf": [
@@ -4887,22 +4887,6 @@
     "additionalProperties": false,
     "description": "Exactly the closed `arc_observation_class_predicate_v2` profile object.",
     "properties": {
-      "capability_ids": {
-        "anyOf": [
-          {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "type": "array"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Capability Ids"
-      },
       "data_sensitivity_tier": {
         "anyOf": [
           {
@@ -4932,6 +4916,22 @@
         ],
         "default": null,
         "title": "Domain Ids"
+      },
+      "entity_ids": {
+        "anyOf": [
+          {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Entity Ids"
       },
       "environment": {
         "anyOf": [
@@ -5182,8 +5182,8 @@
           "tenant_non_mandatory",
           "domain_mandatory",
           "domain_non_mandatory",
-          "capability_mandatory",
-          "capability_non_mandatory",
+          "entity_mandatory",
+          "entity_non_mandatory",
           "intent_mandatory",
           "intent_non_mandatory"
         ],
@@ -5344,37 +5344,6 @@
             "default": null,
             "title": "Action Classes"
           },
-          "capability_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Capability Ids"
-          },
-          "capability_labels": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Capability Labels"
-          },
           "data_sensitivity_tiers": {
             "anyOf": [
               {
@@ -5431,6 +5400,37 @@
             "default": null,
             "title": "Effective Until"
           },
+          "entity_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entity Ids"
+          },
+          "entity_labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entity Labels"
+          },
           "environments": {
             "anyOf": [
               {
@@ -5475,7 +5475,7 @@
               "global",
               "tenant",
               "domain",
-              "capability",
+              "entity",
               "intent"
             ],
             "title": "Scope",
@@ -6061,8 +6061,8 @@
           "tenant_non_mandatory",
           "domain_mandatory",
           "domain_non_mandatory",
-          "capability_mandatory",
-          "capability_non_mandatory",
+          "entity_mandatory",
+          "entity_non_mandatory",
           "intent_mandatory",
           "intent_non_mandatory"
         ],
@@ -6191,8 +6191,8 @@
           "tenant_non_mandatory",
           "domain_mandatory",
           "domain_non_mandatory",
-          "capability_mandatory",
-          "capability_non_mandatory",
+          "entity_mandatory",
+          "entity_non_mandatory",
           "intent_mandatory",
           "intent_non_mandatory"
         ],
@@ -6294,8 +6294,8 @@
           "tenant_non_mandatory",
           "domain_mandatory",
           "domain_non_mandatory",
-          "capability_mandatory",
-          "capability_non_mandatory",
+          "entity_mandatory",
+          "entity_non_mandatory",
           "intent_mandatory",
           "intent_non_mandatory"
         ],
@@ -7317,22 +7317,6 @@
         "additionalProperties": false,
         "description": "Exactly the closed `arc_observation_class_predicate_v2` profile object.",
         "properties": {
-          "capability_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Capability Ids"
-          },
           "data_sensitivity_tier": {
             "anyOf": [
               {
@@ -7362,6 +7346,22 @@
             ],
             "default": null,
             "title": "Domain Ids"
+          },
+          "entity_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entity Ids"
           },
           "environment": {
             "anyOf": [
@@ -7499,8 +7499,8 @@
           "tenant_non_mandatory",
           "domain_mandatory",
           "domain_non_mandatory",
-          "capability_mandatory",
-          "capability_non_mandatory",
+          "entity_mandatory",
+          "entity_non_mandatory",
           "intent_mandatory",
           "intent_non_mandatory"
         ],
@@ -7730,22 +7730,6 @@
         "additionalProperties": false,
         "description": "Exactly the closed `arc_observation_class_predicate_v2` profile object.",
         "properties": {
-          "capability_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Capability Ids"
-          },
           "data_sensitivity_tier": {
             "anyOf": [
               {
@@ -7775,6 +7759,22 @@
             ],
             "default": null,
             "title": "Domain Ids"
+          },
+          "entity_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entity Ids"
           },
           "environment": {
             "anyOf": [
@@ -7856,22 +7856,6 @@
         "additionalProperties": false,
         "description": "Exactly the closed `arc_observation_class_predicate_v2` profile object.",
         "properties": {
-          "capability_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Capability Ids"
-          },
           "data_sensitivity_tier": {
             "anyOf": [
               {
@@ -7901,6 +7885,22 @@
             ],
             "default": null,
             "title": "Domain Ids"
+          },
+          "entity_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entity Ids"
           },
           "environment": {
             "anyOf": [
@@ -8756,22 +8756,6 @@
         "additionalProperties": false,
         "description": "Exactly the closed `arc_observation_class_predicate_v2` profile object.",
         "properties": {
-          "capability_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Capability Ids"
-          },
           "data_sensitivity_tier": {
             "anyOf": [
               {
@@ -8801,6 +8785,22 @@
             ],
             "default": null,
             "title": "Domain Ids"
+          },
+          "entity_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entity Ids"
           },
           "environment": {
             "anyOf": [

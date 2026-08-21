@@ -81,7 +81,7 @@ _DIMENSIONS: tuple[tuple[str, str], ...] = (
     ("requested_action_classes", "action_classes"),
     ("environment", "environments"),
     ("data_sensitivity_tier", "data_sensitivity_tiers"),
-    ("capability_ids", "capability_ids"),
+    ("entity_ids", "entity_ids"),
     ("domain_ids", "domain_ids"),
 )
 

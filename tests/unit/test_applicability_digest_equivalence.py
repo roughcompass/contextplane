@@ -29,7 +29,7 @@ def _row_shaped_digest(
     *,
     scope: str,
     target_tenant_id: uuid.UUID | None,
-    capability_ids: list[str],
+    entity_ids: list[str],
     domain_ids: list[str],
     intent_kinds: list[str],
     action_classes: list[str],
@@ -41,7 +41,7 @@ def _row_shaped_digest(
     snapshot = applicability_snapshot(
         scope=scope,
         target_tenant_id=target_tenant_id,
-        capability_ids=capability_ids,
+        entity_ids=entity_ids,
         domain_ids=domain_ids,
         intent_kinds=intent_kinds,
         action_classes=action_classes,
@@ -58,7 +58,7 @@ def test_draft_and_row_recompute_agree_on_a_full_applicability() -> None:
         scope=AuthorityScope.TENANT,
         effective_from=_EFFECTIVE,
         target_tenant_id=tenant,
-        capability_ids=(cap_a, cap_b),
+        entity_ids=(cap_a, cap_b),
         domain_ids=("payments",),
         intent_kinds=("code_change",),
         action_classes=("write",),
@@ -68,7 +68,7 @@ def test_draft_and_row_recompute_agree_on_a_full_applicability() -> None:
     assert draft.digest() == _row_shaped_digest(
         scope=str(AuthorityScope.TENANT),
         target_tenant_id=tenant,
-        capability_ids=[cap_a, cap_b],
+        entity_ids=[cap_a, cap_b],
         domain_ids=["payments"],
         intent_kinds=["code_change"],
         action_classes=["write"],
@@ -82,7 +82,7 @@ def test_draft_and_row_recompute_agree_on_the_sparse_global_case() -> None:
         scope=AuthorityScope.GLOBAL,
         effective_from=_EFFECTIVE,
         target_tenant_id=None,
-        capability_ids=(),
+        entity_ids=(),
         domain_ids=(),
         intent_kinds=(),
         action_classes=(),
@@ -92,7 +92,7 @@ def test_draft_and_row_recompute_agree_on_the_sparse_global_case() -> None:
     assert draft.digest() == _row_shaped_digest(
         scope=str(AuthorityScope.GLOBAL),
         target_tenant_id=None,
-        capability_ids=[],
+        entity_ids=[],
         domain_ids=[],
         intent_kinds=[],
         action_classes=[],
@@ -107,12 +107,12 @@ def test_reach_fields_change_the_digest() -> None:
     base = dict(
         scope=str(AuthorityScope.TENANT),
         target_tenant_id=uuid.uuid4(),
-        capability_ids=[uuid.uuid4()],
+        entity_ids=[uuid.uuid4()],
         domain_ids=[],
         intent_kinds=[],
         action_classes=[],
         environments=[],
         data_sensitivity_tiers=[],
     )
-    widened = dict(base, capability_ids=[*base["capability_ids"], uuid.uuid4()])  # type: ignore[list-item, misc]
+    widened = dict(base, entity_ids=[*base["entity_ids"], uuid.uuid4()])  # type: ignore[list-item, misc]
     assert _row_shaped_digest(**base) != _row_shaped_digest(**widened)  # type: ignore[arg-type]

@@ -88,7 +88,7 @@ SELECT
     d.satisfaction_mode, d.verification_max_age_seconds,
     d.accepted_verifier_classes, d.required_evidence_type, d.delegable_exception,
     ar.rule_id, ar.scope, ar.is_mandatory, ar.target_tenant_id,
-    ar.capability_ids, ar.capability_labels, ar.domain_ids, ar.intent_kinds,
+    ar.entity_ids, ar.entity_labels, ar.domain_ids, ar.intent_kinds,
     ar.action_classes, ar.environments, ar.data_sensitivity_tiers,
     ar.effective_from AS rule_effective_from, ar.effective_until AS rule_effective_until
 FROM arc_revisions r
@@ -107,7 +107,7 @@ ORDER BY d.revision_id, d.directive_id, ar.rule_id
 _EXCEPTIONS_SQL = """
 SELECT exception_id, higher_scope_directive_id, higher_scope_revision_id,
        lower_scope_tenant_id, replacement_conflict_descriptor,
-       lower_scope_kind, lower_scope_domain_id, lower_scope_capability_id,
+       lower_scope_kind, lower_scope_domain_id, lower_scope_entity_id,
        lower_scope_intent_kind, lower_scope_action_class,
        lower_scope_environment, lower_scope_data_sensitivity,
        effective_from, effective_until, revoked_at
@@ -136,7 +136,7 @@ def _as_list(value: JSONValue) -> list[Any] | None:
     no shape constraint of its own (`applicability_snapshot`).
 
     Raises rather than silently treating a scalar as an empty list: an empty
-    `capability_ids` (etc.) matches every value on that dimension, per
+    `entity_ids` (etc.) matches every value on that dimension, per
     `_obligation_rule`'s own docstring -- so silently coercing a malformed
     field to "empty" would widen what the obligation applies to, the unsafe
     direction. Raising here is caught by `_obligation_rule`'s existing
@@ -183,7 +183,7 @@ def _exception_in_scope(row: Row[Any], manifest: IntentManifest) -> bool:
     """
     if row.lower_scope_domain_id is not None and row.lower_scope_domain_id not in manifest.domain_ids:
         return False
-    if row.lower_scope_capability_id is not None and row.lower_scope_capability_id not in manifest.capability_ids:
+    if row.lower_scope_entity_id is not None and row.lower_scope_entity_id not in manifest.entity_ids:
         return False
     if row.lower_scope_intent_kind is not None and row.lower_scope_intent_kind != str(manifest.intent_kind):
         return False
@@ -270,8 +270,8 @@ def _rule_from_row(row: Row[Any]) -> ApplicabilityRule:
         scope=AuthorityScope(row.scope),
         is_mandatory=row.is_mandatory,
         target_tenant_id=row.target_tenant_id,
-        capability_ids=_uuid_set(row.capability_ids),
-        capability_labels=_str_set(row.capability_labels),
+        entity_ids=_uuid_set(row.entity_ids),
+        entity_labels=_str_set(row.entity_labels),
         domain_ids=_str_set(row.domain_ids),
         intent_kinds=_vocab_set(row.intent_kinds, IntentKind),
         action_classes=_vocab_set(row.action_classes, ActionClass),
@@ -312,12 +312,12 @@ def _obligation_rule(snapshot: JSONValue, obligation_id: uuid.UUID) -> Applicabi
     the obligation as applying -- see `_obligations` for why erring the other
     way is the failure these rows exist to prevent.
 
-    The snapshot carries no `capability_labels`, so neither does the rule
+    The snapshot carries no `entity_labels`, so neither does the rule
     built here, while `_rule_from_row` populates it for a candidate. That
     asymmetry is inert only because `rule_applies` matches on
-    `capability_ids` and never reads labels. The day labels become a real
+    `entity_ids` and never reads labels. The day labels become a real
     selector it stops being inert and starts *widening*: an empty
-    `capability_ids` makes the capability dimension match everything, so an
+    `entity_ids` makes the capability dimension match everything, so an
     obligation scoped to a label would apply to every capability. Wiring
     labels into matching therefore means adding them to the snapshot too --
     and note that changes the applicability digest, which is the dedup key,
@@ -341,7 +341,7 @@ def _obligation_rule(snapshot: JSONValue, obligation_id: uuid.UUID) -> Applicabi
             revision_id=obligation_id,
             scope=AuthorityScope(scope_raw),
             target_tenant_id=uuid.UUID(target) if isinstance(target, str) else None,
-            capability_ids=_uuid_set(_as_list(snapshot.get("capability_ids"))),
+            entity_ids=_uuid_set(_as_list(snapshot.get("entity_ids"))),
             domain_ids=_str_set(_as_list(snapshot.get("domain_ids"))),
             intent_kinds=_vocab_set(_as_list(snapshot.get("intent_kinds")), IntentKind),
             action_classes=_vocab_set(_as_list(snapshot.get("action_classes")), ActionClass),

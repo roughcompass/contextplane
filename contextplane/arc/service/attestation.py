@@ -141,7 +141,7 @@ class ManifestClaims:
     """The manifest fields this module needs to recompute the claims digest
     and check mirrored fields.
 
-    `SelectionService` reads the rest of the manifest (`capability_ids`,
+    `SelectionService` reads the rest of the manifest (`entity_ids`,
     `domain_ids`, ...) directly; this subset exists only so attestation
     verification does not need to depend on ARC's selection layer.
     """
@@ -149,7 +149,7 @@ class ManifestClaims:
     session_id: str
     intent_kind: str
     requested_action_classes: tuple[str, ...]
-    capability_ids: tuple[str, ...]
+    entity_ids: tuple[str, ...]
     domain_ids: tuple[str, ...]
     environment: str
     data_sensitivity: str
@@ -162,7 +162,7 @@ class ManifestClaims:
             "session_id": self.session_id,
             "intent_kind": self.intent_kind,
             "requested_action_classes": list(self.requested_action_classes),
-            "capability_ids": list(self.capability_ids),
+            "entity_ids": list(self.entity_ids),
             "domain_ids": list(self.domain_ids),
             "environment": self.environment,
             "data_sensitivity": self.data_sensitivity,

@@ -1078,7 +1078,7 @@
         "session_id": "s1",
         "intent_kind": "code_change",
         "requested_action_classes": ["merge"],
-        "capability_ids": ["cccccccc-0000-4000-8000-000000000001", "cccccccc-0000-4000-8000-000000000002"]
+        "entity_ids": ["cccccccc-0000-4000-8000-000000000001", "cccccccc-0000-4000-8000-000000000002"]
       },
       "candidates": [
         {
@@ -1099,9 +1099,9 @@
           },
           "rule": {
             "rule_id": "12000000-0000-4000-8000-000000000003",
-            "scope": "capability",
+            "scope": "entity",
             "is_mandatory": true,
-            "capability_ids": ["cccccccc-0000-4000-8000-000000000001"]
+            "entity_ids": ["cccccccc-0000-4000-8000-000000000001"]
           },
           "revision_effective_from": "2026-01-01T00:00:00Z"
         }

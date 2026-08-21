@@ -4,12 +4,6 @@
       "action_classes": [
         "merge"
       ],
-      "capability_ids": [
-        "00000000-0000-4000-8000-000000000006"
-      ],
-      "capability_labels": [
-        "payments.write"
-      ],
       "data_sensitivity_tiers": [
         "confidential"
       ],
@@ -18,6 +12,12 @@
       ],
       "effective_from": "2026-01-06T00:00:00Z",
       "effective_until": null,
+      "entity_ids": [
+        "00000000-0000-4000-8000-000000000006"
+      ],
+      "entity_labels": [
+        "payments.write"
+      ],
       "environments": [
         "production"
       ],
@@ -31,12 +31,12 @@
     },
     {
       "action_classes": null,
-      "capability_ids": null,
-      "capability_labels": null,
       "data_sensitivity_tiers": null,
       "domain_ids": null,
       "effective_from": null,
       "effective_until": null,
+      "entity_ids": null,
+      "entity_labels": null,
       "environments": null,
       "intent_kinds": null,
       "is_mandatory": false,

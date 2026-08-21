@@ -71,7 +71,7 @@ def test_authority_scope_ranks_widest_to_narrowest() -> None:
             AuthorityScope.GLOBAL,
             AuthorityScope.TENANT,
             AuthorityScope.DOMAIN,
-            AuthorityScope.CAPABILITY,
+            AuthorityScope.ENTITY,
             AuthorityScope.INTENT,
         )
     ]
@@ -246,19 +246,19 @@ def test_a_tenant_scoped_rule_must_name_its_target_tenant() -> None:
         ApplicabilityRule(rule_id=_D, revision_id=_R, scope=AuthorityScope.TENANT)
 
 
-def test_a_capability_scoped_rule_must_name_a_capability() -> None:
-    with pytest.raises(ArcVocabularyError, match="names no capability"):
-        ApplicabilityRule(rule_id=_D, revision_id=_R, scope=AuthorityScope.CAPABILITY)
+def test_an_entity_scoped_rule_must_name_an_entity() -> None:
+    with pytest.raises(ArcVocabularyError, match="names no entity"):
+        ApplicabilityRule(rule_id=_D, revision_id=_R, scope=AuthorityScope.ENTITY)
 
 
 def test_a_capability_rule_may_use_labels_instead_of_ids() -> None:
     rule = ApplicabilityRule(
         rule_id=_D,
         revision_id=_R,
-        scope=AuthorityScope.CAPABILITY,
-        capability_labels=frozenset({"payments"}),
+        scope=AuthorityScope.ENTITY,
+        entity_labels=frozenset({"payments"}),
     )
-    assert rule.capability_labels == frozenset({"payments"})
+    assert rule.entity_labels == frozenset({"payments"})
 
 
 def test_global_and_task_scopes_need_no_selector() -> None:

@@ -306,8 +306,8 @@ class MaterialisedApplicabilityRule:
     revision_id: uuid.UUID
     scope: str
     target_tenant_id: uuid.UUID | None
-    capability_ids: tuple[uuid.UUID, ...] | None
-    capability_labels: tuple[str, ...] | None
+    entity_ids: tuple[uuid.UUID, ...] | None
+    entity_labels: tuple[str, ...] | None
     domain_ids: tuple[str, ...] | None
     intent_kinds: tuple[str, ...] | None
     action_classes: tuple[str, ...] | None
@@ -329,11 +329,11 @@ async def insert_applicability_rule(session: AsyncSession, rule: MaterialisedApp
     await session.execute(
         text(
             "INSERT INTO arc_applicability_rules ("
-            "  rule_id, revision_id, tenant_id, scope, target_tenant_id, capability_ids, capability_labels,"
+            "  rule_id, revision_id, tenant_id, scope, target_tenant_id, entity_ids, entity_labels,"
             "  domain_ids, intent_kinds, action_classes, environments, data_sensitivity_tiers,"
             "  effective_from, effective_until, is_mandatory"
-            ") SELECT :rule_id, :revision_id, r.tenant_id, :scope, :target_tenant_id, :capability_ids,"
-            "         :capability_labels, :domain_ids, :intent_kinds, :action_classes, :environments,"
+            ") SELECT :rule_id, :revision_id, r.tenant_id, :scope, :target_tenant_id, :entity_ids,"
+            "         :entity_labels, :domain_ids, :intent_kinds, :action_classes, :environments,"
             "         :data_sensitivity_tiers, :effective_from, :effective_until, :is_mandatory "
             "  FROM arc_revisions r WHERE r.revision_id = :revision_id"
         ),
@@ -342,8 +342,8 @@ async def insert_applicability_rule(session: AsyncSession, rule: MaterialisedApp
             "revision_id": rule.revision_id,
             "scope": rule.scope,
             "target_tenant_id": rule.target_tenant_id,
-            "capability_ids": list(rule.capability_ids) if rule.capability_ids else None,
-            "capability_labels": list(rule.capability_labels) if rule.capability_labels else None,
+            "entity_ids": list(rule.entity_ids) if rule.entity_ids else None,
+            "entity_labels": list(rule.entity_labels) if rule.entity_labels else None,
             "domain_ids": list(rule.domain_ids) if rule.domain_ids else None,
             "intent_kinds": list(rule.intent_kinds) if rule.intent_kinds else None,
             "action_classes": list(rule.action_classes) if rule.action_classes else None,

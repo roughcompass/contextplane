@@ -162,10 +162,8 @@ class _ArcVisibilityAdapter:
     def __init__(self, visibility: VisibilityService) -> None:
         self._visibility = visibility
 
-    async def visible_capability_ids(
-        self, ctx: ArcRequestContext, capability_ids: Sequence[uuid.UUID]
-    ) -> list[uuid.UUID]:
-        return await self._visibility.filter_entities(ctx.tenant, list(capability_ids))
+    async def visible_entity_ids(self, ctx: ArcRequestContext, entity_ids: Sequence[uuid.UUID]) -> list[uuid.UUID]:
+        return await self._visibility.filter_entities(ctx.tenant, list(entity_ids))
 
 
 # `arc_operational_chain_checkpoints`' identity is `{deployment_id, revision_id,

@@ -78,9 +78,7 @@ class _NoCapabilities:
     something else.
     """
 
-    async def visible_capability_ids(
-        self, ctx: ArcRequestContext, capability_ids: Sequence[uuid.UUID]
-    ) -> list[uuid.UUID]:
+    async def visible_entity_ids(self, ctx: ArcRequestContext, entity_ids: Sequence[uuid.UUID]) -> list[uuid.UUID]:
         raise AssertionError("resolving these eval questions must not consult capability visibility")
 
 

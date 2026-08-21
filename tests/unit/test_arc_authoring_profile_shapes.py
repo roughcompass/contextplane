@@ -133,8 +133,8 @@ def test_risk_classifications_and_delta_codes_are_the_exact_published_tuples() -
         "tenant_non_mandatory",
         "domain_mandatory",
         "domain_non_mandatory",
-        "capability_mandatory",
-        "capability_non_mandatory",
+        "entity_mandatory",
+        "entity_non_mandatory",
         "task_mandatory",
         "task_non_mandatory",
     )
@@ -145,8 +145,8 @@ def test_risk_classifications_and_delta_codes_are_the_exact_published_tuples() -
         "tenant_non_mandatory",
         "domain_mandatory",
         "domain_non_mandatory",
-        "capability_mandatory",
-        "capability_non_mandatory",
+        "entity_mandatory",
+        "entity_non_mandatory",
         "intent_mandatory",
         "intent_non_mandatory",
     )

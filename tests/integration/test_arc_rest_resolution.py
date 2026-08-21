@@ -251,7 +251,7 @@ def _resolve_body(**overrides: object) -> dict[str, object]:
             "session_id": "sess-1",
             "intent_kind": "deployment",
             "requested_action_classes": ["deploy"],
-            "capability_ids": [],
+            "entity_ids": [],
             "domain_ids": [],
             "environment": "production",
             "data_sensitivity": "internal",

@@ -279,7 +279,7 @@ class ArtifactService(_MaterialisationMixin):
             await session.execute(
                 text(
                     "SELECT d.directive_id, r.artifact_id, ar.rule_id, ar.effective_from, ar.effective_until, "
-                    "       ar.scope, ar.target_tenant_id, ar.capability_ids, ar.domain_ids, ar.intent_kinds, "
+                    "       ar.scope, ar.target_tenant_id, ar.entity_ids, ar.domain_ids, ar.intent_kinds, "
                     "       ar.action_classes, ar.environments, ar.data_sensitivity_tiers "
                     "FROM arc_directives d "
                     "JOIN arc_revisions r ON r.revision_id = d.revision_id "
@@ -294,7 +294,7 @@ class ArtifactService(_MaterialisationMixin):
             snapshot = applicability_snapshot(
                 scope=row.scope,
                 target_tenant_id=row.target_tenant_id,
-                capability_ids=row.capability_ids,
+                entity_ids=row.entity_ids,
                 domain_ids=row.domain_ids,
                 intent_kinds=row.intent_kinds,
                 action_classes=row.action_classes,

@@ -213,7 +213,7 @@ def _manifest() -> ManifestClaims:
         session_id="perf-session",
         intent_kind="deployment",
         requested_action_classes=("deploy",),
-        capability_ids=(),
+        entity_ids=(),
         domain_ids=("payments",),
         environment="production",
         data_sensitivity="confidential",

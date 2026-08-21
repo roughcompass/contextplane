@@ -45,8 +45,8 @@ _REVIEW = datetime.datetime(2026, 4, 1, tzinfo=datetime.UTC)
 
 
 class _AllowAll:
-    async def visible_capability_ids(self, ctx: object, capability_ids: Sequence[uuid.UUID]) -> list[uuid.UUID]:
-        return list(capability_ids)
+    async def visible_entity_ids(self, ctx: object, entity_ids: Sequence[uuid.UUID]) -> list[uuid.UUID]:
+        return list(entity_ids)
 
 
 @pytest_asyncio.fixture

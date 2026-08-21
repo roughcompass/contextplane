@@ -99,7 +99,7 @@ class ApplicabilityDraft:
     effective_until: datetime.datetime | None = None
     is_mandatory: bool = True
     target_tenant_id: uuid.UUID | None = None
-    capability_ids: tuple[uuid.UUID, ...] = ()
+    entity_ids: tuple[uuid.UUID, ...] = ()
     domain_ids: tuple[str, ...] = ()
     intent_kinds: tuple[str, ...] = ()
     action_classes: tuple[str, ...] = ()
@@ -116,7 +116,7 @@ class ApplicabilityDraft:
         return applicability_snapshot(
             scope=str(self.scope),
             target_tenant_id=self.target_tenant_id,
-            capability_ids=self.capability_ids,
+            entity_ids=self.entity_ids,
             domain_ids=self.domain_ids,
             intent_kinds=self.intent_kinds,
             action_classes=self.action_classes,
@@ -367,8 +367,8 @@ class _MaterialisationMixin:
             if rule.scope is AuthorityScope.TENANT and rule.target_tenant_id is None:
                 msg = "a tenant-scoped applicability rule requires target_tenant_id"
                 raise ValidationError(msg)
-            if rule.scope is AuthorityScope.CAPABILITY and not rule.capability_ids:
-                msg = "a capability-scoped applicability rule requires at least one capability id"
+            if rule.scope is AuthorityScope.ENTITY and not rule.entity_ids:
+                msg = "an entity-scoped applicability rule requires at least one entity id"
                 raise ValidationError(msg)
 
     # -- row helpers ----------------------------------------------------------
@@ -478,7 +478,7 @@ class _MaterialisationMixin:
         await session.execute(
             text(
                 "INSERT INTO arc_applicability_rules ("
-                "  revision_id, tenant_id, scope, target_tenant_id, capability_ids, domain_ids,"
+                "  revision_id, tenant_id, scope, target_tenant_id, entity_ids, domain_ids,"
                 "  intent_kinds, action_classes, environments, data_sensitivity_tiers,"
                 "  effective_from, effective_until, is_mandatory"
                 ") SELECT :rid, r.tenant_id, :scope, :target, :caps, :domains, :kinds, :actions,"
@@ -489,7 +489,7 @@ class _MaterialisationMixin:
                 "rid": revision_id,
                 "scope": str(rule.scope),
                 "target": rule.target_tenant_id,
-                "caps": list(rule.capability_ids) or None,
+                "caps": list(rule.entity_ids) or None,
                 "domains": list(rule.domain_ids) or None,
                 "kinds": list(rule.intent_kinds) or None,
                 "actions": list(rule.action_classes) or None,

@@ -709,18 +709,6 @@
             ],
             "title": "Lower Scope Action Class"
           },
-          "lower_scope_capability_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lower Scope Capability Id"
-          },
           "lower_scope_data_sensitivity": {
             "anyOf": [
               {
@@ -744,6 +732,18 @@
               }
             ],
             "title": "Lower Scope Domain Id"
+          },
+          "lower_scope_entity_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lower Scope Entity Id"
           },
           "lower_scope_environment": {
             "anyOf": [
@@ -770,7 +770,7 @@
             "title": "Lower Scope Intent Kind"
           },
           "lower_scope_kind": {
-            "pattern": "^(tenant|domain|capability|task)$",
+            "pattern": "^(tenant|domain|entity|intent)$",
             "title": "Lower Scope Kind",
             "type": "string"
           },
@@ -810,35 +810,6 @@
               }
             ],
             "title": "Action Classes"
-          },
-          "capability_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Capability Ids"
-          },
-          "capability_labels": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Capability Labels"
           },
           "data_sensitivity_tiers": {
             "anyOf": [
@@ -892,6 +863,35 @@
             ],
             "title": "Effective Until"
           },
+          "entity_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Ids"
+          },
+          "entity_labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Labels"
+          },
           "environments": {
             "anyOf": [
               {
@@ -934,7 +934,7 @@
               "global",
               "tenant",
               "domain",
-              "capability",
+              "entity",
               "intent"
             ],
             "title": "Scope",
@@ -8234,13 +8234,6 @@
         "additionalProperties": false,
         "description": "The task manifest, in exactly the field set the host canonicalized.\n\nEvery field is a string or a list of strings because that is what was\nsigned. Re-typing one here would change the bytes the digest is computed\nover, and the attestation would stop verifying against a manifest the\ncaller did in fact send.",
         "properties": {
-          "capability_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Capability Ids",
-            "type": "array"
-          },
           "data_sensitivity": {
             "maxLength": 64,
             "minLength": 1,
@@ -8252,6 +8245,13 @@
               "type": "string"
             },
             "title": "Domain Ids",
+            "type": "array"
+          },
+          "entity_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entity Ids",
             "type": "array"
           },
           "environment": {
@@ -8536,21 +8536,6 @@
         "additionalProperties": false,
         "description": "Exactly the closed `arc_observation_class_predicate_v2` profile object.",
         "properties": {
-          "capability_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Capability Ids"
-          },
           "data_sensitivity_tier": {
             "anyOf": [
               {
@@ -8578,6 +8563,21 @@
               }
             ],
             "title": "Domain Ids"
+          },
+          "entity_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Ids"
           },
           "environment": {
             "anyOf": [
@@ -12756,8 +12756,8 @@
           "tenant_non_mandatory",
           "domain_mandatory",
           "domain_non_mandatory",
-          "capability_mandatory",
-          "capability_non_mandatory",
+          "entity_mandatory",
+          "entity_non_mandatory",
           "intent_mandatory",
           "intent_non_mandatory"
         ],

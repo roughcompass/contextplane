@@ -122,8 +122,8 @@ def _rule_from_dict(rule: dict[str, Any], revision_id: uuid.UUID) -> Applicabili
         scope=AuthorityScope(rule["scope"]),
         is_mandatory=bool(rule.get("is_mandatory")),
         target_tenant_id=uuid.UUID(str(target)) if target else None,
-        capability_ids=_uuid_set(rule.get("capability_ids")),
-        capability_labels=_str_set(rule.get("capability_labels")),
+        entity_ids=_uuid_set(rule.get("entity_ids")),
+        entity_labels=_str_set(rule.get("entity_labels")),
         domain_ids=_str_set(rule.get("domain_ids")),
         intent_kinds=_vocab_set(rule.get("intent_kinds"), IntentKind),
         action_classes=_vocab_set(rule.get("action_classes"), ActionClass),
@@ -283,7 +283,7 @@ def _predicate_matches(class_predicate: dict[str, Any], manifest_class: dict[str
         "requested_action_classes",
         "environment",
         "data_sensitivity_tier",
-        "capability_ids",
+        "entity_ids",
         "domain_ids",
     ):
         allowed = class_predicate.get(field)

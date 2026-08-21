@@ -160,8 +160,8 @@ class _FakeClock:
 
 
 class _AllowAll:
-    async def visible_capability_ids(self, ctx: object, capability_ids: list[uuid.UUID]) -> list[uuid.UUID]:
-        return list(capability_ids)
+    async def visible_entity_ids(self, ctx: object, entity_ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        return list(entity_ids)
 
 
 def _ctx(*, tenant_id: uuid.UUID | None = None, roles: list[str] | None = None) -> ArcRequestContext:

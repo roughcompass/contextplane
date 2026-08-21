@@ -213,7 +213,7 @@ class ExceptionApprovalBody(_Strict):
 class ApproveExceptionRequest(_Strict):
     higher_scope_directive_id: uuid.UUID
     higher_scope_revision_id: uuid.UUID
-    lower_scope_kind: str = Field(pattern=r"^(tenant|domain|capability|task)$")
+    lower_scope_kind: str = Field(pattern=r"^(tenant|domain|entity|intent)$")
     replacement_conflict_descriptor: dict[str, Any]
     approval: ExceptionApprovalBody
     effective_from: datetime.datetime
@@ -221,7 +221,7 @@ class ApproveExceptionRequest(_Strict):
     justification: str = Field(min_length=1, max_length=4000)
     effective_until: datetime.datetime | None = None
     lower_scope_domain_id: str | None = Field(default=None, max_length=200)
-    lower_scope_capability_id: uuid.UUID | None = None
+    lower_scope_entity_id: uuid.UUID | None = None
     lower_scope_intent_kind: str | None = Field(default=None, max_length=64)
     lower_scope_action_class: str | None = Field(default=None, max_length=64)
     lower_scope_environment: str | None = Field(default=None, max_length=64)
@@ -485,7 +485,7 @@ async def approve_context_exception(
         justification=body.justification,
         effective_until=body.effective_until,
         lower_scope_domain_id=body.lower_scope_domain_id,
-        lower_scope_capability_id=body.lower_scope_capability_id,
+        lower_scope_entity_id=body.lower_scope_entity_id,
         lower_scope_intent_kind=body.lower_scope_intent_kind,
         lower_scope_action_class=body.lower_scope_action_class,
         lower_scope_environment=body.lower_scope_environment,
