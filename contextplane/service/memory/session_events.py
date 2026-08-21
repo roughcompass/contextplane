@@ -34,7 +34,7 @@ from sqlalchemy import Row, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.types import Clock, TenantContext
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle: extraction reads SessionEvent
@@ -60,6 +60,31 @@ MAX_PAGE = 1000
 # constraint problem would spin forever.
 _MAX_SEQ_ATTEMPTS = 5
 _UNIQUE_VIOLATION = "23505"
+
+
+@dataclasses.dataclass(frozen=True)
+class ExternalOrigin:
+    """Where a replayed event came from, and when it happened there.
+
+    One object rather than four parameters because the table refuses every
+    partial combination: an origin without an identity or a clock is a
+    provenance claim nothing can check, and an identity or clock without an
+    origin belongs to an unnamed namespace. Making the incomplete state
+    unconstructible in Python means a caller meets that rule at its own
+    boundary rather than as an `IntegrityError` from two layers down.
+
+    `observed_at` is when the *source* saw it, against `created_at`'s "when we
+    stored it". `assertion_provenance` splits out a third clock -- `event_time`,
+    when the thing happened -- and this deliberately does not: for a
+    conversational turn replayed from an external system those two collapse, and
+    a column the source cannot distinguish would carry a duplicate value with no
+    rule for when it differs.
+    """
+
+    source_system: str
+    source_namespace: str
+    external_record_id: str
+    observed_at: datetime.datetime
 
 
 @dataclasses.dataclass(frozen=True)
@@ -115,6 +140,7 @@ class MemoryService:
         body: str,
         tool_name: str | None = None,
         metadata: dict[str, Any] | None = None,
+        external: ExternalOrigin | None = None,
     ) -> SessionEvent:
         """Append one immutable event to the caller's session.
 
@@ -137,10 +163,23 @@ class MemoryService:
                     metadata=metadata or {},
                     now=now,
                     size_bytes=size_bytes,
+                    external=external,
                 )
             except IntegrityError as exc:
                 if _sqlstate(exc) != _UNIQUE_VIOLATION:
                     raise
+                if _is_duplicate_external_record(exc):
+                    # Not a lost sequence race. `uq_mse_external_record` means
+                    # this upstream record is already here, and retrying would
+                    # collide identically `_MAX_SEQ_ATTEMPTS` times and then
+                    # report a sequence problem for what is a dedup outcome.
+                    msg = (
+                        f"external record {external.external_record_id!r} from "
+                        f"{external.source_system}/{external.source_namespace} is already recorded"
+                        if external
+                        else "this external record is already recorded"
+                    )
+                    raise ConflictError(msg) from exc
                 # Lost the race for this position. The next read of MAX(seq)
                 # sees the winner's row, so the retry takes the position after
                 # it rather than colliding again.
@@ -161,6 +200,7 @@ class MemoryService:
         metadata: dict[str, Any],
         now: datetime.datetime,
         size_bytes: int,
+        external: ExternalOrigin | None,
     ) -> SessionEvent:
         async with self._session_factory() as session, session.begin():
             # Retention is read per write rather than cached, so a tenant that
@@ -178,7 +218,8 @@ class MemoryService:
                     text(
                         "INSERT INTO memory_session_events ("
                         "  tenant_id, actor_id, session_id, seq, kind, body, tool_name, metadata,"
-                        "  created_at, expires_at, size_bytes"
+                        "  created_at, expires_at, size_bytes,"
+                        "  source_system, source_namespace, external_record_id, observed_at"
                         ") SELECT :tid, :aid, :sid,"
                         "         COALESCE(("
                         "           SELECT MAX(seq) FROM memory_session_events"
@@ -186,7 +227,9 @@ class MemoryService:
                         "         ), 0) + 1,"
                         "         :kind, :body, :tool, CAST(:meta AS JSONB), CAST(:now AS TIMESTAMPTZ),"
                         "         CAST(:now AS TIMESTAMPTZ) + make_interval(days => CAST(:days AS INTEGER)),"
-                        "         CAST(:size AS INTEGER) "
+                        "         CAST(:size AS INTEGER),"
+                        "         :source_system, :source_namespace, :external_record_id,"
+                        "         CAST(:observed_at AS TIMESTAMPTZ) "
                         "RETURNING event_id, seq, created_at"
                     ),
                     {
@@ -197,6 +240,12 @@ class MemoryService:
                         "body": body,
                         "tool": tool_name,
                         "meta": json.dumps(metadata, sort_keys=True),
+                        # All four move together or not at all; the table's two
+                        # CHECKs refuse a partial origin in either direction.
+                        "source_system": external.source_system if external else None,
+                        "source_namespace": external.source_namespace if external else None,
+                        "external_record_id": external.external_record_id if external else None,
+                        "observed_at": external.observed_at if external else None,
                         "now": now,
                         "days": retention_days,
                         # Recorded at ingest because this is the only moment the
@@ -500,12 +549,30 @@ def _to_event(row: Row[Any]) -> SessionEvent:
     )
 
 
+def _is_duplicate_external_record(exc: BaseException) -> bool:
+    """Whether a unique violation came from `uq_mse_external_record`.
+
+    Matched on the key column rather than the index name, because
+    `memory_session_events` is hash-partitioned and Postgres reports a unique
+    violation against the *child* index -- a generated name depending on which
+    partition the tenant hashed to. The parent's name never appears in the
+    error.
+
+    Both of this table's unique keys raise the same SQLSTATE, so without this
+    the sequence-allocation retry cannot tell "somebody took my position" from
+    "this upstream record already exists", and would spend its attempts on a
+    collision that is deterministic.
+    """
+    return "external_record_id" in str(exc)
+
+
 def _sqlstate(exc: BaseException) -> str | None:
     state = getattr(exc, "sqlstate", None) or getattr(getattr(exc, "orig", None), "sqlstate", None)
     return str(state) if state is not None else None
 
 
 __all__ = [
+    "ExternalOrigin",
     "DEFAULT_PAGE",
     "EVENT_KINDS",
     "MAX_BODY_BYTES",

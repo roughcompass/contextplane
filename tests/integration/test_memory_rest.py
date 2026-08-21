@@ -193,6 +193,80 @@ async def test_an_unknown_order_is_rejected(client: AsyncClient, persona) -> Non
     assert resp.status_code == 422
 
 
+# --- external origin ------------------------------------------------------------
+
+
+def _origin(**overrides: object) -> dict[str, object]:
+    origin: dict[str, object] = {
+        "source_system": "chat",
+        "source_namespace": "slack",
+        "external_record_id": f"msg-{uuid.uuid4()}",
+        "observed_at": "2026-08-01T10:00:00Z",
+    }
+    origin.update(overrides)
+    return origin
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_a_replay_can_declare_its_upstream_origin_over_http(client: AsyncClient, persona) -> None:
+    """The half that makes the columns *caller-supplied* rather than reachable
+    only from Python."""
+    with patch_validator_for_actor(persona):
+        resp = await client.post(
+            "/v1/memory/sessions/EXT1/events",
+            json=_event(body="said elsewhere", external=_origin()),
+            headers=bearer_headers(tenant_slug=persona.slug),
+        )
+    assert resp.status_code == 201, resp.text
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_resending_one_upstream_record_is_a_conflict_not_a_second_turn(client: AsyncClient, persona) -> None:
+    """An exporter re-sending a window must not fan one record into two events.
+
+    409 rather than the 500 an untranslated `ConflictError` would produce: the
+    request is well formed and the dedup is working, which is not a service
+    fault.
+    """
+    origin = _origin()
+    headers = bearer_headers(tenant_slug=persona.slug)
+    with patch_validator_for_actor(persona):
+        first = await client.post(
+            "/v1/memory/sessions/EXT2/events",
+            json=_event(body="once", external=origin),
+            headers=headers,
+        )
+        # A different session on purpose: the same upstream record replayed
+        # into two conversations is still one upstream record.
+        again = await client.post(
+            "/v1/memory/sessions/EXT3/events",
+            json=_event(body="twice", external=origin),
+            headers=headers,
+        )
+
+    assert first.status_code == 201, first.text
+    assert again.status_code == 409, again.text
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_a_partial_origin_is_refused_at_the_boundary(client: AsyncClient, persona) -> None:
+    """The table's two CHECKs, met one layer earlier.
+
+    An origin missing its clock reaches Postgres as an `IntegrityError` and the
+    caller sees a 500 for what is a malformed request. Nesting the four fields
+    makes request validation refuse it first.
+    """
+    partial = _origin()
+    del partial["observed_at"]
+    with patch_validator_for_actor(persona):
+        resp = await client.post(
+            "/v1/memory/sessions/EXT4/events",
+            json=_event(body="incomplete", external=partial),
+            headers=bearer_headers(tenant_slug=persona.slug),
+        )
+    assert resp.status_code == 422, resp.text
+
+
 # --- claim retrieval ----------------------------------------------------------
 
 

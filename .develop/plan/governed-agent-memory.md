@@ -2349,7 +2349,7 @@ Acceptance:
 
 ### E2-T2 — Provenance completeness: when the caller must say when and which
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `observed_time` and `external_record_id` on `memory_session_events`,
 required exactly when the stream declares an external source.
@@ -2369,9 +2369,78 @@ task also builds the declaration site, or the conditional collapses to
 "required whenever the caller supplies a source", which is weaker and should be
 chosen deliberately rather than by default.
 
+**The tree already had a provenance vocabulary, and it is better than E2's.**
+`assertion_provenance` carries `source_system`, `source_namespace`,
+`external_record_id`, three distinct clocks (`event_time`, `observed_at`,
+`ingested_at`), an `authority` enum, freshness and revocation. So the columns
+are named `observed_at`, not E2's `observed_time` -- two shipped tables spell it
+that way and one does not, and a fourth spelling in a fifth table makes the next
+reader ask whether the difference means something.
+
+**One upstream clock, not three, and that is a decision.** For a conversational
+turn replayed from an external system, `event_time` and `observed_at` collapse:
+a chat message's timestamp is both when it was said and when the exporter saw
+it. `created_at` already plays `ingested_at`. A column the source cannot
+distinguish would hold a duplicate value with no rule for when it differs.
+
+**Not `assertion_provenance` reused, deliberately.** Its three inbound foreign
+keys are entity attributes, relationship metadata and ownership assignments --
+each "somebody claimed X about Y". A conversational turn is not a claim about an
+entity, and a foreign key would make that category error load-bearing.
+
+**The conditional resolved to the weaker of the two answers, and this is the
+scoping call E1 left open.** E1 wants declarations "at source-namespace
+registration"; that surface does not exist. Rather than build a registry whose
+only consumer is one CHECK, an event that names a `source_system` *is* an event
+declaring an external origin. What that gives up: a namespace cannot state once
+that all its events carry external identity, so the guarantee is per row and a
+caller can be inconsistent across a stream. What it avoids: pre-empting a
+decision that belongs to whoever resolves E1's clause. If that registry appears,
+the CHECK narrows to reference it and no data migrates.
+
+**Threading it through surfaced an interaction worth more than the columns.**
+`record_event` allocates `seq` by inserting and retrying on unique violation.
+A second unique key on the table means a duplicate upstream record raises the
+*same* SQLSTATE as a lost sequence race -- so the retry would burn all its
+attempts on a deterministic collision and then report a sequence-allocation
+failure for what is an idempotent replay. The discriminator matches on the key
+column rather than the index name, because on a hash-partitioned table Postgres
+reports the *child* index whose generated name depends on which partition the
+tenant hashed to. The parent's name never appears in the error, which is worth
+knowing anywhere else that branches on a constraint name.
+
+**"Caller-supplied" needed the HTTP surface, so the contract moved.** A first
+pass stopped at the migration and the service, which left four columns that no
+caller outside Python could write -- the same defect the envelope gate's own
+docstring names about governance objects nothing consults. `POST
+/v1/memory/sessions/{id}/events` now takes an optional `external` object and
+`openapi.json` is regenerated; the addition is a new optional field and a new
+schema, so the contract change is backward compatible and the UI pin can follow
+on its own schedule rather than atomically.
+
+Nested rather than four sibling fields, so the incomplete state is
+unrepresentable: request validation refuses a partial origin where the table's
+two CHECKs would otherwise surface as a 500 on a well-formed-looking request.
+`_translate` gained `ConflictError -> 409` for the same reason -- untranslated,
+a duplicate replay read as a service fault on what is the dedup working.
+
+**The read surface is deliberately not built.** `SessionEvent` does not carry the
+origin and `EventResponse` does not return it, so provenance is write-only today
+and verifiable only by the 409 or by SQL. The consumer that would justify it --
+replay reconciliation asking "which upstream records do you already have" --
+is not stated by any epic here, and ADR-0010 declined to build a read path
+speculatively for exactly this reason. Adding it later is four columns on a
+SELECT and two optional response fields, with no migration.
+
+**The MCP `record_session_event` tool is unchanged**, so an agent cannot declare
+an external origin and an ingestion client can. That asymmetry is intended: a
+replay is an ingestion act, and the MCP surface is where an agent writes its own
+turns.
+
 Acceptance:
     .venv/bin/python -m alembic upgrade head
-    make lint && make typecheck && make test-coverage
+    .venv/bin/python -m pytest tests/integration -q -k "memory_session_events or memory_rest"
+    make all
 
 ### E2-T3 — `memory_session_events` is partitioned
 
