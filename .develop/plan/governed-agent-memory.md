@@ -2112,7 +2112,7 @@ Acceptance:
 
 ### E1-T10 — Cold start: three principals, and the first envelope is advisory
 
-**Kind:** task · **Status:** pending · **Blocked by:** E1-T8 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E1-T8 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the first envelope on a deployment, per ADR-0008 — approved by the
 authority that already exists, classified for actor separation, and starting
@@ -2136,6 +2136,54 @@ day one is a governed object whose first act is to be ungoverned. Advisory is no
 propose-only: nothing is queued, nothing waits, and no operation is refused — it
 records what would have been.
 
+**Most of this was already true, and the one missing piece was the piece that
+mattered.** Nothing new was needed for authority (E1-T6a's grant already
+splits allowlist from tenant admin), nor for the initial state (E1-T8's column
+defaults to `advisory`), nor for three-principal approval — `risk.py`
+classifies any revision carrying a global mandatory rule as `global_mandatory`,
+and `activation_predicates.py` then requires three distinct identities where
+everything else requires two. The mechanism shipped long ago.
+
+What was missing was anywhere that *insisted on having got it*. A binding
+now refuses a global envelope whose revision is not classified
+`global_mandatory`, which is what turns "approved by a named human authority"
+from a sentence into a check.
+
+**Why the classification and not the rule shape, which would have been
+cheaper.** There are two activation paths and only one enforces actor
+separation. `ArtifactService.activate` is gated by `assert_can_write_artifact`
+alone, so a deployment operator can register and activate a global policy
+carrying mandatory rules with no separation whatsoever. Checking that a rule
+is global-and-mandatory would therefore be bypassable by the one principal
+most able to bypass it. The classification exists only when the revision came
+through the authoring pipeline, which is where the predicate runs — so its
+*absence* is the signal, and a directly-registered revision fails the same
+check with "no proposal version".
+
+**Checked after authorization, not before.** A tenant admin who may not write
+a global envelope gets the authorization refusal and learns nothing about that
+document's approval history.
+
+Tenant envelopes are deliberately exempt: the bar tracks the blast radius, and
+a separation ritual is what deployment-wide authority costs.
+
+**ADR-0005's Assumption 1 resolves affirmatively, with no new plumbing.** It
+flagged that the tree never says which identity an envelope binds to, and that
+if the answer were "none without new plumbing" the first enforcement point
+would move and the advisory stage could not start where the ADR assumes.
+E1-T6a answered the first half — an `(issuer, subject)` pair — and
+`api/middleware/tenant.py` answers the second: it sets
+`request.state.oidc_claims` on *every* authenticated request, not only ARC
+ones, which is exactly how `arc_authoring.py` builds its own context. So
+`POST /v1/memory/sessions/{session_id}/events` can construct a
+`WorkloadIdentity` today.
+
+**One thing the ADR names does not exist.** It cites "the intent write routes
+whose authority model is `AuthorityOrigin` in `contextplane/context/intent.py`"
+as a second enforcement point. `AuthorityOrigin` appears nowhere in the tree.
+The memory events route does exist and is the real first enforcement point;
+whatever task wires it should not go looking for the other.
+
 Acceptance:
-    .venv/bin/python -m pytest tests/integration -q -k "cold_start or first_envelope"
+    .venv/bin/python -m pytest tests/integration -q -k "autonomy_envelope"
     make lint && make test-coverage

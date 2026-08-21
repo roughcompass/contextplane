@@ -89,6 +89,21 @@ from contextplane.types import Clock
 #: The one constraint whose violation is a business outcome rather than a bug.
 _ONE_PER_PRINCIPAL = "ex_arc_envelope_bindings_one_per_principal"
 
+#: The classification a global envelope must carry, and the whole of what makes
+#: "named human authority" enforceable rather than aspirational.
+#:
+#: `risk.py` classifies a revision as `global_mandatory` when any of its
+#: applicability rules is global-scoped and mandatory, and
+#: `activation_predicates.py` then requires **three distinct principals** --
+#: submitter, approver, activator -- where every other classification requires
+#: two. So a global envelope written with mandatory rules cannot reach `active`
+#: without three separate people, and this constant is where a binding refuses
+#: to trust one that did not.
+#:
+#: Not a new authority concept, which is the point: the mechanism already
+#: shipped, and the only thing missing was somewhere that insisted on it.
+_GLOBAL_ENVELOPE_CLASSIFICATION = "global_mandatory"
+
 #: `exclusion_violation`. Matched together with the constraint name, following
 #: `service/memory/session_events.py`: a substring search of the message text
 #: happens to work today, but it also matches any future constraint whose name
@@ -109,6 +124,16 @@ class EnvelopeAlreadyBound(RegistryError):
     envelopes. This says the principal already has one, and replacing it means
     revoking that one first -- an explicit act, at the displaced envelope's own
     scope, so that nothing silently supersedes an authority record.
+    """
+
+
+class InsufficientEnvelopeApproval(RegistryError):
+    """A global envelope that did not go through three-principal approval.
+
+    Distinct from `NotAnEnvelope`: the revision *is* a policy revision and it
+    *is* active. What it lacks is the actor separation a deployment-wide
+    authority object has to have behind it, and the caller's remedy is to
+    re-author it with mandatory rules rather than to point somewhere else.
     """
 
 
@@ -230,9 +255,11 @@ _INSERT = text(
 #: is, instead of being told the revision does not exist.
 _LOAD_REVISION = text(
     """
-    SELECT r.artifact_id, r.lifecycle_state, a.kind, a.tenant_id
+    SELECT r.artifact_id, r.lifecycle_state, a.kind, a.tenant_id,
+           v.risk_classification
     FROM arc_revisions AS r
     JOIN arc_artifacts AS a ON a.artifact_id = r.artifact_id
+    LEFT JOIN arc_authoring_proposal_versions AS v ON v.revision_id = r.revision_id
     WHERE r.revision_id = :revision_id
     """
 )
@@ -534,6 +561,28 @@ class AutonomyEnvelopeService:
         if not self._is_deployment_operator(ctx):
             scope = AuthorityScope.GLOBAL if row.tenant_id is None else AuthorityScope.TENANT
             self._authorization.assert_can_write_artifact(ctx, ArtifactScope(scope=scope, tenant_id=row.tenant_id))
+
+        # After authorization, deliberately: a caller who may not write this
+        # envelope learns that and nothing else about the document's approval
+        # history.
+        #
+        # A global envelope is deployment-wide authority, so the document behind
+        # it must have cleared three-principal approval. Not a new rule --
+        # `global_mandatory` already demands exactly that at activation, and
+        # this is the first place that insists on having got it. A revision
+        # registered directly has no proposal version and so no classification
+        # at all, which fails the same way and should: it went through no
+        # approval whatsoever. Global only, matching the authority split; a
+        # tenant envelope needs tenant admin, not a separation ritual.
+        if require_active and row.tenant_id is None and row.risk_classification != _GLOBAL_ENVELOPE_CLASSIFICATION:
+            found = row.risk_classification or "no proposal version"
+            msg = (
+                f"revision {revision_id} is classified {found}; a global envelope must be "
+                f"{_GLOBAL_ENVELOPE_CLASSIFICATION}, which is what requires three distinct principals "
+                "to have approved it. Author it with mandatory applicability rules."
+            )
+            raise InsufficientEnvelopeApproval(msg)
+
         artifact_id: uuid.UUID = row.artifact_id
         return artifact_id
 
@@ -689,6 +738,7 @@ __all__ = [
     "BoundEnvelope",
     "EnvelopeAlreadyBound",
     "EnvelopeGrant",
+    "InsufficientEnvelopeApproval",
     "NotAnEnvelope",
     "WorkloadIdentity",
 ]
