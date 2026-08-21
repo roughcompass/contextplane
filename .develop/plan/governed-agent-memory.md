@@ -1754,10 +1754,17 @@ can**: `_applicability_rule` in `authoring_profile_shapes.py` accepts
 `entity_labels` on the wire, `submission.py:597` reads it off the candidate,
 `_applicability_rule_row` carries it into `MaterialisedApplicabilityRule`, and
 `insert_applicability_rule` writes it — with nothing but the CHECK above in
-between, which permits labels-only. So the column is populatable through a
-shipped API and the "inert" claim needs retracting along with the fix. Confirm
-end-to-end with a proposal-submission test before changing anything; the trace
-is solid but it is a trace, not an observation.
+between, which permits labels-only.
+
+**Confirmed by observation, through the real write and read paths.** A probe
+called `insert_applicability_rule` (the function `submission.py:314` calls) with
+`entity_ids=None, entity_labels=("payments",), scope="entity"`; the database
+accepted the row. Reading it back through `corpus._rule_from_row` rehydrated
+`ApplicabilityRule(scope=entity, entity_ids=set(), entity_labels={'payments'})`,
+and `rule_applies` returned **True** for a manifest carrying an unrelated entity
+id and an unrelated domain. Nothing was hand-constructed. So the "inert" claims
+in `test_arc_selection.py` and `corpus.py` need retracting along with the fix —
+they are true of `ApplicabilityDraft` and false of the service as a whole.
 
 Three ways out, to be decided with grounding rather than now:
 
