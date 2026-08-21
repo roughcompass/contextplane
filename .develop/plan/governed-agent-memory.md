@@ -2211,3 +2211,195 @@ whatever task wires it should not go looking for the other.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "autonomy_envelope"
     make lint && make test-coverage
+
+## Task decomposition — third wave (E2, now that the envelope has a shape)
+
+Tasks for **E2 only**. The second wave said E2–E13 become cuttable when E1-T6
+and E1-T7 land, because until then their contracts would embed a guess about an
+object with no shape. Both have landed, so E2 is cuttable — and E2 is the one
+worth cutting first, because six of the remaining epics are blocked on it.
+
+**E2's stated subject does not exist, and this is the sixth task set in this
+plan where that has been true.** The epic opens with
+`POST /v1/sessions/{id}/observations`. There is no such route and no
+observations table: the `arc_observation_*` tables are ARC's shadow-observation
+machinery, which watches what activating a revision would do to the corpus, and
+has nothing to do with an agent writing what it saw. ADR-0005 already recorded
+this in passing when choosing enforcement points; it is stated here as the thing
+the decomposition is actually about.
+
+**The real surface is `POST /v1/memory/sessions/{session_id}/events`**
+(`api/routers/memory.py:156`) writing `memory_session_events`. So E2 is a
+hardening of a shipped write path, not a greenfield one — which changes what
+every task below is allowed to assume, and means the tasks must say what already
+holds rather than re-specifying it.
+
+**Measured against E2's own sync list, before any task was written:**
+
+| E2 asks for | State in the tree |
+|---|---|
+| auth/tenant via the visibility chokepoint | present — `get_tenant_context` |
+| PII scan per tenant policy | present — `run_admission` before the write |
+| idempotency | present — sequence allocation retried on unique violation |
+| envelope digest check | **absent** — nothing consults E1's object |
+| `observed_time`, `external_record_id` | **absent** — neither column exists |
+| one partitioned insert | **absent** — `relkind` is `r`, a plain table |
+| cheap *synchronous* embedding | **inverted** — embedding is async, via `embedding_drain.py` |
+| per-tenant fairness, lag stamps | **absent** — no fairness primitive anywhere in the tree |
+
+Three of those are ordinary build work. One is a decision that contradicts a
+shipped design and therefore takes an ADR first, the way E1's four did.
+
+### E2-T1 — The envelope decision reaches a write path
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: `AutonomyEnforcementService.evaluate` consulted by
+`POST /v1/memory/sessions/{session_id}/events`, refusing in `enforcing` and
+recording in `advisory`.
+
+**Everything E1 built is unreachable until this lands.** The decision, the
+advisory records and the graduation pre-flight are all tested and all
+uncalled — a governance object nothing consults governs nothing, and the
+graduation scan in particular cannot observe a population that never produces a
+record.
+
+**The plumbing exists and was checked.** `api/middleware/tenant.py:130` sets
+`request.state.oidc_claims` on every authenticated request, not only ARC ones,
+which is how `arc_authoring.py:85` builds its own context — so this route can
+construct an `ArcRequestContext` and hence a `WorkloadIdentity`. It already
+takes `request: Request`. That resolves ADR-0005's Assumption 1 affirmatively:
+no new plumbing.
+
+**Do not go looking for `AuthorityOrigin`.** ADR-0005 names a second enforcement
+point as "the intent write routes whose authority model is `AuthorityOrigin` in
+`contextplane/context/intent.py`". That symbol exists nowhere in the tree. The
+memory events route is the one real enforcement point the ADR names, and this
+task is only that one.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "memory_events and envelope"
+    make lint && make typecheck && make test-coverage
+
+### E2-T2 — Provenance completeness: when the caller must say when and which
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: `observed_time` and `external_record_id` on `memory_session_events`,
+required exactly when the stream declares an external source.
+
+**Neither column exists**, so this is additive. The conditional requiredness is
+the substance: an event a caller observed at some upstream time is not the same
+as one this service received then, and without the distinction every
+bitemporal read over this table is reading receipt time and calling it
+observation time.
+
+**This task inherits E1's unresolved clause and cannot settle it alone.** E1's
+body asks for "stream-scoped action-class and sensitivity declarations at
+source-namespace registration", and *what declares an external source* is
+exactly that missing registration surface. `arc_source_connectors` is the only
+registration table in the tree and carries no such declaration. So either this
+task also builds the declaration site, or the conditional collapses to
+"required whenever the caller supplies a source", which is weaker and should be
+chosen deliberately rather than by default.
+
+Acceptance:
+    .venv/bin/python -m alembic upgrade head
+    make lint && make typecheck && make test-coverage
+
+### E2-T3 — `memory_session_events` is partitioned
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the events table partitioned, so retention and disposal are a detach
+rather than a delete.
+
+**It is a plain table today** (`relkind = 'r'`), and E2's "one partitioned
+insert" assumes otherwise. The precedent to follow is `audit_log`: range
+partitioning by timestamp with `_monthly_partition_bounds` generating a fixed,
+deterministic set at migration time, deliberately not `date.today()` — a
+partition set that depends on when the migration ran names its children
+differently in every environment.
+
+**Converting a populated table is the whole difficulty**, and the tree has done
+it once: `scripts/partition_migrate.py` plus the `audit_log_new` shadow table in
+the baseline. That is the shape to reuse, and the reason this is its own task
+rather than a clause of another.
+
+Note this is what E6 needs — its crypto-shredding disposal is a partition
+operation — so the ordering between them is worth stating when E6 is cut.
+
+Acceptance:
+    .venv/bin/python -m alembic upgrade head
+    make lint && make test-coverage
+
+### E2-T4 — ADR: synchronous embedding contradicts the shipped drain
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: record the decision, because E2 asks for the opposite of what ships.
+
+E2 says "cheap synchronous embedding" on the write path. The tree embeds
+**asynchronously**: `service/retrieval/embedding_drain.py` writes `embeddings`
+keyed `(target_type, target_id)`, and the table is already hash-partitioned.
+Making the write path embed synchronously is not an addition, it is a reversal,
+and it puts a model call inside the latency budget of the hot path E2 also wants
+a published p99 for.
+
+The ADR has to answer: what "cheap" means in milliseconds against that p99; what
+happens to the write when the embedding provider is slow or down (refuse, or
+write and enqueue); whether the drain remains for backfill and re-embedding on a
+model change; and whether a synchronously embedded row and a drained one are
+distinguishable, because a reader that cannot tell them apart cannot know
+whether a missing vector means "not yet" or "never".
+
+Six of the ten values E1 needed came from four ADRs written first, and the ones
+that went wrong went wrong where a task assumed instead. This is the same shape.
+
+Acceptance:
+    test -f .develop/adr/0010-synchronous-embedding.md
+    make doc-links && make doc-refs
+
+### E2-T5 — Per-tenant fairness and lag stamps for the async remainder
+
+**Kind:** task · **Status:** pending · **Blocked by:** E2-T4 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the work E2 moves off the hot path, scheduled so one tenant cannot starve
+another, and stamped so lag is observable.
+
+**There is no fairness primitive anywhere in the tree** — no weighted queue, no
+round-robin scheduler, no per-tenant budget. Every existing worker drains in
+insertion order, which is precisely the starvation E2 names. So this task
+introduces a mechanism rather than applying one, and its first job is to say
+what "fair" means here: equal share per tenant, share proportional to some
+entitlement, or bounded worst-case latency regardless of share.
+
+Blocked by T4 because what remains asynchronous is what T4 decides.
+
+**Lag cannot be a tenant-labelled metric.** `contextplane/metrics.py` forbids
+tenant labels, so "how far behind is tenant X" has to be a column and a query,
+the same conclusion E1-T8 reached for the advisory records.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "fairness or lag"
+    make lint && make test-coverage
+
+### E2-T6 — The published p99, including the PII-block mode
+
+**Kind:** task · **Status:** pending · **Blocked by:** E2-T1, E2-T4 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a p99 for the write path that is asserted, not stated.
+
+E2 says "published p99 includes the PII-block mode", which is the interesting
+half: the blocking path does more work than the passing one, so a p99 measured
+only on clean writes describes the case that was never in doubt.
+
+**The one published numeric SLO in this repository is webhook fan-out at
+p95 < 30s, and it is asserted by a perf test.** That is the bar: a number with a
+test behind it, not a sentence. The latency histogram's buckets top out at ten
+seconds, so any figure outside that range is unmeasurable on what ships and must
+not be published — the same constraint that made E1-T7's suspension SLO a bound
+on operations rather than on wall-clock.
+
+Blocked by T1 and T4 because both add work to the path being measured, and a
+number published before they land measures a path that will not exist.
