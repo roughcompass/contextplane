@@ -1723,19 +1723,41 @@ what gives those strings meaning; validating rule values against it is part of
 this task, because without it the column admits any label and the matrix
 silently widens on a typo.
 
-**A live widening bug found while grounding E1-T6a, and this task owns it.**
+**A widening bug found while grounding E1-T6a, and this task owns it.**
 `entity_labels` is stored, submitted, snapshotted, materialised and round-tripped
 everywhere — and **never matched**. `rule_applies` (`selection.py:198`) has no
 `entity_labels` branch, and `IntentManifest` has no labels field to match
 against. Meanwhile `ApplicabilityRule.__post_init__` accepts labels *alone* as
-satisfying the entity-scope requirement. So this constructs and returns `True`
-against a manifest about something else entirely:
+satisfying the entity-scope requirement, and so does the database:
+`ck_arc_rules_entity_scope_target`, read from the live schema, is
+
+    scope <> 'entity' OR array_length(entity_ids,1) >= 1
+                      OR array_length(entity_labels,1) >= 1
+
+So this constructs, passes every constraint, and returns `True` against a
+manifest about something else entirely:
 
     ApplicabilityRule(scope=ENTITY, entity_labels=frozenset({"payments"}))
 
 The narrowest scope above `intent` becomes the widest. `_matches_any`'s own
 docstring says "the dangerous cases are refused at construction rather than
 silently widened here" — and this is the door construction leaves open.
+
+**The repo believes this is unreachable, and that belief is out of date.**
+`tests/unit/test_arc_selection.py` calls `entity_labels` "the live example" and
+says it is "inert only because nothing populates the column"; `corpus.py`'s
+`_obligation_rule` says the asymmetry "is inert only because `rule_applies`
+matches on `entity_ids`". Both were written against **one** of the two write
+paths. `ApplicabilityDraft` — direct artifact registration — indeed has no
+`entity_labels` field and cannot express it. But the **authoring-proposal path
+can**: `_applicability_rule` in `authoring_profile_shapes.py` accepts
+`entity_labels` on the wire, `submission.py:597` reads it off the candidate,
+`_applicability_rule_row` carries it into `MaterialisedApplicabilityRule`, and
+`insert_applicability_rule` writes it — with nothing but the CHECK above in
+between, which permits labels-only. So the column is populatable through a
+shipped API and the "inert" claim needs retracting along with the fix. Confirm
+end-to-end with a proposal-submission test before changing anything; the trace
+is solid but it is a trace, not an observation.
 
 Three ways out, to be decided with grounding rather than now:
 

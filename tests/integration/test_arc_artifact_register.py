@@ -419,9 +419,7 @@ async def test_a_tenant_scoped_rule_without_a_target_tenant_is_refused(service: 
 
 
 @pytest.mark.asyncio
-async def test_an_entity_scoped_rule_without_an_entity_is_refused(
-    service: ArtifactService, seed: ArcSeed
-) -> None:
+async def test_an_entity_scoped_rule_without_an_entity_is_refused(service: ArtifactService, seed: ArcSeed) -> None:
     rule = ApplicabilityDraft(scope=AuthorityScope.ENTITY, effective_from=ARC_NOW, entity_ids=())
     with pytest.raises(ValidationError, match="requires at least one entity"):
         await service.register_revision(_ctx(seed), _draft(seed, rules=(rule,)))
