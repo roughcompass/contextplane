@@ -198,7 +198,6 @@ def _rule(**overrides: Any) -> ApplicabilityRuleRow:
         scope="global",
         target_tenant_id=None,
         entity_ids=None,
-        entity_labels=None,
         domain_ids=None,
         intent_kinds=None,
         action_classes=None,

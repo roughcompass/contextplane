@@ -14,7 +14,9 @@ from __future__ import annotations
 import datetime
 import uuid
 
-from contextplane.arc.service.corpus import CorpusReader
+import pytest
+
+from contextplane.arc.service.corpus import CorpusReader, _obligation_rule
 from contextplane.arc.service.integrity import PURPOSE_CORPUS_ASSEMBLY
 from contextplane.arc.types import ApplicabilityRule, AuthorityScope, Directive, DirectiveType
 
@@ -105,3 +107,42 @@ async def test_dropping_every_candidate_returns_an_empty_tuple_not_none() -> Non
     result = await _reader(integrity)._drop_integrity_failed(object(), candidates)
 
     assert result == ()
+
+
+# --- obligation snapshot rehydration ---------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("snapshot", "why"),
+    (
+        ({"scope": "entity", "entity_ids": []}, "entity scope with no entity"),
+        ({"scope": "tenant", "target_tenant_id": None}, "tenant scope with no target tenant"),
+        ({"scope": "domain", "domain_ids": []}, "domain scope with no domain"),
+        ({"scope": "intent", "intent_kinds": []}, "intent scope with no selectors"),
+    ),
+)
+def test_a_snapshot_the_rule_constructor_refuses_degrades_rather_than_raising(
+    snapshot: dict[str, object], why: str
+) -> None:
+    """The fallback has to hold for every shape `__post_init__` refuses.
+
+    `ApplicabilityRule.__post_init__` raises `ArcVocabularyError`, which is a
+    `RegistryError` -- neither a `ValueError` nor a `TypeError`, which was all
+    `_obligation_rule` caught. So a snapshot in any of these shapes threw
+    straight past the handler *and* past `_obligations`, which wraps nothing,
+    and every context resolution for that tenant failed until somebody deleted
+    the row. The "an unreadable obligation must still block" path never ran,
+    because the failure did not arrive as unreadable.
+
+    Returning `None` is what puts it back on that path: the caller keeps the
+    obligation rather than skipping it, so an unreadable tombstone still blocks.
+    """
+    assert _obligation_rule(snapshot, uuid.uuid4()) is None, why
+
+
+def test_a_readable_snapshot_still_rehydrates() -> None:
+    """The widened `except` must not have turned the happy path into `None`."""
+    rule = _obligation_rule({"scope": "global"}, uuid.uuid4())
+
+    assert rule is not None
+    assert rule.scope is AuthorityScope.GLOBAL

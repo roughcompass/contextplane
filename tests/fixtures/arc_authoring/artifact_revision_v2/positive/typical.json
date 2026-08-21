@@ -1,8 +1,8 @@
 {
   "actor_separation_profile": "arc_actor_separation_v2",
   "artifact_id": "00000000-0000-4000-8000-000000000001",
-  "artifact_semantics_digest": "e0a7cb86c86af0d65ea3c034fdc5747fe884d8c12873c19fbd11f445e66aab06",
+  "artifact_semantics_digest": "90c3cdf11a1d095aaccb56d6394f81947c9ae11a57a866984c49bc8fa8aa5927",
   "profile": "arc_artifact_revision_v2",
-  "review_package_digest": "e21aece508c58c929c64a5294260625b2a8a1b0ad18633b0956e5495193acdfb",
+  "review_package_digest": "4e6caf68c4a6a237cc23e90a2399744ef5104b9d8b4acd2e9dbacc31c3c510fb",
   "revision_id": "00000000-0000-4000-8000-000000000002"
 }

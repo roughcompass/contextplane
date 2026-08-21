@@ -50,6 +50,9 @@ __all__ = [
     "ARC_EXCEPTION_APPROVED",
     "ARC_EXCEPTION_REVOKED",
     "ARC_ENVELOPE_BOUND",
+    "ARC_ENVELOPE_AUTHORITY_ADVISORY",
+    "ARC_ENVELOPE_ENFORCEMENT_STAGE_SET",
+    "ARC_ENVELOPE_AUTHORITY_REFUSED",
     "ARC_ENVELOPE_SUSPENDED",
     "ARC_ENVELOPE_REINSTATED",
     "ARC_ENVELOPE_REVOKED",
@@ -199,6 +202,24 @@ ARC_EXCEPTION_REVOKED: Final[str] = "arc.exception.revoked"
 # principal. Four events rather than a generic "changed", because suspend,
 # reinstate and revoke are different acts with different consequences and an
 # auditor reading "changed" would have to reconstruct which one happened.
+# The authority decision's own trail, separate from the four binding
+# lifecycle events above. `advisory` is a decision that would have refused
+# and did not; `refused` is one that did. Two actions rather than one with a
+# field, so a count by action answers "how much would enforcing this tenant
+# have broken" without parsing payloads -- and the no-tenant-label rule on
+# metrics means that question has no counter to ask.
+#
+# Neither replaces `arc_envelope_advisory_records`. That table is the
+# graduation scan's substrate and is keyed on the principal;
+# `audit_log.target_id` is a NOT NULL UUID and a principal is an
+# `(issuer, subject)` pair, so the scan could not key on an audit row even
+# in principle. These are the audit trail; that is the query surface.
+# The graduation itself. One action for both directions, because the payload
+# carries the stage and an auditor asking "who changed enforcement here"
+# wants both answers from one query.
+ARC_ENVELOPE_ENFORCEMENT_STAGE_SET: Final[str] = "arc.envelope.enforcement_stage.set"
+ARC_ENVELOPE_AUTHORITY_ADVISORY: Final[str] = "arc.envelope.authority.advisory"
+ARC_ENVELOPE_AUTHORITY_REFUSED: Final[str] = "arc.envelope.authority.refused"
 ARC_ENVELOPE_BOUND: Final[str] = "arc.envelope.bound"
 ARC_ENVELOPE_SUSPENDED: Final[str] = "arc.envelope.suspended"
 ARC_ENVELOPE_REINSTATED: Final[str] = "arc.envelope.reinstated"

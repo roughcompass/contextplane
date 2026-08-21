@@ -84,4 +84,38 @@ class ArcAutonomyEnvelopeBinding(Base):
     recorded_at: Mapped[datetime.datetime] = mapped_column(_TS, nullable=False)
 
 
-__all__ = ["ArcAutonomyEnvelopeBinding"]
+class ArcEnvelopeAdvisoryRecord(Base):
+    """One refusal the advisory stage recorded instead of enforcing.
+
+    The graduation scan's substrate: it asks which principals acted with no
+    envelope inside an observation window, and that question is why the table
+    is keyed on `(tenant_id, principal_issuer, principal_subject)` rather than
+    on anything about the act.
+
+    Written only in the advisory stage and only for refusals -- a permit leaves
+    no row, because a principal acting inside its envelope is not an offender.
+    The two CHECKs that make the scan's assumptions structural live in
+    `0065_envelope_enforcement_stage`: `permitted` is not an admissible verdict,
+    and `no_envelope` is the one verdict with no binding to name.
+    """
+
+    __tablename__ = "arc_envelope_advisory_records"
+
+    record_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+    principal_issuer: Mapped[str] = mapped_column(Text, nullable=False)
+    principal_subject: Mapped[str] = mapped_column(Text, nullable=False)
+
+    verdict: Mapped[str] = mapped_column(Text, nullable=False)
+
+    binding_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    revision_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+    intent_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    session_id: Mapped[str] = mapped_column(Text, nullable=False)
+
+    decided_at: Mapped[datetime.datetime] = mapped_column(_TS, nullable=False)
+
+
+__all__ = ["ArcAutonomyEnvelopeBinding", "ArcEnvelopeAdvisoryRecord"]

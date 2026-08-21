@@ -60,16 +60,6 @@
             ],
             "x-array-kind": "set"
           },
-          "entity_labels": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ],
-            "x-array-kind": "set"
-          },
           "environments": {
             "items": {
               "type": "string"
@@ -120,7 +110,6 @@
           "scope",
           "target_tenant_id",
           "entity_ids",
-          "entity_labels",
           "domain_ids",
           "intent_kinds",
           "action_classes",

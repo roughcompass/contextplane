@@ -49,6 +49,7 @@ from contextplane.arc.service.authorization import ArcAuthorizationService
 from contextplane.arc.types import ArcRequestContext, AuthorityScope, DetailAudience
 from contextplane.audit import actions
 from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
+from contextplane.sensitivity import TIERS, is_tier
 from contextplane.types import Clock
 
 # Content storage modes the schema permits.
@@ -369,6 +370,19 @@ class _MaterialisationMixin:
                 raise ValidationError(msg)
             if rule.scope is AuthorityScope.ENTITY and not rule.entity_ids:
                 msg = "an entity-scoped applicability rule requires at least one entity id"
+                raise ValidationError(msg)
+            # The column is a bare `ARRAY(Text)` and nothing else checks it. A
+            # misspelled tier does not widen the rule -- `_matches_scalar`
+            # answers False for a value the manifest cannot carry -- it makes
+            # the rule match *nothing*, which for a mandatory rule is an
+            # obligation that silently stops blocking. Refused here so the typo
+            # fails at authoring, where somebody is looking.
+            unknown = sorted(t for t in rule.data_sensitivity_tiers if not is_tier(t))
+            if unknown:
+                msg = (
+                    f"applicability rule names sensitivity tier(s) {unknown} that are not on the scale "
+                    f"{list(TIERS)}; a rule naming a tier nothing can declare matches nothing"
+                )
                 raise ValidationError(msg)
 
     # -- row helpers ----------------------------------------------------------

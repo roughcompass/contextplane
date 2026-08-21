@@ -50,7 +50,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, BYTEA, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from contextplane.arc.models_approval_challenge import ArcApprovalChallenge, ArcProjectionApprovalEvidence
-from contextplane.arc.models_autonomy_envelope import ArcAutonomyEnvelopeBinding
+from contextplane.arc.models_autonomy_envelope import ArcAutonomyEnvelopeBinding, ArcEnvelopeAdvisoryRecord
 from contextplane.arc.models_observation import (
     ArcObservationCohort,
     ArcObservationCohortMember,
@@ -281,7 +281,6 @@ class ArcApplicabilityRule(Base):
         UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), nullable=True
     )
     entity_ids: Mapped[list[uuid.UUID] | None] = mapped_column(ARRAY(UUID(as_uuid=True)), nullable=True)
-    entity_labels: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     domain_ids: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     intent_kinds: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     action_classes: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
@@ -795,4 +794,5 @@ ARC_MODELS: tuple[type[Base], ...] = (
     ArcObservationReplayCorpus,
     ArcObservationQualification,
     ArcAutonomyEnvelopeBinding,
+    ArcEnvelopeAdvisoryRecord,
 )

@@ -408,7 +408,6 @@
               {
                 "action_classes": null,
                 "entity_ids": null,
-                "entity_labels": null,
                 "data_sensitivity_tiers": null,
                 "domain_ids": null,
                 "effective_from": null,

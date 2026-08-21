@@ -156,7 +156,6 @@ def _candidate_rule(rule_id: str, *, intent_kinds: list[str] | None = None) -> d
         "scope": "global",
         "target_tenant_id": None,
         "entity_ids": None,
-        "entity_labels": None,
         "domain_ids": None,
         "intent_kinds": intent_kinds,
         "action_classes": None,

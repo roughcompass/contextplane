@@ -90,7 +90,6 @@ class ApplicabilityRuleRow:
     scope: str
     target_tenant_id: uuid.UUID | None
     entity_ids: list[uuid.UUID] | None
-    entity_labels: list[str] | None
     domain_ids: list[str] | None
     intent_kinds: list[str] | None
     action_classes: list[str] | None
@@ -310,7 +309,7 @@ async def load_applicability_rules_for_revision(
 ) -> list[ApplicabilityRuleRow]:
     rows = await session.execute(
         text(
-            "SELECT rule_id, scope, target_tenant_id, entity_ids, entity_labels, domain_ids, "
+            "SELECT rule_id, scope, target_tenant_id, entity_ids, domain_ids, "
             "       intent_kinds, action_classes, environments, data_sensitivity_tiers "
             "FROM arc_applicability_rules WHERE revision_id = :revision_id"
         ),
@@ -322,7 +321,6 @@ async def load_applicability_rules_for_revision(
             scope=row.scope,
             target_tenant_id=row.target_tenant_id,
             entity_ids=row.entity_ids,
-            entity_labels=row.entity_labels,
             domain_ids=row.domain_ids,
             intent_kinds=row.intent_kinds,
             action_classes=row.action_classes,

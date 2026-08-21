@@ -307,7 +307,6 @@ class MaterialisedApplicabilityRule:
     scope: str
     target_tenant_id: uuid.UUID | None
     entity_ids: tuple[uuid.UUID, ...] | None
-    entity_labels: tuple[str, ...] | None
     domain_ids: tuple[str, ...] | None
     intent_kinds: tuple[str, ...] | None
     action_classes: tuple[str, ...] | None
@@ -329,11 +328,11 @@ async def insert_applicability_rule(session: AsyncSession, rule: MaterialisedApp
     await session.execute(
         text(
             "INSERT INTO arc_applicability_rules ("
-            "  rule_id, revision_id, tenant_id, scope, target_tenant_id, entity_ids, entity_labels,"
+            "  rule_id, revision_id, tenant_id, scope, target_tenant_id, entity_ids,"
             "  domain_ids, intent_kinds, action_classes, environments, data_sensitivity_tiers,"
             "  effective_from, effective_until, is_mandatory"
             ") SELECT :rule_id, :revision_id, r.tenant_id, :scope, :target_tenant_id, :entity_ids,"
-            "         :entity_labels, :domain_ids, :intent_kinds, :action_classes, :environments,"
+            "         :domain_ids, :intent_kinds, :action_classes, :environments,"
             "         :data_sensitivity_tiers, :effective_from, :effective_until, :is_mandatory "
             "  FROM arc_revisions r WHERE r.revision_id = :revision_id"
         ),
@@ -343,7 +342,6 @@ async def insert_applicability_rule(session: AsyncSession, rule: MaterialisedApp
             "scope": rule.scope,
             "target_tenant_id": rule.target_tenant_id,
             "entity_ids": list(rule.entity_ids) if rule.entity_ids else None,
-            "entity_labels": list(rule.entity_labels) if rule.entity_labels else None,
             "domain_ids": list(rule.domain_ids) if rule.domain_ids else None,
             "intent_kinds": list(rule.intent_kinds) if rule.intent_kinds else None,
             "action_classes": list(rule.action_classes) if rule.action_classes else None,

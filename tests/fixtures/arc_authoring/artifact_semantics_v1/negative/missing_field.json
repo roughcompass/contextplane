@@ -15,9 +15,6 @@
       "entity_ids": [
         "00000000-0000-4000-8000-000000000006"
       ],
-      "entity_labels": [
-        "payments.write"
-      ],
       "environments": [
         "production"
       ],
@@ -36,7 +33,6 @@
       "effective_from": null,
       "effective_until": null,
       "entity_ids": null,
-      "entity_labels": null,
       "environments": null,
       "is_mandatory": false,
       "rule_id": "00000000-0000-4000-8000-000000000112",

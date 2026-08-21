@@ -37,11 +37,17 @@ from contextplane.arc.types import (
     NormalizedConstraint,
     ResolutionStatus,
 )
+from contextplane.sensitivity import MOST_RESTRICTIVE, TIERS, is_tier
 
 #: The engine identity a receipt records. Bumped when a change to this
 #: module could make the same inputs resolve differently -- that is what
 #: lets a replay years later distinguish tampering from a newer engine.
-SELECTION_ENGINE_VERSION = "arc_selection_v1"
+#:
+#: v2: an unrecognised or absent `data_sensitivity` on the manifest is read as
+#: the most restrictive tier rather than matching no tier-scoped rule. The same
+#: manifest and the same rules resolve differently across that line, which is
+#: exactly the condition this constant exists to record.
+SELECTION_ENGINE_VERSION = "arc_selection_v2"
 
 
 @dataclass(frozen=True)
@@ -195,6 +201,28 @@ def _matches_scalar(rule_values: frozenset[str], value: str | None) -> bool:
     return value is not None and value in rule_values
 
 
+def _declared_sensitivity(value: str | None) -> str:
+    """The manifest's sensitivity as this engine will treat it.
+
+    **A tier this scale does not know, or none at all, is read as the most
+    restrictive one.** The manifest's `data_sensitivity` is caller-supplied --
+    `arc.py` accepts any string of 1..64 characters -- and deliberately open,
+    because it is mirrored into a host's signed attestation and hashed into the
+    claims digest. Left as plain set membership, that openness is an evasion:
+    `_matches_scalar` answers `False` for a value it does not recognise, so a
+    host declaring `data_sensitivity="ultra-secret"`, or omitting it, escapes
+    every rule that names a tier. Both were measured before this was written.
+
+    Ranking the unknown as maximally sensitive is the fail-closed reading and
+    not a new invention: `contextplane.sensitivity` records that two existing
+    call sites already do it, and says the rule belongs at the call site where
+    it is visible rather than inside the vocabulary. Doing it here rather than
+    by validating the field keeps the field open, so the host still signs what
+    it declared and the claims digest is untouched.
+    """
+    return value if is_tier(value) else MOST_RESTRICTIVE
+
+
 def rule_applies(
     rule: ApplicabilityRule,
     manifest: IntentManifest,
@@ -232,7 +260,7 @@ def rule_applies(
         return False
     if not _matches_scalar(rule.environments, manifest.environment):
         return False
-    return _matches_scalar(rule.data_sensitivity_tiers, manifest.data_sensitivity)
+    return _matches_scalar(rule.data_sensitivity_tiers, _declared_sensitivity(manifest.data_sensitivity))
 
 
 # ---------------------------------------------------------------------------
@@ -424,11 +452,18 @@ def selection_config_digest() -> str:
 
     Length-prefixed per member so no two different vocabularies can be
     concatenated into the same bytes.
+
+    `sensitivity.TIERS` is in the list for the reason the paragraph above gives
+    about `IntentKind` and `AuthorityScope`: since an unrecognised manifest tier
+    is now read as the most restrictive *known* one, adding or removing a tier
+    changes which rules apply to a manifest whose declaration did not move.
     """
     parts: list[str] = [SELECTION_ENGINE_VERSION]
     for vocabulary in (AuthorityScope, ConstraintOperator, DirectiveType, Modality):
         for member in sorted(str(v) for v in vocabulary):
             parts.append(f"{len(member)}:{member}")
+    for tier in sorted(TIERS):
+        parts.append(f"{len(tier)}:{tier}")
     material = "|".join(parts)
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 

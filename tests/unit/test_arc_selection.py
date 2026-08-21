@@ -302,11 +302,19 @@ def test_every_matched_dimension_is_in_the_obligation_snapshot() -> None:
     selector means "matches any", so the rehydrated obligation applies more
     widely than the rule ever did.
 
-    `entity_labels` is the live example. It is in `ApplicabilityRule` and
-    in the corpus query, but not in `ApplicabilityDraft` and not in the
-    snapshot -- inert only because nothing populates the column and
-    `rule_applies` reads `entity_ids` instead. This test is what turns
-    that into a failure the moment either changes.
+    `entity_labels` was the live example, and the claim made here about it --
+    "inert because nothing populates the column" -- was **wrong**, which is
+    worth recording because it read as a considered exemption. It was true of
+    `ApplicabilityDraft`, which never had the field, and false of the service:
+    the authoring-proposal path accepted labels on the wire and
+    `insert_applicability_rule` wrote them. A labels-only entity rule was
+    therefore writable, and it matched every manifest. The field has been
+    dropped rather than exempted.
+
+    This test kept working throughout, because it compares `ApplicabilityDraft`
+    against its own snapshot and labels were never in either -- which is exactly
+    the blind spot: the drift it guards is real, and it was watching the one
+    write path that did not have the problem.
     """
     import dataclasses
 

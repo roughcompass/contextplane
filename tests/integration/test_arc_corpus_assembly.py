@@ -88,6 +88,12 @@ async def _add_rule(
     optional tenant id because `None` there is ambiguous between "not supplied"
     and "deliberately global" -- a distinction the first version of this helper
     got wrong and silently fell back to the seed's tenant.
+
+    A narrow scope gets the selector its own CHECK requires, supplied here
+    rather than by each caller: every scope below `global` must name what it
+    is scoped to, or it takes the precedence without the narrowing and matches
+    every manifest. Callers of this helper are testing the corpus query, not
+    that rule shape, so the shape is made valid once.
     """
     rule_id = uuid.uuid4()
     async with factory() as session, session.begin():
@@ -95,8 +101,10 @@ async def _add_rule(
             text(
                 "INSERT INTO arc_applicability_rules ("
                 "  rule_id, revision_id, tenant_id, scope, target_tenant_id, intent_kinds,"
-                "  effective_from, is_mandatory"
-                ") VALUES (:rid, :rev, :tid, :scope, :target, CAST(:kinds AS TEXT[]), :efrom, :mand)"
+                "  action_classes, domain_ids, entity_ids, effective_from, is_mandatory"
+                ") VALUES (:rid, :rev, :tid, :scope, :target, CAST(:kinds AS TEXT[]),"
+                "  CAST(:classes AS TEXT[]), CAST(:domains AS TEXT[]), CAST(:entities AS UUID[]),"
+                "  :efrom, :mand)"
             ),
             {
                 "rid": rule_id,
@@ -104,7 +112,10 @@ async def _add_rule(
                 "tid": None if on_global_revision else seed.tenant_id,
                 "scope": scope,
                 "target": target_tenant_id,
-                "kinds": intent_kinds,
+                "kinds": ["code_change"] if scope == "intent" and not intent_kinds else intent_kinds,
+                "classes": ["merge"] if scope == "intent" else None,
+                "domains": ["payments"] if scope == "domain" else None,
+                "entities": [uuid.uuid4()] if scope == "entity" else None,
                 "efrom": ARC_NOW - datetime.timedelta(days=1),
                 "mand": is_mandatory,
             },

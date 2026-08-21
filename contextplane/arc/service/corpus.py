@@ -88,7 +88,7 @@ SELECT
     d.satisfaction_mode, d.verification_max_age_seconds,
     d.accepted_verifier_classes, d.required_evidence_type, d.delegable_exception,
     ar.rule_id, ar.scope, ar.is_mandatory, ar.target_tenant_id,
-    ar.entity_ids, ar.entity_labels, ar.domain_ids, ar.intent_kinds,
+    ar.entity_ids, ar.domain_ids, ar.intent_kinds,
     ar.action_classes, ar.environments, ar.data_sensitivity_tiers,
     ar.effective_from AS rule_effective_from, ar.effective_until AS rule_effective_until
 FROM arc_revisions r
@@ -263,7 +263,16 @@ def _directive_from_row(row: Row[Any]) -> Directive:
     )
 
 
-def _rule_from_row(row: Row[Any]) -> ApplicabilityRule:
+def rule_from_row(row: Row[Any]) -> ApplicabilityRule:
+    """Rehydrate one `arc_applicability_rules` row into a rule.
+
+    Public, unlike its `_directive_from_row` neighbour, because the authority
+    decision reads the rules of one envelope revision and must rehydrate them
+    exactly as corpus assembly does -- two mappings of the same row into the
+    same dataclass would be two places for the selector set to drift, and a
+    dimension missed on one side is a rule that authorises more than it says.
+    The row must carry `rule_effective_from`/`rule_effective_until` aliases.
+    """
     return ApplicabilityRule(
         rule_id=row.rule_id,
         revision_id=row.revision_id,
@@ -271,7 +280,6 @@ def _rule_from_row(row: Row[Any]) -> ApplicabilityRule:
         is_mandatory=row.is_mandatory,
         target_tenant_id=row.target_tenant_id,
         entity_ids=_uuid_set(row.entity_ids),
-        entity_labels=_str_set(row.entity_labels),
         domain_ids=_str_set(row.domain_ids),
         intent_kinds=_vocab_set(row.intent_kinds, IntentKind),
         action_classes=_vocab_set(row.action_classes, ActionClass),
@@ -312,16 +320,23 @@ def _obligation_rule(snapshot: JSONValue, obligation_id: uuid.UUID) -> Applicabi
     the obligation as applying -- see `_obligations` for why erring the other
     way is the failure these rows exist to prevent.
 
-    The snapshot carries no `entity_labels`, so neither does the rule
-    built here, while `_rule_from_row` populates it for a candidate. That
-    asymmetry is inert only because `rule_applies` matches on
-    `entity_ids` and never reads labels. The day labels become a real
-    selector it stops being inert and starts *widening*: an empty
-    `entity_ids` makes the capability dimension match everything, so an
-    obligation scoped to a label would apply to every capability. Wiring
-    labels into matching therefore means adding them to the snapshot too --
-    and note that changes the applicability digest, which is the dedup key,
-    so existing obligations need migrating rather than just re-derived.
+    **`ArcVocabularyError` is in the `except`, and leaving it out was a durable
+    outage rather than a widening.** `ApplicabilityRule.__post_init__` refuses a
+    tenant-scoped rule with no target tenant and an entity-scoped one with no
+    entity, and it raises `ArcVocabularyError` -- a `RegistryError`, so neither
+    a `ValueError` nor a `TypeError`. A snapshot in either shape therefore threw
+    straight past this handler and past `_obligations`, which wraps nothing, so
+    *every* context resolution for that tenant failed until somebody deleted the
+    row. The careful "an unreadable obligation must still block" reasoning below
+    never ran, because the failure did not arrive as unreadable -- it arrived as
+    an exception. Both shapes were reproduced before this line was widened.
+
+    The entity shape was reachable while an entity-scoped rule could name only
+    labels: the snapshot had no labels field, so the rehydrated rule came back
+    entity-scoped with an empty `entity_ids`. `entity_labels` is gone now and
+    that trigger with it, but the handler stays widened -- the fallback is meant
+    to hold for any snapshot the constructor refuses, not only for the ones
+    somebody has already found a way to write.
     """
     if not isinstance(snapshot, dict):
         # `applicability_snapshot` is JSONB with no shape constraint, so a
@@ -348,7 +363,7 @@ def _obligation_rule(snapshot: JSONValue, obligation_id: uuid.UUID) -> Applicabi
             environments=_str_set(_as_list(snapshot.get("environments"))),
             data_sensitivity_tiers=_str_set(_as_list(snapshot.get("data_sensitivity_tiers"))),
         )
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, ArcVocabularyError):
         return None
 
 
@@ -462,7 +477,7 @@ class CorpusReader:
                 governing[key] = row
 
         return tuple(
-            (_directive_from_row(row), _rule_from_row(row), row.revision_effective_from)
+            (_directive_from_row(row), rule_from_row(row), row.revision_effective_from)
             for row in (governing[k] for k in sorted(governing, key=lambda k: (str(k[0]), str(k[1]))))
         )
 

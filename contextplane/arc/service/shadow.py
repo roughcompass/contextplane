@@ -123,7 +123,6 @@ def _rule_from_dict(rule: dict[str, Any], revision_id: uuid.UUID) -> Applicabili
         is_mandatory=bool(rule.get("is_mandatory")),
         target_tenant_id=uuid.UUID(str(target)) if target else None,
         entity_ids=_uuid_set(rule.get("entity_ids")),
-        entity_labels=_str_set(rule.get("entity_labels")),
         domain_ids=_str_set(rule.get("domain_ids")),
         intent_kinds=_vocab_set(rule.get("intent_kinds"), IntentKind),
         action_classes=_vocab_set(rule.get("action_classes"), ActionClass),

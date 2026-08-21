@@ -22,7 +22,7 @@
   },
   "event_type": "freshness_downgraded",
   "idempotency_key_digest": "832120ee045e54cfdefb48190d2487651e0f9aec870271a1c822c9912a6eb696",
-  "previous_event_digest": "acb639854e73fc9471ab48da1977e514a3f0784ee4bf42dc8ce137e06722ddee",
+  "previous_event_digest": "ce33cc98b1c7171b5d1408aded9ac711e1294c4abd91324608ed9d3082e29c92",
   "profile": "arc_operational_event_v1",
   "revision_id": "00000000-0000-4000-8000-000000000002",
   "sequence": 1,

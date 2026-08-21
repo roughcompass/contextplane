@@ -251,19 +251,58 @@ def test_an_entity_scoped_rule_must_name_an_entity() -> None:
         ApplicabilityRule(rule_id=_D, revision_id=_R, scope=AuthorityScope.ENTITY)
 
 
-def test_a_capability_rule_may_use_labels_instead_of_ids() -> None:
-    rule = ApplicabilityRule(
-        rule_id=_D,
-        revision_id=_R,
-        scope=AuthorityScope.ENTITY,
-        entity_labels=frozenset({"payments"}),
-    )
-    assert rule.entity_labels == frozenset({"payments"})
+def test_an_entity_rule_cannot_be_expressed_with_labels() -> None:
+    """The inverse of what this asserted before, and the inversion is the point.
+
+    `test_a_capability_rule_may_use_labels_instead_of_ids` affirmed that an
+    entity-scoped rule naming only `entity_labels` was well-formed. It was
+    well-formed and it matched *every* manifest, because `rule_applies` never
+    read labels and an empty `entity_ids` means "no constraint on this
+    dimension". The field is gone; naming it is now a `TypeError` rather than a
+    quietly universal rule.
+    """
+    with pytest.raises(TypeError, match="entity_labels"):
+        ApplicabilityRule(
+            rule_id=_D,
+            revision_id=_R,
+            scope=AuthorityScope.ENTITY,
+            entity_labels=frozenset({"payments"}),  # type: ignore[call-arg]
+        )
 
 
-def test_global_and_task_scopes_need_no_selector() -> None:
-    for scope in (AuthorityScope.GLOBAL, AuthorityScope.DOMAIN, AuthorityScope.INTENT):
-        assert ApplicabilityRule(rule_id=_D, revision_id=_R, scope=scope).scope is scope
+def test_only_a_global_rule_needs_no_selector() -> None:
+    """Matching everything is what `global` means, so it is the one exemption."""
+    assert ApplicabilityRule(rule_id=_D, revision_id=_R, scope=AuthorityScope.GLOBAL).scope is AuthorityScope.GLOBAL
+
+
+def test_a_domain_scoped_rule_must_name_a_domain() -> None:
+    """This case used to be asserted the other way round, and that was the bug.
+
+    `scope` buys precedence -- `_SCOPE_ORDER` ranks domain above entity -- while
+    an empty selector means "no constraint on this dimension". A domain-scoped
+    rule naming no domain therefore took the precedence without the narrowing
+    and applied to every manifest, one rank *above* the entity hole that made
+    this whole area worth looking at.
+    """
+    with pytest.raises(ArcVocabularyError, match="names no domain"):
+        ApplicabilityRule(rule_id=_D, revision_id=_R, scope=AuthorityScope.DOMAIN)
+
+
+def test_an_intent_scoped_rule_must_name_both_an_intent_kind_and_an_action_class() -> None:
+    """Both, matching `ck_arc_exceptions_scope_selectors` on the exception half.
+
+    An intent kind alone leaves the action class unconstrained, which is the
+    half deciding whether an obligation is owed for the thing being done.
+    """
+    with pytest.raises(ArcVocabularyError, match="names no intent kind and action class"):
+        ApplicabilityRule(rule_id=_D, revision_id=_R, scope=AuthorityScope.INTENT)
+    with pytest.raises(ArcVocabularyError, match="names no intent kind and action class"):
+        ApplicabilityRule(
+            rule_id=_D,
+            revision_id=_R,
+            scope=AuthorityScope.INTENT,
+            intent_kinds=frozenset({IntentKind.CODE_CHANGE}),
+        )
 
 
 def test_rules_differing_only_in_selector_order_are_equal() -> None:

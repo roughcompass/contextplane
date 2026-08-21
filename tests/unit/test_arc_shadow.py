@@ -80,7 +80,6 @@ def _rule_dict(
         "is_mandatory": is_mandatory,
         "target_tenant_id": None,
         "entity_ids": None,
-        "entity_labels": None,
         "domain_ids": None,
         "intent_kinds": None,
         "action_classes": None,
