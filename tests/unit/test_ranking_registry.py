@@ -188,6 +188,96 @@ def test_a_fully_evidenced_validated_entry_is_accepted(tmp_path: Path) -> None:
     assert loaded["probe@1"].validation_status == "validated"
 
 
+# --- validation gating: the refusal is the activation gate ----------------------
+#
+# There is no feature-flag mechanism to hang this on -- the repository has one
+# genuine feature switch and ADR-0005 rules out env-var flags that widen
+# authority -- so reading the number *is* the activation, and a magnitude that
+# cannot be read cannot serve.
+
+
+def test_a_validation_gated_magnitude_cannot_load_unvalidated(tmp_path: Path) -> None:
+    """The rule the `requires_validated` field exists for, at runtime.
+
+    It lived only in `scripts/check_governed_magnitudes.py` until now, which left
+    the running service more permissive than the pipeline that reviewed it -- a
+    gate is a thing somebody can skip, and this module's stated posture is that
+    an unknown id raises and an empty registry raises at import.
+    """
+    with pytest.raises(ranking.UngovernedMagnitude, match="requires_validated is true"):
+        _load_with(tmp_path, _entry(requires_validated=True))
+
+
+def test_a_validation_gated_magnitude_loads_once_it_is_validated(tmp_path: Path) -> None:
+    """The positive case, so the refusal above is a bar rather than a wall."""
+    loaded = _load_with(
+        tmp_path,
+        _entry(
+            requires_validated=True,
+            validation={
+                "status": "validated",
+                "validated_by": "second-line reviewer",
+                "validated_on": "2026-08-21",
+                "method": "held-out replay over the frozen question set",
+                "result": "precision@10 0.91 against 0.87 incumbent",
+            },
+        ),
+    )
+    assert loaded["probe@1"].requires_validated is True
+
+
+def test_one_bad_entry_refuses_the_whole_registry(tmp_path: Path) -> None:
+    """Not a lazy refusal at whichever accessor happens to ask.
+
+    Refusing per-read would protect a magnitude only as far as some code path
+    reads it, and "was this read on this deployment" is not something a
+    governance guarantee should rest on. Refusing at load means the process does
+    not start: `_REGISTRY` is bound at import and every consumer imports this
+    module. The good entry here is the evidence -- it would load on its own, and
+    does not.
+    """
+    registry = tmp_path / "ranking_registry.json"
+    good = _entry(model_id="fine@1")
+    bad = _entry(model_id="gated@1", requires_validated=True)
+    registry.write_text(json.dumps({"artifact_version": 1, "magnitudes": [good, bad]}), encoding="utf-8")
+
+    original = ranking.REGISTRY_PATH
+    try:
+        ranking.REGISTRY_PATH = registry  # type: ignore[misc]
+        with pytest.raises(ranking.UngovernedMagnitude, match="gated@1"):
+            ranking._load()
+    finally:
+        ranking.REGISTRY_PATH = original  # type: ignore[misc]
+
+
+def test_the_registry_is_read_at_import_so_a_refusal_stops_the_process() -> None:
+    """What makes the refusal a boot failure rather than a lazy error.
+
+    Two facts carry it, and both are asserted rather than assumed: this module
+    binds its registry at import, and at least one consumer obtains a governed
+    magnitude at *its* import. Together they mean an unloadable registry fails
+    the import graph, which is the same guarantee
+    `assert_drafter_decision_permits_serving` gives the drafter -- reached
+    without a flag, because reading the number is the activation.
+
+    If a future refactor made every consumer read lazily, this fails and the
+    boot-failure claim in the module docstring would need rewriting rather than
+    quietly becoming false.
+    """
+    source = (REPO_ROOT / "contextplane" / "ranking.py").read_text(encoding="utf-8")
+    assert "_REGISTRY: Final[dict[str, GovernedMagnitude]] = _load()" in source, (
+        "the registry is no longer bound at import, so an unloadable registry "
+        "would surface at first use rather than at start"
+    )
+
+    from contextplane.service.memory import claim_serving
+
+    assert isinstance(claim_serving._ARM_WEIGHTS, dict), (
+        "no consumer reads a governed magnitude at import, so a refusal would "
+        "not stop a process that never touches one"
+    )
+
+
 def test_every_shipped_magnitude_declares_a_validation_status() -> None:
     """The committed artifact, which the synthetic tests above cannot cover."""
     for model_id in ranking.model_ids():

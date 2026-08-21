@@ -33,6 +33,21 @@ population is zero raises at import. The second rule matters as much as the
 first: a gate whose population is empty and which reports success is the exact
 failure `scripts/checklib.py` exists to prevent, and an empty registry would let
 every governed magnitude be deleted while the mechanism still passed.
+
+**And validation-gated means it cannot serve, not that a check disapproves.** An
+entry marked `requires_validated: true` whose status is anything but `validated`
+refuses the whole registry at import, so a process holding one does not start.
+`scripts/check_governed_magnitudes.py` enforces the same rule on the artifact,
+and both are wanted: the gate protects the review, this protects the run, and a
+gate is a thing somebody can skip. The rule is deliberately not lazy -- it does
+not wait for an accessor to ask -- because "did any code path happen to read
+this magnitude on this deployment" is not something a governance guarantee
+should depend on.
+
+This is the same shape as `assert_drafter_decision_permits_serving`, which
+refuses to boot when a runtime flag claims more than a committed decision
+artifact earned, and it is deliberately reached without a feature-flag
+mechanism: reading the number *is* the activation.
 """
 
 from __future__ import annotations
@@ -160,13 +175,40 @@ def _load() -> dict[str, GovernedMagnitude]:
             )
             raise UngovernedMagnitude(msg)
 
+        gated = bool(entry.get("requires_validated", False))
+        if gated and status != "validated":
+            # The rule the whole `requires_validated` field exists for, enforced
+            # here and not only by `scripts/check_governed_magnitudes.py`.
+            #
+            # The gate protects the artifact and this protects the process, and
+            # the two are different failures: a gate is a thing somebody can
+            # skip, and until this existed the running service was strictly more
+            # permissive than the pipeline that reviewed it. That is backwards
+            # for a module whose stated posture is that an unknown id raises and
+            # an empty registry raises at import.
+            #
+            # It refuses the whole registry rather than just this entry, which
+            # is the same shape as every other refusal above -- and it is what
+            # makes the guarantee unconditional. Refusing lazily, at whichever
+            # accessor happens to ask, would protect a magnitude only as far as
+            # some code path reads it, and "was this read on this deployment"
+            # is not a question a governance rule should depend on. Refusing at
+            # load means the process does not start, because `_REGISTRY` is
+            # bound at import and every consumer imports this module.
+            msg = (
+                f"{model_id}: requires_validated is true but the status is {status!r}. "
+                "A magnitude whose consumer demands validation cannot serve on a number "
+                "nobody checked -- record the evidence, or clear the flag"
+            )
+            raise UngovernedMagnitude(msg)
+
         loaded[model_id] = GovernedMagnitude(
             model_id=model_id,
             form=form,
             parameters=entry["parameters"],
             reason=entry["reason"],
             validation_status=status,
-            requires_validated=bool(entry.get("requires_validated", False)),
+            requires_validated=gated,
         )
     return loaded
 
