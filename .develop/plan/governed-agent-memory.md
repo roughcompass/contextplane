@@ -2521,7 +2521,7 @@ Acceptance:
 
 ### E2-T5 — Per-tenant fairness and lag stamps for the async remainder
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 *(Unblocked: ADR-0010 struck the synchronous-embedding clause, so what stays
 asynchronous is no longer an open question.)*
@@ -2540,8 +2540,51 @@ entitlement, or bounded worst-case latency regardless of share.
 tenant labels, so "how far behind is tenant X" has to be a column and a query,
 the same conclusion E1-T8 reached for the advisory records.
 
+**The async remainder turned out to be one queue, and it already existed.**
+`memory_extraction_outbox`, drained by `workers/extraction_drain.py`. So this
+was not "move work off the hot path and then schedule it" but "the work is
+already off the path and nothing schedules it fairly".
+
+**FIFO here was a default, not a decision, and that is what made this build work
+rather than an amendment.** The drain claimed with `ORDER BY enqueued_at LIMIT
+:lim FOR UPDATE SKIP LOCKED`. Its docstring defends per-row isolation at
+length -- "a provider that times out on one session must not stall the twenty
+behind it" -- and says nothing at all about ordering or tenants. Contrast
+ADR-0010's embedding drain, where the shipped shape *was* a considered design
+hardened by an outage; here the question had simply never been asked.
+
+**Fair means bounded head-of-line, and that definition came from the module's
+own stated value.** Rows are ranked oldest-first within each tenant and the
+batch is filled by rank, so every tenant's oldest window is taken before any
+tenant's second. The worst case one tenant can impose on another drops from
+"until my backlog clears" to one row per tick. That is the drain's existing
+isolation principle applied one grain coarser, rather than a new principle
+imported from outside.
+
+Weighted shares and latency targets were both rejected as inventing
+configuration -- an entitlement concept and a deadline column respectively --
+to solve what ordering already solves. If a tenant later needs a *larger* share
+than its peers, that is when a weight earns its place.
+
+Postgres refuses `FOR UPDATE` alongside `row_number()`, so the rank is computed
+in a CTE and the lock taken on the join back.
+
+**The lag half was a blind spot the tree had already paid for elsewhere.** The
+drain carried a depth gauge and no age gauge -- exactly the gap the embedding
+drain's own comment records: "depth alone cannot distinguish a queue that is
+short because it is keeping up from one that is short because nothing is being
+enqueued", the failure that hid an empty claim index for a whole phase. Added,
+unlabelled, because `metrics.py` forbids tenant labels; per-tenant lag stays a
+query, the same conclusion E1-T8 reached for the advisory records.
+
+The starvation test fails against the old FIFO claim. Its companion -- oldest
+window first *within* one tenant -- passes under both, and that is the point of
+it: it guards the fairness ordering from becoming arbitrary ordering, since
+extraction reads a `from_seq`/`through_seq` range and processing a later window
+first would stage claims out of conversational order.
+
 Acceptance:
-    .venv/bin/python -m pytest tests/integration -q -k "fairness or lag"
+    .venv/bin/python -m pytest tests/integration -q -k "extraction_drain"
     make lint && make test-coverage
 
 ### E2-T6 — The published p99, including the PII-block mode

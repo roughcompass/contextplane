@@ -726,3 +726,139 @@ async def test_dead_lettering_is_counted_per_strategy(
     await _worker(factory, _ScriptedProvider(ProviderError("terminal", is_retriable=False))).run_once()
 
     assert _counter(metric, strategy=OBSERVATION.strategy_id) == before + 1
+
+
+# --- fairness: one tenant's backlog may not hold another's work ------------------
+
+
+async def _enqueue_windows(
+    factory: async_sessionmaker[AsyncSession],
+    tenant_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    *,
+    count: int,
+    strategy_id: str = "noop",
+) -> None:
+    """`count` queued windows for one tenant, enqueued oldest-first."""
+    async with factory() as session, session.begin():
+        for n in range(count):
+            await session.execute(
+                text(
+                    "INSERT INTO memory_extraction_outbox "
+                    "  (tenant_id, actor_id, session_id, strategy_id, from_seq, through_seq, enqueued_at) "
+                    "VALUES (:tid, :aid, :sid, :strategy, :seq, :seq, :at)"
+                ),
+                {
+                    "tid": tenant_id,
+                    "aid": actor_id,
+                    "sid": f"s{n}",
+                    "strategy": strategy_id,
+                    "seq": n + 1,
+                    # The noisy tenant is also *earlier*, which is the case FIFO
+                    # gets wrong: being first should not mean being alone.
+                    "at": _NOW - datetime.timedelta(minutes=count - n),
+                },
+            )
+
+
+@pytest.mark.asyncio
+async def test_a_backlogged_tenant_does_not_starve_a_quiet_one(
+    factory: async_sessionmaker[AsyncSession], ontology: None
+) -> None:
+    """The property `ORDER BY enqueued_at` did not have.
+
+    A tenant with more queued windows than one batch used to take every tick,
+    indefinitely, while a tenant with a single window waited behind all of them.
+    Nothing bounded that wait and nothing measured it -- which is why this test
+    seeds the noisy tenant's rows *earlier*, so plain FIFO would order every one
+    of them ahead of the quiet tenant's.
+
+    This is the module's own isolation principle one level up: its docstring
+    already says one slow row must not stall the twenty behind it, and a tenant
+    is the same claim at a coarser grain.
+    """
+    noisy_tenant, noisy_actor = await _seed_tenant(factory)
+    quiet_tenant, quiet_actor = await _seed_tenant(factory)
+    await _enqueue_windows(factory, noisy_tenant, noisy_actor, count=6)
+    await _enqueue_windows(factory, quiet_tenant, quiet_actor, count=1)
+
+    # A batch smaller than the noisy tenant's backlog: under FIFO the quiet
+    # tenant cannot appear at all.
+    await _worker(factory, _ScriptedProvider(_result()), batch_size=3).run_once()
+
+    assert await _pending(factory, quiet_tenant) == [], (
+        "the quiet tenant's single window was not drained in the first batch; "
+        "a backlogged neighbour is still holding the head of the line"
+    )
+    assert (
+        len(await _pending(factory, noisy_tenant)) == 4
+    ), "expected the noisy tenant to give up exactly one slot of the batch"
+
+
+@pytest.mark.asyncio
+async def test_within_one_tenant_the_oldest_window_still_goes_first(
+    factory: async_sessionmaker[AsyncSession], ontology: None
+) -> None:
+    """Round-robin across tenants, FIFO within one.
+
+    The fairness ordering must not become arbitrary ordering: a single tenant's
+    windows are still drained oldest-first, because extraction over a session
+    reads a `from_seq`/`through_seq` range and processing a later window before
+    an earlier one would stage claims out of conversational order.
+    """
+    tenant_id, actor_id = await _seed_tenant(factory)
+    await _enqueue_windows(factory, tenant_id, actor_id, count=4)
+
+    await _worker(factory, _ScriptedProvider(_result()), batch_size=2).run_once()
+
+    remaining = sorted(int(row["from_seq"]) for row in await _pending(factory, tenant_id))
+    assert remaining == [3, 4], f"expected the two oldest windows drained first, {remaining} remain"
+
+
+@pytest.mark.asyncio
+async def test_the_lag_gauge_reports_the_age_of_the_oldest_queued_window(
+    factory: async_sessionmaker[AsyncSession], ontology: None
+) -> None:
+    """Depth cannot tell a queue that is keeping up from one nothing feeds.
+
+    The embedding drain records paying for that lesson -- a short queue looked
+    healthy while an empty claim index went unnoticed for a phase. This queue
+    carried the depth gauge and not the age one, so it had the same blind spot.
+    """
+    from contextplane.workers.extraction_drain import _OLDEST_PENDING_SECONDS, _PENDING
+
+    tenant_id, actor_id = await _seed_tenant(factory)
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO memory_extraction_outbox "
+                "  (tenant_id, actor_id, session_id, strategy_id, from_seq, through_seq, enqueued_at) "
+                "VALUES (:tid, :aid, 's1', 'noop', 1, 1, :at)"
+            ),
+            {"tid": tenant_id, "aid": actor_id, "at": _NOW - datetime.timedelta(minutes=5)},
+        )
+
+    await _worker(factory, _ScriptedProvider(_result()))._refresh_pending_gauge()
+
+    assert _PENDING._value.get() == 1
+    assert _OLDEST_PENDING_SECONDS._value.get() == pytest.approx(
+        300.0, abs=1.0
+    ), "the oldest queued window is five minutes old and the gauge should say so"
+
+
+@pytest.mark.asyncio
+async def test_an_empty_queue_reports_no_lag_rather_than_stale_lag(
+    factory: async_sessionmaker[AsyncSession], ontology: None
+) -> None:
+    """Nothing waiting means nothing late.
+
+    Asserted because the alternative -- leaving the last non-empty reading in
+    place -- is how a drained queue keeps paging somebody at 3am.
+    """
+    from contextplane.workers.extraction_drain import _OLDEST_PENDING_SECONDS
+
+    _OLDEST_PENDING_SECONDS.set(999.0)
+
+    await _worker(factory, _ScriptedProvider(_result()))._refresh_pending_gauge()
+
+    assert _OLDEST_PENDING_SECONDS._value.get() == 0.0
