@@ -9,8 +9,11 @@ short-circuits, successful staging, the retry-vs-dead-letter split, and
 per-row isolation of provider failures within one batch.
 
 Coverage:
-- `_claim` / `_refresh_pending_gauge`: the exact predicate the drain scans
-  on, and the unfiltered total the gauge reads.
+- `_claim`: the exact predicate the drain scans on, plus the per-tenant rank
+  and the row-scoped lock that make the claim fair -- the shape only, since
+  fairness itself needs rows and is proved in the integration suite.
+- `_refresh_pending_gauge`: the unfiltered depth, the age beside it, and the
+  clamp that keeps clock skew off the dashboard.
 - `run_once`: empty batch, an unknown strategy, a disabled strategy, a window
   whose events are already gone, a successful stage-and-complete, a retriable
   provider failure (both freshly backed off and exhausted into a dead
@@ -150,18 +153,29 @@ def _config_with(resolved: Any) -> MagicMock:
     return config
 
 
+#: How the router recognises each statement. Matched on a fragment that carries
+#: the statement's *purpose* rather than its full projection list, because the
+#: projection is the part that churns: `_claim` grew a CTE and table aliases and
+#: every one of these tests failed on a matcher keyed to `SELECT outbox_id,
+#: tenant_id, ...`, which had stopped describing the query it was named for.
+_CLAIM_SQL = "WITH eligible AS"
+_WINDOW_SQL = "SELECT event_id, session_id, seq, kind, body, tool_name, metadata"
+_GAUGE_SQL = "count(*) AS pending"
+
+
 def _make_session_factory(
     *,
     claim_rows: list[Any] | None = None,
     window_rows_by_session: dict[str, list[Any]] | None = None,
     pending_count: int = 0,
+    oldest_seconds: float = 0.0,
 ) -> tuple[MagicMock, list[dict[str, Any]]]:
     """SQL-string-keyed AsyncMock session factory.
 
     Routes:
     - claim SELECT               -> ``claim_rows``
     - window SELECT (keyed by ``:sid``) -> ``window_rows_by_session[sid]``
-    - pending-count SELECT       -> ``pending_count``
+    - gauge SELECT               -> ``pending_count`` and ``oldest_seconds``
     - the complete/retry/dead-letter writes -> no-op
 
     Returns the factory and a list every executed SQL statement (whitespace-
@@ -176,15 +190,17 @@ def _make_session_factory(
         sql = " ".join(str(stmt).split())
         executed.append({"sql": sql, "params": params})
         result = MagicMock()
-        if "SELECT outbox_id, tenant_id, actor_id, session_id, strategy_id" in sql:
+        if _CLAIM_SQL in sql:
             result.all = MagicMock(return_value=list(claims))
             return result
-        if "SELECT event_id, session_id, seq, kind, body, tool_name, metadata" in sql:
+        if _WINDOW_SQL in sql:
             sid = str((params or {}).get("sid"))
             result.all = MagicMock(return_value=list(windows.get(sid, [])))
             return result
-        if "SELECT count(*) FROM memory_extraction_outbox" in sql:
-            result.scalar_one = MagicMock(return_value=pending_count)
+        if _GAUGE_SQL in sql:
+            # One row, two columns: the gauge query reads depth and age
+            # together so they cannot describe different instants.
+            result.one = MagicMock(return_value=SimpleNamespace(pending=pending_count, oldest_seconds=oldest_seconds))
             return result
         if "DELETE FROM memory_extraction_outbox WHERE outbox_id = :oid AND through_seq" in sql:
             return result
@@ -217,12 +233,14 @@ def _worker(
     claim_rows: list[Any] | None = None,
     window_rows_by_session: dict[str, list[Any]] | None = None,
     pending_count: int = 0,
+    oldest_seconds: float = 0.0,
     batch_size: int = 10,
 ) -> tuple[ExtractionDrainWorker, list[dict[str, Any]]]:
     factory, executed = _make_session_factory(
         claim_rows=claim_rows,
         window_rows_by_session=window_rows_by_session,
         pending_count=pending_count,
+        oldest_seconds=oldest_seconds,
     )
     worker = ExtractionDrainWorker(
         factory,
@@ -242,26 +260,57 @@ def _worker(
 
 @pytest.mark.asyncio
 async def test_claim_query_scans_eligible_rows_ordered_locked_and_bounded() -> None:
+    """The clauses that make the claim safe, which a mock cannot prove by behaviour.
+
+    Fairness itself is proved against Postgres in
+    `tests/integration/test_extraction_drain.py`, where a noisy tenant's rows are
+    seeded earlier than a quiet tenant's and plain FIFO fails. What is left here
+    is the statement's shape: with no database, a mocked session can only be
+    asked what SQL it was handed.
+    """
     worker, executed = _worker(batch_size=7)
     await worker._claim(_NOW)
 
-    entry = next(e for e in executed if "SELECT outbox_id, tenant_id, actor_id, session_id, strategy_id" in e["sql"])
+    entry = next(e for e in executed if _CLAIM_SQL in e["sql"])
     sql = entry["sql"]
     assert "next_attempt_at IS NULL OR next_attempt_at <= CAST(:now AS TIMESTAMPTZ)" in sql
-    assert "ORDER BY enqueued_at" in sql
-    assert "FOR UPDATE SKIP LOCKED" in sql
+    # Ranked within a tenant, then drawn rank-first: this pair is the fairness.
+    # Either half alone gives plain FIFO back -- partitioning without ordering by
+    # the rank computes a number nothing reads.
+    assert "PARTITION BY tenant_id ORDER BY enqueued_at, outbox_id" in sql
+    assert "ORDER BY e.tenant_rank, o.enqueued_at, o.outbox_id" in sql
+    # Scoped to `o`: locking the CTE side too would be an error, and an
+    # unqualified FOR UPDATE is what Postgres rejects alongside `row_number()`.
+    assert "FOR UPDATE OF o SKIP LOCKED" in sql
     assert entry["params"]["lim"] == 7
     assert entry["params"]["now"] == _NOW
 
 
 @pytest.mark.asyncio
-async def test_refresh_pending_gauge_reads_total_count_without_a_where_clause() -> None:
-    worker, executed = _worker(pending_count=4)
+async def test_refresh_gauges_reads_depth_and_age_unfiltered_in_one_pass() -> None:
+    worker, executed = _worker(pending_count=4, oldest_seconds=93.5)
     await worker._refresh_pending_gauge()
 
-    sql = next(e["sql"] for e in executed if "SELECT count(*) FROM memory_extraction_outbox" in e["sql"])
+    sql = next(e["sql"] for e in executed if _GAUGE_SQL in e["sql"])
+    # Fleet depth, so no tenant or eligibility predicate narrows it -- a gauge
+    # that counted only *claimable* rows would read zero during a backoff.
     assert "WHERE" not in sql
     assert drain_module._PENDING._value.get() == 4
+    assert drain_module._OLDEST_PENDING_SECONDS._value.get() == pytest.approx(93.5)
+
+
+@pytest.mark.asyncio
+async def test_age_gauge_never_reports_a_queue_ahead_of_itself() -> None:
+    """A replica whose clock trails a row's `enqueued_at` yields a negative age.
+
+    Unclamped that reaches the dashboard as a queue with a future oldest row,
+    which reads as an instrument fault rather than the clock skew it is.
+    """
+    worker, _ = _worker(pending_count=1, oldest_seconds=-4.0)
+
+    await worker._refresh_pending_gauge()
+
+    assert drain_module._OLDEST_PENDING_SECONDS._value.get() == 0.0
 
 
 # ---------------------------------------------------------------------------
