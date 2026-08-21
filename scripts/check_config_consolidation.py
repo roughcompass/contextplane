@@ -268,6 +268,18 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
+        path="contextplane/storage/migrations/versions/0066_partition_session_events.py",
+        reason=(
+            "_hash_buckets() reads SESSION_EVENTS_PARTITION_COUNT at CREATE TABLE time, for "
+            "the same two reasons 0001_baseline_schema.py reads EMBEDDINGS_PARTITION_COUNT: it "
+            "needs integer and positivity validation with a message actionable from a bare "
+            "`alembic upgrade head` failure, and it has no Settings field because hash-partition "
+            "fan-out is fixed when the table is created and nothing at application runtime ever "
+            "reads it again. A Settings field would imply it could be changed, and changing a "
+            "hash modulus means rebuilding the table."
+        ),
+    ),
+    Exemption(
         path="scripts/bootstrap_dev_tenant.py",
         reason=(
             "Local-dev-only bootstrap script that never constructs Settings at all -- it "

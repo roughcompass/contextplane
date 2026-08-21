@@ -2375,7 +2375,7 @@ Acceptance:
 
 ### E2-T3 — `memory_session_events` is partitioned
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the events table partitioned, so retention and disposal are a detach
 rather than a delete.
@@ -2392,11 +2392,60 @@ it once: `scripts/partition_migrate.py` plus the `audit_log_new` shadow table in
 the baseline. That is the shape to reuse, and the reason this is its own task
 rather than a clause of another.
 
-Note this is what E6 needs — its crypto-shredding disposal is a partition
-operation — so the ordering between them is worth stating when E6 is cut.
+**Hashed on `tenant_id`, not ranged on `created_at`, and this task nearly went
+the other way.** The `audit_log` precedent above is range-by-time, and following
+it would have broken the invariant sequence allocation depends on. Postgres
+requires the partition key to appear in every unique key, so
+`uq_mse_session_seq (tenant_id, actor_id, session_id, seq)` would have become
+`(..., seq, created_at)` -- a strictly weaker constraint under which a session
+straddling a partition boundary can hold two events with the same `seq`.
+Sessions crossing a month boundary are ordinary, `seq` is what replay orders by,
+and `session_events.py` allocates the next one by inserting and retrying on
+unique violation. So the failures are duplicate turns in a replayed conversation
+and a retry loop that stops converging, neither of which raises anything.
+
+Hashing on `tenant_id` costs nothing and keeps everything: it is already the
+leading column of that unique key, so the partition key adds no column to it,
+and it leads `ix_mse_replay` and `ix_mse_listing` too, so both hot reads prune to
+one partition where a time range would fan out -- neither read is bounded by
+time. It is also the shipped precedent rather than an invention: `embeddings` is
+`PARTITION BY HASH (tenant_id)` with the same primary-key shape.
+
+**And the reason to reach for time partitioning turns out not to apply.** The
+paragraph below assumed E6's disposal is a partition detach. It is
+crypto-shredding -- disposal by destroying the key, recorded as an auditable
+deletion event -- which operates on content rather than physical layout. A
+partition scheme chosen for a mechanism this service does not use would have
+cost the invariant and bought nothing. That correction is the standing rule
+again: the plan's assumption about E6 was wrong, so the plan changed.
+
+Rebuilt rather than converted, because the table is empty in every deployment
+that will run this and has no inbound foreign keys. The `audit_log_new` shadow
+route stays the answer for a *populated* table.
+
+`ix_mse_expiry` now fans out across partitions. Accepted deliberately: it is a
+background sweep with no latency budget, and paying there so the two foreground
+reads prune is the right side of that trade.
+
+**The rebuild dropped eight CHECKs on the first attempt, and that is the part
+worth remembering.** Postgres has no `ALTER TABLE ... PARTITION BY`, so the
+migration drops and recreates -- and the first DDL was written by hand from the
+column list, losing every CHECK plus `seq`'s width (`BIGINT`, not `INTEGER`) and
+`expires_at`'s NOT NULL. Two behavioural tests caught the tokenizer pair; the
+other six would have gone unnoticed until a bad row reached production. The
+second attempt derives the DDL from the baseline's own definition and changes
+only the primary key and the `PARTITION BY` clause, and the schema was then
+diffed column-by-column and constraint-by-constraint against a pre-migration
+snapshot rather than re-read.
+
+`tests/conformance/test_session_events_partitioning.py` pins the shape, and
+three of its four shape assertions fail against the unpartitioned table. The one that
+matters asserts `uq_mse_session_seq` still holds exactly four columns, because
+a fifth is the silent regression this whole task is about.
 
 Acceptance:
     .venv/bin/python -m alembic upgrade head
+    .venv/bin/python -m pytest tests/conformance -q -k "session_events_partitioning"
     make lint && make test-coverage
 
 ### E2-T4 — ADR: what the two-call loop needs from a just-written event
