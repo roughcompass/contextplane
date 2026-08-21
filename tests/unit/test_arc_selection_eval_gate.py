@@ -162,7 +162,6 @@ def _load_rule(raw: dict[str, Any], *, revision_id: uuid.UUID, case_tenant_id: u
         is_mandatory=raw.get("is_mandatory", True),
         target_tenant_id=_tenant_ref(raw.get("target_tenant_id"), case_tenant_id=case_tenant_id),
         entity_ids=_uuid_set(raw.get("entity_ids")),
-        entity_labels=_str_set(raw.get("entity_labels")),
         domain_ids=_str_set(raw.get("domain_ids")),
         intent_kinds=frozenset(IntentKind(v) for v in raw.get("intent_kinds", [])),
         action_classes=frozenset(ActionClass(v) for v in raw.get("action_classes", [])),

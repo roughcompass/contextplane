@@ -1678,7 +1678,7 @@ Acceptance:
 
 ### E1-T6c — The authority matrix is applicability, and never names a principal
 
-**Kind:** task · **Status:** pending · **Blocked by:** E1-T6b · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E1-T6b · **Hotspot:** yes — `openapi.json` · **Repo:** contextplane
 
 Goal: the delegated-authority matrix expressed in `arc_applicability_rules`, and
 the rule that a principal is never one of its dimensions.
@@ -1718,10 +1718,44 @@ bytes**, so giving it an authority meaning would entangle what an agent may do
 with what a host has signed. E1's own body says "applicability rules", and this
 is why that is right rather than merely what it says.
 
-`data_sensitivity_tiers` is a bare `ARRAY(Text)`. E1-T5's closed vocabulary is
-what gives those strings meaning; validating rule values against it is part of
-this task, because without it the column admits any label and the matrix
-silently widens on a typo.
+`data_sensitivity_tiers` is a bare `ARRAY(Text)` on every path — wire schema,
+dataclass, column — with no validation anywhere. E1-T5's closed vocabulary is
+what gives those strings meaning, and validating rule values against it is part
+of this task. **The scale is `contextplane.sensitivity.TIERS`, not ARC's
+`content_classification`**: the values in use are `restricted` and
+`confidential`, and `restricted` is in the former only.
+
+**Both failure modes were measured, and the first correct one is the opposite of
+what this note originally said.** A typo does not widen:
+
+    rule=['restrcited'], manifest='restricted'  -> does not apply
+    rule=['restricted'],  manifest='regulated'  -> does not apply
+    rule=[],              manifest='regulated'  -> applies
+    rule=['restricted'],  manifest=None         -> does not apply
+
+`_matches_scalar` returns `False` for a non-empty rule set that does not contain
+the value, so a misspelled tier makes the rule govern **nothing**. The mechanism
+is narrowing; the consequence is still the dangerous one, because for a
+*mandatory* rule "governs nothing" is an obligation that silently stops
+blocking.
+
+**And the manifest side is an agent-controllable evasion, which is the bigger
+half.** `arc.py:159` accepts `data_sensitivity: str = Field(min_length=1,
+max_length=64)` — any string. `sensitivity.py` records that ARC's
+`data_sensitivity` is "deliberately open because it is mirrored into a host's
+signed attestation". So closing only the rule side is theatre: a host declares
+`data_sensitivity="ultra-secret"` and escapes every tier-constrained rule, as
+rows two and four above show. This task therefore does both:
+
+- **Rule side closed.** Only a known tier may be written, refused at
+  authoring, so a typo fails loudly instead of disarming an obligation.
+- **Manifest side fails closed.** An unrecognized or absent tier is ranked as
+  `MOST_RESTRICTIVE` at match time rather than matching nothing. That is not a
+  new invention — `sensitivity.py` documents two existing call sites that
+  already treat an unreadable label as maximally sensitive, and says the rule
+  belongs at the call site where it is visible. Keeping the manifest field open
+  while making the *interpretation* safe also preserves the reason it is open:
+  the host still signs whatever it declared, and the digest is unaffected.
 
 **A widening bug found while grounding E1-T6a, and this task owns it.**
 `entity_labels` is stored, submitted, snapshotted, materialised and round-tripped
@@ -1787,13 +1821,98 @@ asserts exactly the construction that widens, so it pins the bug in place and
 has to change with the fix — a test asserting a defect is not a reason to keep
 the defect, but it is a reason to state what the test was for.
 
+**Decided: drop `entity_labels`.** Adversarial review agreed with the
+destination and corrected two of the reasons, both of which were wrong:
+
+- "Corpus-load resolution would read the catalog at load time, so a replay
+  resolves differently" is **false**. `as_of` is already threaded through
+  `_CANDIDATES_SQL`, and the tree already has bitemporal storage. As-of-addressed
+  resolution would be replay-stable. The real blockers are elsewhere: **the
+  catalog has no labels at all** — `Entity` carries no label or tag column and
+  no label vocabulary exists anywhere — and the **obligation tombstone** must
+  answer "who did this apply to" from `applicability_snapshot` alone, with no
+  live rule to re-resolve against, which forces freezing resolved ids at
+  authoring time and collapses into "just use `entity_ids`". Also
+  `arc_approved_exceptions.lower_scope_entity_id` is a single UUID, so an
+  exception could never be granted at label granularity — half the authority
+  model cannot express it.
+- Rejecting "let the manifest declare labels" on the grounds that it makes the
+  agent authoritative for something the catalog owns is **also false**: the
+  manifest already carries `domain_ids` as free strings with no backing table
+  and no validation. The correct objection is that it would make `entity_labels`
+  mechanically identical to `domain_ids` — same type, same overlap semantics,
+  same absent registry — which is one question with two answers.
+
+Two claims in this note also need softening. "Nothing has shipped so removal
+costs no consumer" overstates it: `openapi.json` carries the field and
+`contextplane-ui` vendors that contract, so the cost is a regeneration rather
+than zero. And "labels are the only governance that survives new entities" is
+backwards — an empty selector already matches everything, so over-inclusion is
+the default and enumeration is what you opt into; `domain_ids` and the other
+non-enumerative dimensions all work today.
+
+**The removal is scoped to the class, not the field**, because the same review
+found two more instances of it, both verified:
+
+- **`scope='domain'` with no `domain_ids` matched every manifest, at rank two —
+  one rank *above* the entity hole.** So did `scope='intent'` with no selectors.
+  Reachable through `ApplicabilityDraft`, not just the authoring path. The
+  exception half has always required the correspondence
+  (`ck_arc_exceptions_scope_selectors`); the rules table enforced two of four.
+  Fixed in `__post_init__` and in SQL by `0063_rule_scope_selectors`.
+
+  **The fallout is the finding's own evidence.** Adding the two guards broke 48
+  integration tests across seven files plus the shared authoring-pipeline
+  helper, and every one of them broke the same way: a fixture building
+  `scope="intent"` with every selector `None`, or `scope="domain"` with no
+  domain. That shape was the default a test reached for, which is exactly why it
+  was worth forbidding — it was the cheapest rule to write and it matched every
+  manifest at a rank above the rules that narrowed. The fixtures now name the
+  selectors their scope requires.
+- **The same input was a durable outage, not a widening.**
+  `ApplicabilityRule.__post_init__` raises `ArcVocabularyError`, a
+  `RegistryError` — neither `ValueError` nor `TypeError`, which is all
+  `corpus._obligation_rule` caught. A mandatory labels-only entity rule produces
+  a snapshot with empty `entity_ids` (the snapshot has no labels field), so
+  rehydration threw straight past the handler and past `_obligations`, and
+  *every* context resolution for that tenant failed until the row was deleted.
+  The careful "an unreadable obligation must still block" path never ran. The
+  tenant-scoped variant crashes the same way. Fixed by widening the `except`.
+
+**What landed, in two changes.** The matrix-soundness half — the sensitivity
+scale on both sides, the domain and intent scope guards in Python and in SQL
+(`0063_rule_scope_selectors`), and the `ArcVocabularyError` fallback — then the
+`entity_labels` removal (`0064_drop_entity_labels`), which touches the wire
+schema and so regenerates `openapi.json`, the authoring schema snapshot, and the
+260 canonical vectors. The vectors' churn is wider than the field: an
+`artifact_semantics_digest` covers the shape that lost it, so every profile
+digesting artifact semantics moves. The Node reference verifier agrees on all
+260 afterwards, which is what says the regeneration is a regeneration rather
+than a drift.
+
+Two things deliberately preserved through the vector regeneration. The
+`duplicate_set_entry` negative built its violation *out of* `entity_labels`, so
+it moved to a repeated `domain_ids` entry rather than being left to pass
+vacuously — a byte-pinning negative that no longer fails for the reason it names
+is worse than a stale one. And the V1 authoring shape loses the field too:
+`_applicability_rule` generates V1 and V2 from one description, so V1 is
+regenerated in lockstep by construction rather than frozen, and will only become
+frozen at first release.
+
+**Not done here: the principal-is-never-a-dimension guard has no executable
+check.** The rule is stated in `ApplicabilityRule`'s docstring and enforced only
+by the absence of an actor column. That is weaker than the rest of this task and
+is E1-T7's to close, because the decision path is where a principal would
+actually get smuggled into a predicate.
+
 Acceptance:
-    .venv/bin/python -m pytest tests/unit -q -k "envelope and applicability"
-    make lint && make typecheck && make test-coverage
+    .venv/bin/python -m pytest tests/unit -q -k "applicability or scope_selector"
+    make openapi-export && git diff --exit-code -- openapi.json
+    make arc-vectors && make lint && make typecheck && make test-coverage
 
 ### E1-T7 — The authority decision, computed and never cached
 
-**Kind:** task · **Status:** pending · **Blocked by:** E1-T6c · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E1-T6c · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the decision point that reads an envelope and answers whether a principal
 may act — derived from the envelope row on every decision, per ADR-0007, with no
@@ -1813,13 +1932,55 @@ what ships, because the latency histogram's buckets top out at ten seconds. A
 revocation SLO with no test and no bucket would be a sentence rather than a
 promise.
 
+**Built as a pure function plus a two-read service.** `decide(envelope, rules,
+manifest, tenant_id, as_of)` is I/O-free and takes `as_of` as a parameter, so a
+receipt replays to the same verdict; `AutonomyDecisionService` does the two reads
+— resolve the binding, load the bound revision's rules — on every call. Nothing
+is cached, so the "no invalidation" claim is a property of the shape rather than
+a discipline anyone has to maintain. The integration tests flip a row through the
+service and decide again through the *same instance*, with a fixed clock, which
+is what makes them a test of the mechanism rather than of a restart.
+
+**Five verdicts, not a boolean.** `permitted | no_envelope | envelope_suspended |
+envelope_withdrawn | outside_envelope`. The four refusals stay distinct because
+the next two tasks need to tell them apart: E1-T8 records what *would* have been
+refused, and E1-T9's pre-flight counts principals that acted with **no envelope
+at all** — a scan that is unbuildable if every refusal reads the same.
+
+**Deny by default, and `envelope_withdrawn` is the one that needed deciding.**
+A binding deliberately outlives the revision it names, because ending bindings as
+a side effect of revoking a document would be a decision taken silently. E1-T6a
+therefore has `resolve` report the bound revision's lifecycle state and leaves the
+question open; this task answers it fail-closed. A `policy` revision that ARC has
+revoked, superseded or expired is one somebody took out of force, and continuing
+to derive authority from it is exactly the failure the revocation was meant to
+cause.
+
+**The principal-is-never-a-dimension rule is now executable**, which E1-T6c left
+open. `test_the_predicate_never_receives_the_principal` asserts on the type that
+no `ApplicabilityRule` field is principal-shaped, and its companion asserts that
+two principals bound to one envelope get identical verdicts. `decide` passes the
+manifest to `rule_applies` and nothing else — which principal is asking was
+already answered by *which envelope resolved*.
+
+`corpus._rule_from_row` became public as `rule_from_row` for this: the decision
+rehydrates the rules of one revision and must do it exactly as corpus assembly
+does, and two mappings of the same row into the same dataclass would be two
+places for the selector set to drift.
+
+**Still not wired to a caller.** The decision exists and is tested; no route or
+MCP tool consults it yet, because in the advisory stage it must record rather
+than refuse, and that stage is E1-T8. Shipping enforcement before the stage
+column exists would be landing "no envelope, no authority" on day one, which
+ADR-0005 exists to prevent.
+
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "envelope and (suspend or decision)"
     make lint && make test-coverage
 
 ### E1-T8 — Advisory recording, which is what the graduation scan later reads
 
-**Kind:** task · **Status:** pending · **Blocked by:** E1-T7 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E1-T7 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the `advisory` stage from ADR-0005 and ADR-0008 — an enforcement stage
 column on `tenants` (`advisory | enforcing`, CHECK-constrained, defaulting to
@@ -1849,13 +2010,48 @@ that metric cardinality is closed here — `contextplane/metrics.py` forbids
 tenant-labelled series — so "how many tenants are still advisory" cannot be a
 gauge and must be a query.
 
+**Built as `0065_envelope_enforcement_stage` plus an enforcement service that
+wraps the decision rather than changing it.** `AutonomyDecisionService` still
+answers only "does the envelope authorise this"; `AutonomyEnforcementService`
+answers the separate question of whether a refusal refuses, and that is the only
+thing the stage touches. Keeping them apart is what lets the decision stay pure
+and replayable while the stage is read per request.
+
+**The advisory table's CHECKs encode the scan's assumptions.** `permitted` is not
+an admissible verdict — a permit writes no row, so admitting the value would
+describe a state the table cannot hold. And `(verdict = 'no_envelope') =
+(binding_id IS NULL)` is a constraint rather than a convention, because the scan
+distinguishes "ungoverned principal" from "principal acting outside a real
+envelope" and a row claiming both or neither is one it would have to guess about.
+
+**`decide()` takes the principal as a parameter, and the first version did not.**
+It read `envelope.principal`, substituting a placeholder when there was no
+envelope — which erased the identity the graduation pre-flight counts, on exactly
+the rows it counts them from. An advisory record saying "some principal had no
+envelope" answers nothing. Caught by the test asserting the recorded row's
+contents rather than the outcome object's, which is the reason to assert against
+the database rather than the return value.
+
+**The safe default here is the permissive one**, which is unusual for this
+service and stated in the migration for that reason: `enforcing` on an
+unmigrated tenant refuses every agent that tenant runs, and a fleet-wide
+availability failure is not a safer outcome than a recorded one. The restrictive
+direction is reached by graduating, which E1-T9 puts a pre-flight in front of.
+
+**A failed advisory write does not block the act.** In advisory the caller
+proceeds by definition, so letting a bookkeeping insert refuse an act policy
+allows would make this stage more dangerous than the one it precedes. The record
+is lost, logged at `exception`, and reported through `recorded=False` rather than
+inferred.
+
 Acceptance:
     .venv/bin/python -m alembic upgrade head
+    .venv/bin/python -m pytest tests/integration -q -k "autonomy_enforcement"
     make lint && make test-coverage
 
 ### E1-T9 — Graduation is a pre-flight over offenders, not a flag flip
 
-**Kind:** task · **Status:** pending · **Blocked by:** E1-T8 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E1-T8 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the admin route that moves a tenant from `advisory` to `enforcing`, in the
 shape `_run_graduation_preflight` already has
@@ -1874,8 +2070,44 @@ One detail the ADR flags and this task must honour: the pre-flight runs on every
 write rather than only on the flip, because conditioning it on the flip would
 silently discard a caller's `dry_run`.
 
+**Built as a service, not an admin route.** The five pre-flight outcomes live in
+`AutonomyGraduationService`, which raises typed errors rather than building
+`Response` objects. `_run_graduation_preflight` returns HTTP because it *is* the
+route; splitting them here means the scan and its refusals are testable without
+a client, and the route that will map them is a thin layer whose absence blocks
+nothing — nothing consults the enforcement stage from HTTP yet.
+
+**Anti-vacuity turned out to be the harder half, and it needed its own state.**
+ADR-0005 requires the pre-flight to report the population it scanned rather than
+only the offenders. That is not decoration: a tenant the advisory stage never
+observed produces exactly the same empty offender list as a tenant whose agents
+are all correctly enveloped, so `is_clean` alone would let a graduation pass on
+silence. `GraduationReport.observed_nothing` is kept separate from `is_clean` so
+a caller cannot read one and get the other, and `NothingObserved` is a distinct
+refusal from `GraduationBlocked` because the operator's next step differs — one
+needs envelopes written, the other needs traffic.
+
+**Only `no_envelope` blocks.** `outside_envelope`, `envelope_suspended` and
+`envelope_withdrawn` are all the envelope working, and graduating changes none of
+those outcomes. `no_envelope` alone is the refusal that graduation converts from
+a record into an outage. The population count deliberately spans *all* verdicts,
+so a tenant with only working refusals reads as observed-and-clean rather than
+unobserved.
+
+**Graduating is tenant admin; demoting needs the operator allowlist.** The same
+line the envelope bindings draw, for the same reason: graduating only narrows —
+every act it changes was already being recorded as a would-be refusal — while a
+demotion turns every refusal a tenant is making back into a record, which hands
+authority back to a principal that was being refused.
+
+**The migration plan reaches the audit row, not just the request.** Requiring it
+is pointless if it is not durable: a force nobody can review afterwards is a
+force with a formality in front of it. The audit payload also carries
+`offenders_at_write`, so the row records what was overridden rather than only
+that something was.
+
 Acceptance:
-    .venv/bin/python -m pytest tests/integration -q -k "graduation and envelope"
+    .venv/bin/python -m pytest tests/integration -q -k "autonomy_graduation"
     make lint && make test-coverage
 
 ### E1-T10 — Cold start: three principals, and the first envelope is advisory

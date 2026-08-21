@@ -5,6 +5,9 @@ from __future__ import annotations
 import datetime
 import uuid
 
+import pytest
+
+from contextplane.arc.service import selection as sel
 from contextplane.arc.service.selection import (
     ApprovedException,
     ScopedDirective,
@@ -24,6 +27,7 @@ from contextplane.arc.types import (
     IntentManifest,
     NormalizedConstraint,
 )
+from contextplane.sensitivity import MOST_RESTRICTIVE
 
 _T1 = uuid.UUID("aaaaaaaa-0000-4000-8000-000000000001")
 _T2 = uuid.UUID("aaaaaaaa-0000-4000-8000-000000000002")
@@ -125,6 +129,65 @@ def test_a_named_dimension_absent_from_the_manifest_does_not_match() -> None:
     assert rule_applies(r, _manifest(environment=None), tenant_id=_T1, as_of=_NOW) is False
 
 
+# --- sensitivity is the one dimension that fails closed --------------------------
+
+
+def test_an_unrecognised_sensitivity_is_read_as_the_most_restrictive_tier() -> None:
+    """Otherwise the manifest's openness is an evasion.
+
+    `data_sensitivity` is caller-supplied and deliberately unvalidated, because
+    it is hashed into the claims digest a host signs. Under plain set
+    membership a host declaring anything off-scale matched no tier-scoped rule
+    at all, so evading tier-based governance took one arbitrary string. The
+    other dimensions do not need this: they are either closed vocabularies or
+    ids that mean nothing if invented.
+    """
+    off_scale = _manifest(data_sensitivity="ultra-secret")
+
+    assert rule_applies(
+        _rule(data_sensitivity_tiers=frozenset({MOST_RESTRICTIVE})), off_scale, tenant_id=_T1, as_of=_NOW
+    )
+    assert (
+        rule_applies(_rule(data_sensitivity_tiers=frozenset({"public"})), off_scale, tenant_id=_T1, as_of=_NOW) is False
+    ), "reading it as maximally sensitive must not also make it match the least sensitive tier"
+
+
+def test_a_manifest_declaring_no_sensitivity_is_read_as_most_restrictive() -> None:
+    """Omitting the field must not be cheaper than declaring an off-scale one."""
+    undeclared = _manifest(data_sensitivity=None)
+
+    assert rule_applies(
+        _rule(data_sensitivity_tiers=frozenset({MOST_RESTRICTIVE})), undeclared, tenant_id=_T1, as_of=_NOW
+    )
+
+
+def test_a_recognised_tier_is_still_matched_exactly() -> None:
+    """The fail-closed reading applies only to values off the scale."""
+    assert rule_applies(
+        _rule(data_sensitivity_tiers=frozenset({"confidential"})), _manifest(), tenant_id=_T1, as_of=_NOW
+    )
+    assert (
+        rule_applies(
+            _rule(data_sensitivity_tiers=frozenset({MOST_RESTRICTIVE})), _manifest(), tenant_id=_T1, as_of=_NOW
+        )
+        is False
+    ), "a confidential manifest is not silently promoted to restricted"
+
+
+def test_the_scale_is_folded_into_the_selection_config_digest(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Adding or removing a tier changes which rules apply to an unchanged
+    manifest, which is exactly what this digest exists to record.
+
+    Asserted by moving the scale and watching the digest move, rather than by
+    reading the material: the digest's job is to differ, and a test that
+    inspected the string it hashes would pass even if the hash ignored it.
+    """
+    before = sel.selection_config_digest()
+    monkeypatch.setattr(sel, "TIERS", (*sel.TIERS, "regulated"))
+
+    assert sel.selection_config_digest() != before
+
+
 def test_effective_window_is_evaluated_at_as_of_not_now() -> None:
     """Replaying a receipt months later must reach the same answer."""
     r = _rule(effective_from=datetime.datetime(2026, 7, 1, tzinfo=datetime.UTC))
@@ -143,10 +206,16 @@ def test_an_expired_rule_does_not_apply() -> None:
 
 def _scoped(scope: AuthorityScope, effective: datetime.datetime, did: uuid.UUID) -> ScopedDirective:
     rid = uuid.uuid4()
+    # Every scope below `global` must name what it is scoped to; precedence is
+    # what this helper is about, so each scope gets the cheapest selector that
+    # satisfies its own guard.
     rule = _rule(
         scope,
         target_tenant_id=_T1 if scope is AuthorityScope.TENANT else None,
         entity_ids=frozenset({_CAP}) if scope is AuthorityScope.ENTITY else frozenset(),
+        domain_ids=frozenset({"payments"}) if scope is AuthorityScope.DOMAIN else frozenset(),
+        intent_kinds=frozenset({IntentKind.CODE_CHANGE}) if scope is AuthorityScope.INTENT else frozenset(),
+        action_classes=frozenset({ActionClass.MERGE}) if scope is AuthorityScope.INTENT else frozenset(),
     )
     return ScopedDirective(directive=_directive(did, rid), rule=rule, revision_effective_from=effective)
 

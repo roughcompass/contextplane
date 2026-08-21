@@ -13,9 +13,9 @@ three private tuples is four statements of one fact, and the order is the one a
 reader cannot recover from the others.
 
 **This module refuses to rank a name it does not know, and does not decide what
-a caller should do about that.** `rank()` raises. Three call sites disagree today
-about what an unreadable label means — two treat it as the most sensitive thing,
-one refuses to answer — and they are both defensible answers to different
+a caller should do about that.** `rank()` raises. The call sites disagree today
+about what an unreadable label means — most treat it as the most sensitive
+thing, one refuses to answer — and they are both defensible answers to different
 questions: "how should I handle something I cannot classify" and "can I compare
 these two". Folding either into the vocabulary would change a redaction decision
 and a cross-organization sharing ceiling as a side effect of moving a constant,
@@ -26,10 +26,17 @@ so each rule stays at its call site where it is visible.
 encrypted storage that this one does not. The two are not spelling variants and
 are deliberately not merged: merging would be a breaking change on
 `SignalReference.classification` and its siblings, a data migration for stored
-`restricted` rows, and the encryption rule gaining reach beyond ARC. Nor is it
-ARC's `data_sensitivity`,
-which is deliberately open because it is mirrored into a host's signed
-attestation and hashed into the manifest-claims digest.
+`restricted` rows, and the encryption rule gaining reach beyond ARC.
+
+**Nor is it ARC's manifest `data_sensitivity`, which stays open — but this scale
+is now what interprets it.** The field remains any string, because it is
+mirrored into a host's signed attestation and hashed into the manifest-claims
+digest, and closing it would mean refusing a manifest a host had already signed.
+What changed is the reading: `arc/service/selection.py` ranks a declaration this
+scale does not know, or a missing one, as `MOST_RESTRICTIVE` before matching.
+Left as plain set membership, the openness was an evasion — a host declaring an
+off-scale tier escaped every rule that named one. Interpretation rather than
+validation is what keeps the signed bytes untouched while closing that.
 
 **The error type is local.** `contextplane.exceptions` is a layer above this one,
 so raising `RegistryError` here would invert the import contract. That is the
@@ -39,7 +46,7 @@ accepted price of bottom-layer placement, and the same answer
 
 from __future__ import annotations
 
-from typing import Final, Literal
+from typing import Final, Literal, TypeGuard
 
 #: The same names as a type. Declared first because the tuple is typed with it:
 #: a `Literal` cannot be built from a runtime value, so this is the one form that
@@ -75,8 +82,13 @@ class UnknownSensitivityTier(ValueError):
     """
 
 
-def is_tier(value: object) -> bool:
-    """Whether `value` is one of the tiers. Total, and answers `False` for anything else."""
+def is_tier(value: object) -> TypeGuard[Tier]:
+    """Whether `value` is one of the tiers. Total, and answers `False` for anything else.
+
+    A `TypeGuard` rather than a plain `bool`: narrowing is what the predicate is
+    for, and a caller holding a `str | None` that has just been checked should
+    not have to restate the answer with a cast the checker cannot verify.
+    """
     return isinstance(value, str) and value in TIER_SET
 
 

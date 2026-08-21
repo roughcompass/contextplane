@@ -227,7 +227,6 @@ def _applicability_rule(narrowest_scope: str, selector: str) -> Schema:
             "scope": _enum("global", "tenant", "domain", "entity", narrowest_scope),
             "target_tenant_id": _nullable(_uuid()),
             "entity_ids": _nullable(_array(_uuid(), kind="set")),
-            "entity_labels": _nullable(_array(_string(), kind="set")),
             "domain_ids": _nullable(_array(_string(), kind="set")),
             selector: _nullable(_array(_string(), kind="set")),
             "action_classes": _nullable(_array(_string(), kind="set")),

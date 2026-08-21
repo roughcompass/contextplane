@@ -245,7 +245,6 @@ def _selector_tuple(rule: Mapping[str, Any]) -> tuple[Any, ...]:
         rule.get("scope"),
         rule.get("target_tenant_id"),
         _frozen(rule.get("entity_ids")),
-        _frozen(rule.get("entity_labels")),
         _frozen(rule.get("domain_ids")),
         _frozen(rule.get("intent_kinds")),
         _frozen(rule.get("action_classes")),

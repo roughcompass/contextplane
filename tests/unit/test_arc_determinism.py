@@ -41,23 +41,57 @@ CASES = 120
 
 _TENANT = uuid.UUID("aaaaaaaa-0000-4000-8000-000000000001")
 _AS_OF = datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC)
+
+#: Small shared pools so a narrow-scoped rule and the manifest can actually
+#: overlap. The manifest used to declare no entities and no domains at all,
+#: which was harmless while entity and domain rules carried no selector -- both
+#: matched everything on those dimensions. Now that each scope must name its
+#: own selector, an empty manifest would mean two of the five scopes never
+#: match, and the sweep would be quietly testing three.
+_DOMAINS = ("payments", "logistics")
+_ENTITIES = (
+    uuid.UUID("cccccccc-0000-4000-8000-000000000001"),
+    uuid.UUID("cccccccc-0000-4000-8000-000000000002"),
+)
 _VALUES = ("approved", "pending", "rejected")
-_OPERATIONS = ("release", "merge", "export")
 
 
 def _rng(case: int) -> random.Random:
     return random.Random(SEED + case)
 
 
-def _subject(rng: random.Random) -> ConflictSubjectKey:
-    return ConflictSubjectKey(
+#: Three fixed conflict subjects, chosen from rather than composed.
+#:
+#: Two directives conflict only when they share a subject, so how often this
+#: sweep exercises conflict resolution at all is decided here. Composing the
+#: subject from five independent draws spanned 120 combinations, and across 120
+#: cases that produced conflicts in exactly **one** -- the `saw_conflict`
+#: coverage assertion was passing by a margin of one, so any change to the
+#: generator's random stream could silently turn conflict coverage off. It did:
+#: adding the selectors the scope guards now require shifted the stream and the
+#: single colliding pair disappeared, which is how this was found.
+#:
+#: A three-element pool makes collisions structural. Nothing here is testing the
+#: breadth of the subject vocabulary; `test_arc_selection` owns that.
+_SUBJECTS = tuple(
+    ConflictSubjectKey(
         schema_version="arc_conflict_v1",
-        namespace=rng.choice(("deploy", "data")),
-        subject_selector=rng.choice(("service:a", "service:b")),
-        operation=rng.choice(_OPERATIONS),
-        action_class=rng.choice([a.value for a in ActionClass]),
-        target_selector=rng.choice(("env:prod", "env:stage")),
+        namespace=namespace,
+        subject_selector="service:a",
+        operation=operation,
+        action_class=action_class,
+        target_selector="env:prod",
     )
+    for namespace, operation, action_class in (
+        ("deploy", "release", "deploy"),
+        ("deploy", "merge", "merge"),
+        ("data", "export", "data_export"),
+    )
+)
+
+
+def _subject(rng: random.Random) -> ConflictSubjectKey:
+    return rng.choice(_SUBJECTS)
 
 
 def _candidate(rng: random.Random) -> tuple[Directive, ApplicabilityRule, datetime.datetime]:
@@ -86,15 +120,30 @@ def _candidate(rng: random.Random) -> tuple[Directive, ApplicabilityRule, dateti
         )
 
     scope = rng.choice(list(AuthorityScope))
+    # Every scope below `global` must now name what it is scoped to, so the
+    # selector a scope requires is supplied rather than drawn: the generator's
+    # job is to vary shapes the model admits, and a rule the constructor refuses
+    # tests the constructor, not determinism. Intent scope needs *both* an
+    # intent kind and an action class, so those two draw from 1 rather than 0.
+    #
+    # The draws stay in their original order, and this matters more than it
+    # looks: reordering them changes what every later `rng` call returns, so the
+    # whole 120-case corpus becomes a different corpus. A first attempt hoisted
+    # them above `getrandbits`, and the coverage guard below caught it by
+    # noticing no case produced a conflict any more.
+    rule_id = uuid.UUID(int=rng.getrandbits(128), version=4)
+    is_mandatory = rng.random() < 0.7
+    floor = 1 if scope is AuthorityScope.INTENT else 0
     rule = ApplicabilityRule(
-        rule_id=uuid.UUID(int=rng.getrandbits(128), version=4),
+        rule_id=rule_id,
         revision_id=revision_id,
         scope=scope,
-        is_mandatory=rng.random() < 0.7,
+        is_mandatory=is_mandatory,
         target_tenant_id=_TENANT if scope is AuthorityScope.TENANT else None,
-        entity_labels=frozenset({"x"}) if scope is AuthorityScope.ENTITY else frozenset(),
-        intent_kinds=frozenset(rng.sample(list(IntentKind), rng.randint(0, 2))),
-        action_classes=frozenset(rng.sample(list(ActionClass), rng.randint(0, 2))),
+        entity_ids=frozenset({rng.choice(_ENTITIES)}) if scope is AuthorityScope.ENTITY else frozenset(),
+        domain_ids=frozenset({rng.choice(_DOMAINS)}) if scope is AuthorityScope.DOMAIN else frozenset(),
+        intent_kinds=frozenset(rng.sample(list(IntentKind), rng.randint(floor, 2))),
+        action_classes=frozenset(rng.sample(list(ActionClass), rng.randint(floor, 2))),
     )
     # Effective time drawn from a small set so ties are common — ties are where a
     # weak sort key would let input order leak into the result.
@@ -134,8 +183,8 @@ def _case(case: int) -> SelectionInput:
             session_id="s1",
             intent_kind=rng.choice(list(IntentKind)),
             requested_action_classes=frozenset(rng.sample(list(ActionClass), rng.randint(0, 3))),
-            entity_ids=frozenset(),
-            domain_ids=frozenset(),
+            entity_ids=frozenset(_ENTITIES),
+            domain_ids=frozenset(_DOMAINS),
             environment=rng.choice((None, "production", "staging")),
             data_sensitivity=rng.choice((None, "confidential")),
         ),
@@ -222,21 +271,27 @@ def test_the_generator_actually_covers_the_shape_space() -> None:
     determinism assertion above would pass while proving nothing.
     """
     statuses, scopes, sizes = set(), set(), set()
-    saw_conflict = saw_exception = saw_missing = False
+    conflicts = exceptions = missing = 0
     for case in range(CASES):
         inputs = _case(case)
         result = select(inputs)
         statuses.add(result.status)
         sizes.add(len(inputs.candidates))
         scopes.update(rule.scope for _d, rule, _e in inputs.candidates)
-        saw_conflict = saw_conflict or bool(result.conflicts)
-        saw_exception = saw_exception or bool(result.applied_exception_ids)
-        saw_missing = saw_missing or any(o.is_missing for o in inputs.obligations)
+        conflicts += bool(result.conflicts)
+        exceptions += bool(result.applied_exception_ids)
+        missing += any(o.is_missing for o in inputs.obligations)
 
     assert len(statuses) >= 2, f"only saw {statuses}"
     assert len(scopes) == len(AuthorityScope), f"scopes not covered: {scopes}"
     assert max(sizes) >= 5, "never generated a large candidate set"
     assert 0 in sizes, "never generated an empty candidate set"
-    assert saw_conflict, "no case produced a conflict"
-    assert saw_exception, "no case applied an exception"
-    assert saw_missing, "no case had a missing obligation"
+    # Counted with a floor rather than asserted as "at least one". These three
+    # were booleans, and `conflicts` was true for exactly one case in 120 -- so
+    # the guard was one unlucky shuffle away from passing while covering
+    # nothing, and an unrelated change to the random stream duly turned it off.
+    # A floor of three is still comfortably below what the generator produces
+    # and states the coverage the sweep actually depends on.
+    assert conflicts >= 3, f"only {conflicts} case(s) produced a conflict"
+    assert exceptions >= 3, f"only {exceptions} case(s) applied an exception"
+    assert missing >= 3, f"only {missing} case(s) had a missing obligation"

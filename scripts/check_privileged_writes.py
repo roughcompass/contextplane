@@ -115,7 +115,20 @@ class Rule:
 RULES: tuple[Rule, ...] = (
     Rule(
         table="tenants",
-        allowed_callers=frozenset({"contextplane/auth/entitlements/actor_store.py"}),
+        allowed_callers=frozenset(
+            {
+                "contextplane/auth/entitlements/actor_store.py",
+                # Sets `envelope_enforcement_stage` and nothing else -- the one
+                # policy column on this table with a security consequence, since
+                # it decides whether an envelope refusal refuses. Permitted on
+                # the same terms the guidance below asks of a creator: the
+                # `arc.envelope.enforcement_stage.set` audit event is emitted in
+                # the same transaction as the UPDATE, so the stage cannot move
+                # without a row saying who moved it and why. It creates no
+                # tenant, so `ON CONFLICT DO NOTHING` has nothing to guard.
+                "contextplane/arc/service/autonomy_graduation.py",
+            }
+        ),
         guidance=(
             "A tenant row is a principal in the authorization model. A new caller must guard "
             "with ON CONFLICT DO NOTHING and emit a tenant.* audit event in the same "

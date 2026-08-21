@@ -67,7 +67,8 @@ from contextplane.arc.service.queries.materialisation import (
 from contextplane.arc.service.risk import RiskEnvelopeValidator
 from contextplane.arc.types import ArcRequestContext, ArcVocabularyError, AuthorityScope, parse_wire_directive_type
 from contextplane.audit import actions
-from contextplane.exceptions import NotFoundError, RegistryError
+from contextplane.exceptions import NotFoundError, RegistryError, ValidationError
+from contextplane.sensitivity import TIERS, is_tier
 from contextplane.types import Clock
 
 #: `arc_revisions.detail_audience`'s three DB literals (`all_matched_
@@ -590,11 +591,28 @@ class ArtifactMaterialisationService:
         the same materialisation-time value the revision's own `effective_
         from` uses (`_draft_revision`), rather than inventing a distinct
         default.
+
+        The sensitivity tiers are checked here rather than left to the table.
+        `data_sensitivity_tiers` is a bare `ARRAY(Text)` with no CHECK, and this
+        is the *other* write path into `arc_applicability_rules` --
+        `ApplicabilityDraft` validation in `artifact_materialisation` never sees
+        a candidate. A misspelled tier makes the rule match nothing rather than
+        everything, which for a mandatory rule is an obligation that silently
+        stops blocking, so it has to fail at submission where an author is
+        looking.
         """
+        tiers = rule.get("data_sensitivity_tiers") or ()
+        unknown = sorted(str(t) for t in tiers if not is_tier(t))
+        if unknown:
+            msg = (
+                f"applicability rule {rule.get('rule_id')!r} names sensitivity tier(s) {unknown} that are "
+                f"not on the scale {list(TIERS)}; a rule naming a tier nothing can declare matches nothing"
+            )
+            raise ValidationError(msg)
+
         effective_from = rule.get("effective_from")
         effective_until = rule.get("effective_until")
         entity_ids = rule.get("entity_ids")
-        entity_labels = rule.get("entity_labels")
         domain_ids = rule.get("domain_ids")
         intent_kinds = rule.get("intent_kinds")
         action_classes = rule.get("action_classes")
@@ -606,7 +624,6 @@ class ArtifactMaterialisationService:
             scope=str(rule["scope"]),
             target_tenant_id=(uuid.UUID(str(rule["target_tenant_id"])) if rule.get("target_tenant_id") else None),
             entity_ids=(tuple(uuid.UUID(str(v)) for v in entity_ids) if entity_ids else None),
-            entity_labels=(tuple(str(v) for v in entity_labels) if entity_labels else None),
             domain_ids=(tuple(str(v) for v in domain_ids) if domain_ids else None),
             intent_kinds=(tuple(str(v) for v in intent_kinds) if intent_kinds else None),
             action_classes=(tuple(str(v) for v in action_classes) if action_classes else None),

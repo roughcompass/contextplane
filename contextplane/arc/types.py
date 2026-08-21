@@ -460,10 +460,23 @@ class Directive:
 
 @dataclasses.dataclass(frozen=True)
 class ApplicabilityRule:
-    """A declarative predicate over a task manifest.
+    """A declarative predicate over an intent manifest.
 
     Every selector is a frozenset so matching is set membership rather than list
     scanning, and so two rules differing only in selector order are equal.
+
+    **A rule below `global` must name what it is scoped to.** `scope` buys
+    precedence -- `_SCOPE_ORDER` ranks a domain rule above an entity rule -- and
+    an empty selector means "no constraint on this dimension", so a rule
+    claiming a narrow scope while selecting nothing takes the precedence without
+    the narrowing and applies to every manifest. `global` is exempt because
+    matching everything is what it means.
+
+    The same correspondence is already required of the other half of this
+    authority model: `ck_arc_exceptions_scope_selectors` makes an exception name
+    a domain for domain scope, an entity for entity scope, and an intent kind
+    plus an action class for intent scope. This guard exists because the rules
+    table enforced only two of the four.
     """
 
     rule_id: uuid.UUID
@@ -472,7 +485,6 @@ class ApplicabilityRule:
     is_mandatory: bool = True
     target_tenant_id: uuid.UUID | None = None
     entity_ids: frozenset[uuid.UUID] = frozenset()
-    entity_labels: frozenset[str] = frozenset()
     domain_ids: frozenset[str] = frozenset()
     intent_kinds: frozenset[IntentKind] = frozenset()
     action_classes: frozenset[ActionClass] = frozenset()
@@ -485,8 +497,18 @@ class ApplicabilityRule:
         if self.scope is AuthorityScope.TENANT and self.target_tenant_id is None:
             msg = f"rule {self.rule_id} is tenant-scoped but names no target tenant"
             raise ArcVocabularyError(msg)
-        if self.scope is AuthorityScope.ENTITY and not (self.entity_ids or self.entity_labels):
+        if self.scope is AuthorityScope.ENTITY and not self.entity_ids:
             msg = f"rule {self.rule_id} is entity-scoped but names no entity"
+            raise ArcVocabularyError(msg)
+        if self.scope is AuthorityScope.DOMAIN and not self.domain_ids:
+            msg = f"rule {self.rule_id} is domain-scoped but names no domain"
+            raise ArcVocabularyError(msg)
+        # Both, matching what `ck_arc_exceptions_scope_selectors` requires of an
+        # intent-scoped exception. An intent kind alone leaves the action class
+        # unconstrained, which is the half that decides whether an obligation is
+        # owed for the thing actually being done.
+        if self.scope is AuthorityScope.INTENT and not (self.intent_kinds and self.action_classes):
+            msg = f"rule {self.rule_id} is intent-scoped but names no intent kind and action class"
             raise ArcVocabularyError(msg)
 
 

@@ -81,7 +81,10 @@ def seeded(sync_engine: Engine) -> dict[str, uuid.UUID]:
         "entity_ids": [],
         "domain_ids": [],
         "intent_kinds": sorted(_KINDS),
-        "action_classes": [],
+        # Both, matching the rule row: an intent-scoped rule must name an
+        # action class as well as a kind, so a snapshot of one that did not
+        # would rehydrate into a rule the constructor refuses.
+        "action_classes": ["merge"],
         "environments": [],
         "data_sensitivity_tiers": [],
     }
@@ -128,8 +131,10 @@ def seeded(sync_engine: Engine) -> dict[str, uuid.UUID]:
         conn.execute(
             text(
                 "INSERT INTO arc_applicability_rules ("
-                "  rule_id, revision_id, tenant_id, scope, intent_kinds, effective_from, is_mandatory"
-                ") VALUES (:r, :rev, :t, 'intent', CAST(:k AS TEXT[]), now() - interval '1 day', TRUE)"
+                "  rule_id, revision_id, tenant_id, scope, intent_kinds, action_classes,"
+                "  effective_from, is_mandatory"
+                ") VALUES (:r, :rev, :t, 'intent', CAST(:k AS TEXT[]), ARRAY['merge'],"
+                "  now() - interval '1 day', TRUE)"
             ),
             {"r": ids["rule"], "rev": ids["revision"], "t": ids["tenant"], "k": _KINDS},
         )
@@ -281,8 +286,9 @@ def test_the_rename_refuses_rather_than_merging_when_both_spellings_are_present(
         conn.execute(
             text(
                 "INSERT INTO arc_applicability_rules ("
-                "  rule_id, revision_id, tenant_id, scope, task_kinds, effective_from, is_mandatory"
-                ") VALUES (gen_random_uuid(), :rev, :t, 'intent', CAST(:k AS TEXT[]),"
+                "  rule_id, revision_id, tenant_id, scope, task_kinds, action_classes,"
+                "  effective_from, is_mandatory"
+                ") VALUES (gen_random_uuid(), :rev, :t, 'intent', CAST(:k AS TEXT[]), ARRAY['merge'],"
                 "  now() - interval '1 day', TRUE)"
             ),
             {"rev": at_pre_cutover["revision"], "t": at_pre_cutover["tenant"], "k": _KINDS},

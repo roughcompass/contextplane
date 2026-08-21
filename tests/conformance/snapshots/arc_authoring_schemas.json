@@ -673,21 +673,6 @@
         "default": null,
         "title": "Entity Ids"
       },
-      "entity_labels": {
-        "anyOf": [
-          {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Entity Labels"
-      },
       "environments": {
         "anyOf": [
           {
@@ -1410,21 +1395,6 @@
             "default": null,
             "title": "Entity Ids"
           },
-          "entity_labels": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Entity Labels"
-          },
           "environments": {
             "anyOf": [
               {
@@ -2008,21 +1978,6 @@
             ],
             "default": null,
             "title": "Entity Ids"
-          },
-          "entity_labels": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Entity Labels"
           },
           "environments": {
             "anyOf": [
@@ -3186,21 +3141,6 @@
             ],
             "default": null,
             "title": "Entity Ids"
-          },
-          "entity_labels": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Entity Labels"
           },
           "environments": {
             "anyOf": [
@@ -5415,21 +5355,6 @@
             ],
             "default": null,
             "title": "Entity Ids"
-          },
-          "entity_labels": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Entity Labels"
           },
           "environments": {
             "anyOf": [
