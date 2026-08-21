@@ -45,6 +45,7 @@ from contextplane.arc.service.autonomy_envelope import (
     AutonomyEnvelopeService,
     EnvelopeAlreadyBound,
     EnvelopeGrant,
+    InsufficientEnvelopeApproval,
     NotAnEnvelope,
     WorkloadIdentity,
 )
@@ -52,7 +53,7 @@ from contextplane.arc.types import ArcRequestContext
 from contextplane.audit import actions
 from contextplane.exceptions import NotFoundError, ValidationError
 from contextplane.types import TenantContext
-from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, seed_arc
+from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, seed_arc, seed_source_evidence
 from tests.helpers.clock import FakeClock
 
 _ISSUER = "https://idp.example.test"
@@ -572,9 +573,12 @@ async def test_a_tenant_admin_cannot_displace_a_global_envelope(
     assert still.revision_id == global_revision, "the operator's envelope is still the one bound"
 
 
-async def _seed_global_policy_revision(factory: async_sessionmaker[AsyncSession]) -> uuid.UUID:
-    """A `policy` artifact with no owning tenant, and one revision of it."""
+async def _seed_global_policy_revision(
+    factory: async_sessionmaker[AsyncSession], *, classification: str = "global_mandatory"
+) -> uuid.UUID:
+    """A `policy` artifact with no owning tenant, one revision, and its approval record."""
     artifact_id, revision_id = uuid.uuid4(), uuid.uuid4()
+    source_evidence_id = await seed_source_evidence(factory)
     async with factory() as session, session.begin():
         await session.execute(
             text(
@@ -608,6 +612,36 @@ async def _seed_global_policy_revision(factory: async_sessionmaker[AsyncSession]
                 "efrom": ARC_NOW - datetime.timedelta(days=1),
                 "review": ARC_NOW + datetime.timedelta(days=365),
                 "retention": ARC_NOW + datetime.timedelta(days=730),
+                "now": ARC_NOW,
+            },
+        )
+        # The proposal version the revision came from, classified
+        # `global_mandatory`. That classification is what `activation_predicates`
+        # turns into a three-distinct-principals requirement, and a global
+        # envelope with anything weaker behind it is refused at bind time -- so
+        # a fixture without one would be testing a document that could not
+        # legitimately exist.
+        proposal_id = uuid.uuid4()
+        await session.execute(
+            text("INSERT INTO arc_authoring_proposals (proposal_id, artifact_id) VALUES (:pid, :aid)"),
+            {"pid": proposal_id, "aid": artifact_id},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO arc_authoring_proposal_versions ("
+                "  proposal_id, proposal_version, artifact_id, revision_id, state,"
+                "  source_evidence_id, opened_by_issuer, opened_by_subject,"
+                "  risk_classification, created_at"
+                ") VALUES (:pid, 1, :aid, :rid, 'activated', :sev, :iss, 'author',"
+                "  :classification, :now)"
+            ),
+            {
+                "pid": proposal_id,
+                "aid": artifact_id,
+                "rid": revision_id,
+                "sev": source_evidence_id,
+                "iss": _ISSUER,
+                "classification": classification,
                 "now": ARC_NOW,
             },
         )
@@ -958,3 +992,111 @@ async def _seed_policy_revision(
     factory: async_sessionmaker[AsyncSession], seed: ArcSeed
 ) -> tuple[uuid.UUID, uuid.UUID]:
     return await _seed_revision_of_kind(factory, seed, "policy")
+
+
+# -- cold start: what a global envelope must have behind it ---------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("classification", ("global_non_mandatory", "tenant_mandatory", "entity_mandatory"))
+async def test_a_global_envelope_below_global_mandatory_is_refused(
+    seed: ArcSeed, factory: async_sessionmaker[AsyncSession], classification: str
+) -> None:
+    """Three distinct principals, enforced where it can be checked.
+
+    `activation_predicates` requires three distinct identities -- submitter,
+    approver, activator -- for a `global_mandatory` revision and two for
+    everything else. That is how "approved by a named human authority" becomes
+    something the schema can hold rather than a sentence in a document.
+
+    But it only runs on the *authoring* activation path.
+    `ArtifactService.activate` is a second path, gated by
+    `assert_can_write_artifact` alone, so a deployment operator could register
+    and activate a global policy carrying mandatory rules without any actor
+    separation at all. Checking the rule shape here would therefore be
+    bypassable; checking the classification is not, because it exists only if
+    the revision came through the pipeline where the predicate ran.
+    """
+    revision_id = await _seed_global_policy_revision(factory, classification=classification)
+    operator = _service(factory, allowlist=((_ISSUER, "operator-1"),))
+
+    with pytest.raises(InsufficientEnvelopeApproval, match=classification):
+        await operator.grant(
+            _ctx(seed), EnvelopeGrant(revision_id=revision_id, principal=_AGENT, reason="fleet template")
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_global_revision_with_no_proposal_version_is_refused(
+    seed: ArcSeed, factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """A directly-registered revision went through no approval whatsoever.
+
+    It has no proposal version and therefore no classification, which fails the
+    same check and should: the absence of a record is not a weaker approval, it
+    is none.
+    """
+    artifact_id, revision_id = uuid.uuid4(), uuid.uuid4()
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO arc_artifacts ("
+                "  artifact_id, tenant_id, slug, kind, title, created_at, created_by_issuer, created_by_subject"
+                ") VALUES (:aid, NULL, :slug, 'policy', 'Unapproved', :now, :iss, 'seed')"
+            ),
+            {"aid": artifact_id, "slug": f"u-{artifact_id.hex[:8]}", "now": ARC_NOW, "iss": _ISSUER},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO arc_revisions ("
+                "  revision_id, artifact_id, tenant_id, source_system, source_canonical_locator,"
+                "  source_revision_locator, content_digest, lifecycle_state, effective_from,"
+                "  review_expires_at, detail_audience, freshness_basis, content_classification,"
+                "  content_retention_until, content_storage_mode, created_at"
+                ") VALUES (:rid, :aid, NULL, 'test-system', :loc, :rloc, :digest, 'active', :efrom,"
+                "  :review, 'all_matched_actors', 'revision_pinned_only', 'internal', :retention, 'none', :now)"
+            ),
+            {
+                "rid": revision_id,
+                "aid": artifact_id,
+                "loc": f"loc://{revision_id.hex[:8]}",
+                "rloc": f"loc://{revision_id.hex[:8]}@1",
+                "digest": revision_id.hex + revision_id.hex,
+                "efrom": ARC_NOW - datetime.timedelta(days=1),
+                "review": ARC_NOW + datetime.timedelta(days=365),
+                "retention": ARC_NOW + datetime.timedelta(days=730),
+                "now": ARC_NOW,
+            },
+        )
+
+    operator = _service(factory, allowlist=((_ISSUER, "operator-1"),))
+    with pytest.raises(InsufficientEnvelopeApproval, match="no proposal version"):
+        await operator.grant(_ctx(seed), EnvelopeGrant(revision_id=revision_id, principal=_AGENT, reason="r"))
+
+
+@pytest.mark.asyncio
+async def test_a_tenant_envelope_needs_no_separation_ritual(service: AutonomyEnvelopeService, seed: ArcSeed) -> None:
+    """The bar tracks the blast radius. A tenant envelope governs one tenant's
+    agents and costs tenant admin; three-principal approval is what
+    deployment-wide authority costs, and the seeded tenant revision carries no
+    classification at all."""
+    binding_id = await service.grant(
+        _ctx(seed), EnvelopeGrant(revision_id=seed.revision_id, principal=_AGENT, reason="tenant envelope")
+    )
+
+    assert binding_id is not None
+
+
+@pytest.mark.asyncio
+async def test_an_unauthorized_caller_learns_nothing_about_the_approval(
+    seed: ArcSeed, factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """Authorization is checked first, deliberately.
+
+    A tenant admin who may not write a global envelope gets the authorization
+    refusal, not a report on that document's approval history.
+    """
+    revision_id = await _seed_global_policy_revision(factory, classification="global_non_mandatory")
+
+    with pytest.raises(ArcAuthorizationError):
+        await _service(factory).grant(_ctx(seed), EnvelopeGrant(revision_id=revision_id, principal=_AGENT, reason="r"))
