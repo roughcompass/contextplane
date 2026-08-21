@@ -25,6 +25,8 @@ import datetime
 import hashlib
 from typing import Literal
 
+from contextplane.sensitivity import TIER_SET, Tier
+
 # How much weight a reader may place on an item. Ordered from strongest, but
 # deliberately not an IntEnum: comparing trust levels arithmetically is how a
 # "greater than" creeps in that quietly promotes an observation to an attested
@@ -54,9 +56,13 @@ MUTABILITIES: frozenset[str] = frozenset({"immutable", "mutable", "unknown"})
 # The handling class the item inherits. Named here rather than imported from the
 # scanner so a classification can exist for content the scanner has no detector
 # for -- the two vocabularies answer different questions.
-Classification = Literal["public", "internal", "confidential", "restricted"]
+#
+# Both aliases now, so the scale has one definition. `contextplane.sensitivity`
+# is the bottom-layer module every consumer can reach; this file kept its own
+# copy only because three others could not import it from here.
+Classification = Tier
 
-CLASSIFICATIONS: frozenset[str] = frozenset({"public", "internal", "confidential", "restricted"})
+CLASSIFICATIONS: frozenset[str] = TIER_SET
 
 
 class InvalidContextItem(ValueError):

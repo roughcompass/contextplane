@@ -50,6 +50,7 @@ from contextplane.arc.service.queries import replay_corpus as queries
 from contextplane.arc.service.shadow import ShadowService, match_deltas_to_envelope
 from contextplane.arc.types import ActionClass, ArcRequestContext, AuthorityScope, IntentKind, IntentManifest
 from contextplane.exceptions import ConflictError, RegistryError
+from contextplane.sensitivity import TIERS
 from contextplane.types import Clock
 
 #: The generator's own version, bound into every corpus it produces so a
@@ -68,7 +69,13 @@ MINIMUM_FIXTURE_CLASSES = 100
 #: has no fixed universe to enumerate without at least a representative
 #: set to fall back on.
 _DEFAULT_ENVIRONMENTS: tuple[str, ...] = ("development", "staging", "production")
-_DEFAULT_TIERS: tuple[str, ...] = ("public", "internal", "restricted")
+#: The closed handling scale, not a third list. This was
+#: `("public", "internal", "restricted")` -- three members, agreeing with nothing
+#: else in the tree -- so a corpus generated from it covered tiers that do not
+#: exist and missed one that does. Deleted in the change that landed the closed
+#: module, because a replaced mechanism left behind gives one question two
+#: answers.
+_DEFAULT_TIERS: tuple[str, ...] = TIERS
 
 #: Corpus generation mints new predicates, so it emits the active profile.
 #: This was a hardcoded v1 literal beside an `intent_kind` field -- neither

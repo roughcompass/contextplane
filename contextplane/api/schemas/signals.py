@@ -25,6 +25,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from contextplane.context.schemas.trust import ExternalReferenceV1
+from contextplane.sensitivity import Tier
 from contextplane.signals.ingest import (
     MAX_EVIDENCE_HANDLE_LENGTH,
     MAX_IDEMPOTENCY_KEY_LENGTH,
@@ -38,7 +39,9 @@ from contextplane.signals.ingest import (
 #: The handling classes the envelope accepts, spelled as a `Literal` so an
 #: unknown one is a request-validation 422 naming the field rather than a
 #: service-raised error three frames deeper.
-ClassificationLiteral = Literal["public", "internal", "confidential", "restricted"]
+#: Aliased rather than restated. This file already imports from `trust.py` and
+#: could always have derived it; now the definition is one layer lower still.
+ClassificationLiteral = Tier
 
 ProducerTypeLiteral = Literal["human", "agent", "external"]
 
