@@ -30,7 +30,7 @@ from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_
 from contextplane.api.middleware.tenant import get_tenant_context
 from contextplane.api.pii_guard import run_admission
 from contextplane.arc import AutonomyEnforcementService, IntentKind, IntentManifest
-from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.service.memory.claim_serving import (
     PERSONA_AGENT,
     PERSONAS,
@@ -41,6 +41,7 @@ from contextplane.service.memory.claim_serving import (
 from contextplane.service.memory.session_events import (
     DEFAULT_PAGE,
     MAX_PAGE,
+    ExternalOrigin,
     MemoryService,
     SessionEvent,
 )
@@ -92,6 +93,29 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ExternalOriginRequest(_Strict):
+    """Where a replayed event came from, and when it happened there.
+
+    A nested object rather than four sibling fields, because the four are
+    all-or-nothing: the table refuses an origin with no upstream identity or
+    clock, and refuses an identity or clock with no origin. Nested, the
+    incomplete state is unrepresentable and the caller is told so by request
+    validation instead of by a 500 from a CHECK two layers down.
+
+    Supplying an `external_record_id` a second time is a 409, not a second
+    event: an exporter re-sending a window must not fan one upstream record out
+    into two turns.
+    """
+
+    source_system: str = Field(min_length=1, max_length=200)
+    source_namespace: str = Field(min_length=1, max_length=200)
+    external_record_id: str = Field(min_length=1, max_length=200)
+    #: The *source's* clock -- when the upstream system saw this. `created_at`
+    #: on the response stays ours, so a replay of a three-day-old message is
+    #: three days old there and new here.
+    observed_at: datetime.datetime
+
+
 class RecordEventRequest(_Strict):
     kind: str = Field(pattern=r"^(user_message|agent_action|tool_invocation)$")
     body: str = Field(min_length=1)
@@ -101,6 +125,10 @@ class RecordEventRequest(_Strict):
     # because a caller who puts a customer email in a metadata value has put it
     # somewhere the scanner never looks.
     metadata: dict[str, str] = Field(default_factory=dict)
+    #: Absent for the ordinary case -- an agent writing its own turn has no
+    #: upstream anything. Present only when the event is a replay of something
+    #: that happened in another system.
+    external: ExternalOriginRequest | None = None
 
 
 class EventResponse(BaseModel):
@@ -139,6 +167,13 @@ def _translate(exc: Exception) -> Exception:
         return build_error(status.HTTP_404_NOT_FOUND, code="not_found", message="not found")
     if isinstance(exc, ValidationError):
         return build_error(status.HTTP_400_BAD_REQUEST, code="validation_error", message=str(exc))
+    # Raised only for a duplicate `external_record_id`. Distinct from the 400
+    # above because the request is well-formed and the caller's remedy is
+    # different: this record is already here, so stop sending it. Left
+    # untranslated it would surface as a 500 and read as a service fault on
+    # what is the dedup working.
+    if isinstance(exc, ConflictError):
+        return build_error(status.HTTP_409_CONFLICT, code="conflict", message=str(exc))
     return exc
 
 
@@ -191,6 +226,11 @@ async def record_event(
     prohibited class is refused with a 422 on a deployment that has configured
     nothing, rather than detected and stored. `metadata` is not scanned -- see
     the request model.
+
+    `external` marks the event as a replay of something that happened in another
+    system, and re-sending one upstream record is a 409 rather than a second
+    turn. Omit it for the ordinary case; an agent recording its own reasoning
+    has no upstream identity to give.
     """
     # Authority first, then content. Both gates run before the write, and this
     # order is deliberate: a principal with no envelope should be told that
@@ -218,6 +258,16 @@ async def record_event(
             body=body.body,
             tool_name=body.tool_name,
             metadata=dict(body.metadata),
+            external=(
+                ExternalOrigin(
+                    source_system=body.external.source_system,
+                    source_namespace=body.external.source_namespace,
+                    external_record_id=body.external.external_record_id,
+                    observed_at=body.external.observed_at,
+                )
+                if body.external
+                else None
+            ),
         )
     except Exception as exc:
         raise _translate(exc) from exc

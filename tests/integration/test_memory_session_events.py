@@ -24,8 +24,8 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from contextplane.exceptions import NotFoundError, ValidationError
-from contextplane.service.memory.session_events import MemoryService
+from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
+from contextplane.service.memory.session_events import ExternalOrigin, MemoryService
 from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
@@ -394,3 +394,94 @@ async def test_a_cursor_never_repeats_or_skips_while_the_session_grows(
     seen = [e.body for e in first] + [e.body for e in second]
     assert seen == ["e0", "e1", "e2", "e3"]
     assert len(set(seen)) == len(seen)
+
+
+# --- external origin: a replayed event says where it came from -------------------
+
+
+@pytest.mark.asyncio
+async def test_a_replayed_event_records_where_and_when_it_came_from(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """`observed_at` is the source's clock; `created_at` is ours.
+
+    Without the pair, every bitemporal read over this table reads receipt time
+    and calls it observation time.
+    """
+    tenant_id, actor_id = await _seed_actor(factory)
+    service = MemoryService(factory, clock=FakeClock(_NOW))
+    ctx = TenantContext(tenant_id=tenant_id, actor_id=actor_id, roles=["admin"], oidc_subject="s")
+    upstream = _NOW - datetime.timedelta(days=3)
+
+    event = await service.record_event(
+        ctx,
+        session_id="s1",
+        kind="user_message",
+        body="said three days ago, replayed now",
+        external=ExternalOrigin(
+            source_system="chat",
+            source_namespace="slack",
+            external_record_id="msg-1",
+            observed_at=upstream,
+        ),
+    )
+
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT source_system, source_namespace, external_record_id, observed_at, created_at "
+                    "FROM memory_session_events WHERE event_id = :e"
+                ),
+                {"e": event.event_id},
+            )
+        ).one()
+
+    assert row.source_system == "chat"
+    assert row.external_record_id == "msg-1"
+    assert row.observed_at == upstream
+    assert row.created_at == _NOW, "the receipt clock is ours and must not be overwritten by the source's"
+
+
+@pytest.mark.asyncio
+async def test_replaying_one_upstream_record_twice_is_a_conflict_not_a_sequence_failure(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The interaction that made this worth threading through carefully.
+
+    `record_event` allocates `seq` by inserting and retrying on unique
+    violation. Adding a second unique key to the table means a duplicate
+    upstream record raises the *same* SQLSTATE as a lost sequence race -- so
+    without a discriminator the retry loop would burn all its attempts on a
+    deterministic collision and then report a sequence-allocation failure for
+    what is really an idempotent replay.
+    """
+    tenant_id, actor_id = await _seed_actor(factory)
+    service = MemoryService(factory, clock=FakeClock(_NOW))
+    ctx = TenantContext(tenant_id=tenant_id, actor_id=actor_id, roles=["admin"], oidc_subject="s")
+    origin = ExternalOrigin(
+        source_system="chat",
+        source_namespace="slack",
+        external_record_id="msg-1",
+        observed_at=_NOW - datetime.timedelta(hours=1),
+    )
+    await service.record_event(ctx, session_id="s1", kind="user_message", body="first", external=origin)
+
+    with pytest.raises(ConflictError, match="already recorded"):
+        await service.record_event(ctx, session_id="s2", kind="user_message", body="again", external=origin)
+
+
+@pytest.mark.asyncio
+async def test_a_local_event_still_needs_no_origin(factory: async_sessionmaker[AsyncSession]) -> None:
+    """The common case stays a two-argument call.
+
+    An agent writing its own reasoning has no upstream anything, and the
+    parameter is optional so that path did not change shape.
+    """
+    tenant_id, actor_id = await _seed_actor(factory)
+    service = MemoryService(factory, clock=FakeClock(_NOW))
+    ctx = TenantContext(tenant_id=tenant_id, actor_id=actor_id, roles=["admin"], oidc_subject="s")
+
+    event = await service.record_event(ctx, session_id="s1", kind="user_message", body="thinking out loud")
+
+    assert event.seq == 1

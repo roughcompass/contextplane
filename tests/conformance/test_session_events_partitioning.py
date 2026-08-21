@@ -24,8 +24,13 @@ nothing about what the database enforces.
 
 from __future__ import annotations
 
+import datetime
+import uuid
+
 import pytest
+import pytest_asyncio
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 #: The key sequence allocation depends on, exactly as it was before
 #: partitioning. A fifth column here is the regression this file exists for.
@@ -34,6 +39,27 @@ _SEQUENCE_KEY = "UNIQUE (tenant_id, actor_id, session_id, seq)"
 
 async def _scalar(session, sql: str, **params: object) -> object:
     return (await session.execute(text(sql), params)).scalar_one_or_none()
+
+
+@pytest_asyncio.fixture
+async def seeded_actor(db_session) -> tuple[uuid.UUID, uuid.UUID]:
+    """A tenant and an actor, the two foreign keys every event row needs."""
+    tenant_id, actor_id = uuid.uuid4(), uuid.uuid4()
+    await db_session.execute(
+        text(
+            "INSERT INTO tenants (tenant_id, slug, display_name, created_at, is_active) "
+            "VALUES (:t, :s, :s, now(), TRUE)"
+        ),
+        {"t": tenant_id, "s": f"mse-{tenant_id.hex[:8]}"},
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO actors (actor_id, tenant_id, display_name, oidc_subject, created_at) "
+            "VALUES (:a, :t, 'mse-actor', :sub, now())"
+        ),
+        {"a": actor_id, "t": tenant_id, "sub": f"sub-{actor_id.hex[:8]}"},
+    )
+    return tenant_id, actor_id
 
 
 @pytest.mark.asyncio
@@ -156,3 +182,105 @@ async def test_partitioning_did_not_drop_a_check(db_session) -> None:
     present = {row[0] for row in rows}
 
     assert _CHECKS <= present, f"partitioning dropped CHECK(s): {sorted(_CHECKS - present)}"
+
+
+# --- external provenance: a claim that cannot be checked is worse than none ------
+
+
+async def _insert_event(session, tenant_id, actor_id, **over: object) -> None:
+    columns = {
+        "event_id": uuid.uuid4(),
+        "tenant_id": tenant_id,
+        "actor_id": actor_id,
+        "session_id": "s1",
+        "seq": 1,
+        "kind": "user_message",
+        "body": "hello",
+        "expires_at": datetime.datetime(2027, 1, 1, tzinfo=datetime.UTC),
+        "size_bytes": 5,
+    }
+    columns.update(over)
+    names = ", ".join(columns)
+    binds = ", ".join(f":{n}" for n in columns)
+    await session.execute(text(f"INSERT INTO memory_session_events ({names}) VALUES ({binds})"), columns)
+
+
+@pytest.mark.asyncio
+async def test_a_local_event_needs_no_external_provenance(db_session, seeded_actor) -> None:
+    """The common case. An agent writing its own reasoning has no upstream
+    anything, so all four columns stay null and nothing objects."""
+    tenant_id, actor_id = seeded_actor
+
+    await _insert_event(db_session, tenant_id, actor_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("missing", "supplied"),
+    (
+        (
+            "external_record_id",
+            {"source_namespace": "slack", "observed_at": datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)},
+        ),
+        ("observed_at", {"source_namespace": "slack", "external_record_id": "msg-1"}),
+        (
+            "source_namespace",
+            {"external_record_id": "msg-1", "observed_at": datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)},
+        ),
+    ),
+)
+async def test_an_external_event_must_be_complete(db_session, seeded_actor, missing: str, supplied: dict) -> None:
+    """An external origin missing its identity or its clock is a provenance
+    claim nothing can check against -- which is worse than no claim, because it
+    reads as one."""
+    tenant_id, actor_id = seeded_actor
+
+    with pytest.raises(IntegrityError, match="ck_mse_external_provenance_complete"):
+        await _insert_event(db_session, tenant_id, actor_id, source_system="chat", **supplied)
+
+
+@pytest.mark.asyncio
+async def test_an_external_field_without_a_source_is_refused(db_session, seeded_actor) -> None:
+    """The direction a caller gets wrong by accident.
+
+    An `external_record_id` with no source system is an identity in an unnamed
+    namespace; an `observed_at` with none is a timestamp from an unnamed clock.
+    Neither can be compared with anything, so neither is provenance.
+    """
+    tenant_id, actor_id = seeded_actor
+
+    with pytest.raises(IntegrityError, match="ck_mse_external_fields_need_a_source"):
+        await _insert_event(db_session, tenant_id, actor_id, external_record_id="msg-1")
+
+
+@pytest.mark.asyncio
+async def test_one_upstream_record_cannot_land_twice(db_session, seeded_actor) -> None:
+    """Dedup across a replay, which nothing else could notice.
+
+    `uq_mse_session_seq` counts positions in a conversation, not upstream
+    identities, so an exporter re-sending a window would otherwise produce two
+    events for one upstream record. Scoped across sessions on purpose: the same
+    record replayed into two sessions is a duplicate of the same fact.
+    """
+    tenant_id, actor_id = seeded_actor
+    external = {
+        "source_system": "chat",
+        "source_namespace": "slack",
+        "external_record_id": "msg-1",
+        "observed_at": datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+    }
+    await _insert_event(db_session, tenant_id, actor_id, **external)
+
+    with pytest.raises(IntegrityError) as caught:
+        await _insert_event(db_session, tenant_id, actor_id, session_id="s2", seq=1, **external)
+
+    # Matched on the key columns rather than on `uq_mse_external_record`.
+    # Postgres reports a unique violation on a partitioned table against the
+    # *child* index -- `memory_session_events_p2_..._idx` -- whose name is
+    # generated and depends on which partition the tenant hashed to, so the
+    # parent's name never appears in the error. Worth knowing beyond this test:
+    # any production code branching on a constraint name would have the same
+    # problem the moment its table is partitioned.
+    detail = str(caught.value)
+    assert "duplicate key" in detail
+    assert "source_system, source_namespace, external_record_id" in detail

@@ -7061,6 +7061,43 @@
         "title": "ExternalIdsExpansion",
         "type": "object"
       },
+      "ExternalOriginRequest": {
+        "additionalProperties": false,
+        "description": "Where a replayed event came from, and when it happened there.\n\nA nested object rather than four sibling fields, because the four are\nall-or-nothing: the table refuses an origin with no upstream identity or\nclock, and refuses an identity or clock with no origin. Nested, the\nincomplete state is unrepresentable and the caller is told so by request\nvalidation instead of by a 500 from a CHECK two layers down.\n\nSupplying an `external_record_id` a second time is a 409, not a second\nevent: an exporter re-sending a window must not fan one upstream record out\ninto two turns.",
+        "properties": {
+          "external_record_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "External Record Id",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "source_namespace": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Source Namespace",
+            "type": "string"
+          },
+          "source_system": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Source System",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_system",
+          "source_namespace",
+          "external_record_id",
+          "observed_at"
+        ],
+        "title": "ExternalOriginRequest",
+        "type": "object"
+      },
       "ExternalReferenceRequest": {
         "description": "A pointer to something the registry does not own.\n\nMirrors `ExternalReferenceV1`. `classification` is required rather than\ndefaulted: a reference whose sensitivity the caller did not state is one the\nserver would have to guess about, and guessing low is the failure that\nmatters.",
         "properties": {
@@ -11331,6 +11368,16 @@
             "minLength": 1,
             "title": "Body",
             "type": "string"
+          },
+          "external": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExternalOriginRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "kind": {
             "pattern": "^(user_message|agent_action|tool_invocation)$",
@@ -26809,7 +26856,7 @@
         ]
       },
       "post": {
-        "description": "Append one immutable event.\n\nThe session is not created here; it exists because its events do. There is\nno update route: an event is write-once, removable only by the author, by\nretention, or by an erasure request.\n\nThe body goes through admission before storage: content carrying a\nprohibited class is refused with a 422 on a deployment that has configured\nnothing, rather than detected and stored. `metadata` is not scanned -- see\nthe request model.",
+        "description": "Append one immutable event.\n\nThe session is not created here; it exists because its events do. There is\nno update route: an event is write-once, removable only by the author, by\nretention, or by an erasure request.\n\nThe body goes through admission before storage: content carrying a\nprohibited class is refused with a 422 on a deployment that has configured\nnothing, rather than detected and stored. `metadata` is not scanned -- see\nthe request model.\n\n`external` marks the event as a replay of something that happened in another\nsystem, and re-sending one upstream record is a 409 rather than a second\nturn. Omit it for the ordinary case; an agent recording its own reasoning\nhas no upstream identity to give.",
         "operationId": "record_event_v1_memory_sessions__session_id__events_post",
         "parameters": [
           {
