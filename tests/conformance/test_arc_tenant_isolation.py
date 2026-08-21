@@ -120,7 +120,7 @@ def test_the_denial_carries_no_detail_about_the_receipt() -> None:
 )
 def test_tenant_b_cannot_read_a_tenant_a_artifact_at_any_scope(scope: AuthorityScope) -> None:
     artifact = (
-        ArtifactScope(scope=scope, tenant_id=_TENANT_A, capability_id=uuid.uuid4())
+        ArtifactScope(scope=scope, tenant_id=_TENANT_A, entity_id=uuid.uuid4())
         if scope is AuthorityScope.ENTITY
         else ArtifactScope(scope=scope, tenant_id=_TENANT_A)
     )
@@ -180,7 +180,7 @@ def test_the_deployment_tenant_is_refused_on_reads_including_global(scope: Autho
         else ArtifactScope(
             scope=scope,
             tenant_id=DEPLOYMENT_TENANT_ID,
-            capability_id=uuid.uuid4() if scope is AuthorityScope.ENTITY else None,
+            entity_id=uuid.uuid4() if scope is AuthorityScope.ENTITY else None,
         )
     )
     with pytest.raises(ArcAuthorizationError):

@@ -1456,7 +1456,7 @@ Acceptance:
 
 ### E1-T6a — An envelope is a `policy` artifact bound to a principal
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the envelope object — an ARC artifact of kind `policy`, and the binding
 that says which agent principal it governs.
@@ -1479,17 +1479,140 @@ identifies directives, not principals.
 Without a binding, an envelope is indistinguishable from any other `policy`
 artifact, which is why the matrix (E1-T6c) is not the half to build first.
 
+**Settled while building, and load-bearing for E1-T6c and E1-T7:**
+
+- **The principal is an `(issuer, subject)` pair, not an `actors` row.** That is
+  the settled ARC idiom — `created_by`, `opened_by`, `author`, `admitted_by` and
+  `actor` are all bare TEXT pairs with no foreign key — and
+  `ArcRequestContext.operator_identity` already produces one.
+  `WorkloadIdentity` names the pair so a transposition at an authority boundary
+  cannot pass as a valid lookup. `host_id` was considered and rejected: it is an
+  unregistered label on attestation keys, with no host table behind it.
+- **A binding names a revision, never an artifact.** Otherwise a governed widen
+  takes effect the moment a new revision activates, and a principal's authority
+  changes as a side effect of somebody publishing.
+- **"The bound revision is a `policy`" is a composite foreign key, not a service
+  check.** `arc_artifacts` gained `UNIQUE (artifact_id, kind)` and
+  `arc_revisions` gained `UNIQUE (revision_id, artifact_id)` to make it
+  expressible. A service-only guard is one refactor from gone, and losing it
+  turns a `runbook`'s corpus-selection rules into an agent's authority.
+- **One envelope per principal is an `EXCLUDE USING gist`, restricted to
+  `active`.** Restricting to `active` is what lets suspend-then-grant be the
+  widen path. It also forced a resolver rule: order by `state = 'active'` first,
+  because during a widen a suspended row and its replacement both cover *now*
+  and recency alone picks arbitrarily between them.
+- **A revoke closes to an *empty* interval when the binding never took effect**
+  (`GREATEST(now, effective_from)`), so the interval CHECK is `>=` rather than
+  `>`. `tstzrange(x, x)` is empty and overlaps nothing, so a withdrawn grant
+  frees its slot with no special case.
+- **Only suspension is authorized at tenant scope. Grant, reinstate and revoke
+  are authorized at the envelope's, and a deployment operator may act on a
+  binding in any tenant.** This took three attempts and the middle one was a
+  privilege escalation, recorded below because the reasoning that produced it
+  was locally correct at every step.
+
+**The escalation, and why "narrowing is safe" was the wrong rule.** Version one
+authorized every operation at the envelope's scope, which meant a tenant admin
+could not switch off their own misbehaving agent under a global envelope without
+finding a deployment operator — the exact situation E1's "instant suspend"
+exists for. Version two fixed that by authorizing the *narrowing* operations
+(suspend, revoke) at tenant scope, on the argument that narrowing cannot grant
+an actor anything they did not already hold. That argument is true per operation
+and false over sequences, because at the time the exclusion constraint carried
+`WHERE (state = 'active')` — so a suspension released the principal's slot:
+
+    tenant admin suspends the operator's binding        (tenant scope: allowed)
+    tenant admin authors a tenant `policy` artifact     (tenant admin: allowed)
+    tenant admin grants it to the same principal        (tenant scope: allowed)
+    resolve prefers the active row and returns it       -> self-authored
+    governance has replaced deployment-mandated governance
+
+Each step passes its own check; the trace does not. Reachability was never
+analyzed, only per-call authorization. Two changes close it, and both are needed:
+the exclusion constraint now reserves the principal for **any open interval
+whatever the state**, so suspension releases nothing; and **revoke**, which does
+close the interval, moved to envelope scope. Suspension is then genuinely pure
+narrowing and can stay at tenant scope, so incident response survives.
+`test_a_tenant_admin_cannot_displace_a_global_envelope` is the regression test
+and fails if either half regresses. Found by adversarial review, then reproduced
+before being fixed.
+
+Consequences worth carrying forward:
+
+- **The widen path is revoke-then-grant**, not suspend-then-grant. This also
+  removed a zombie: a superseded-by-suspension binding kept an open interval
+  forever, so once its replacement was revoked, `resolve` returned the *old
+  suspended* row and reported a principal as suspended for a reason recorded
+  during a widen months earlier.
+- **A deployment operator may act on a binding in any tenant.** Allowlist
+  membership confers no tenant role, so without break-glass an operator could
+  never suspend or revoke a binding they granted, and a tenant could squat a
+  principal's only slot with a binding the operator was powerless to remove.
+- **`suspend` and `reinstate` also require an open interval.** Guarded only on
+  `state`, a revoked binding — which keeps `state = 'active'`, since revocation
+  closes the interval instead — could be suspended and then reinstated, leaving
+  `state = 'active'` with `effective_to` in the past. A `resolve(at=...)` inside
+  the old window then reported it active for a period it was suspended:
+  retroactive history rewriting in a governance table.
+- **The bound revision must be `active` at grant time**, checked at grant only.
+  Nothing stopped binding a principal to a `draft`, which would let whoever can
+  write a draft decide what an agent may do with no approval and no actor
+  separation. `resolve` now carries the revision's lifecycle state so the
+  decision path can see a revision revoked after binding; what to do about that
+  is E1-T7's call, not this read's.
+- **A tenant-scoped envelope may govern only its own tenant's principals**,
+  checked separately from the write gate because break-glass bypasses that gate.
+  Application-level rather than declarative, unlike the `kind` check: the SQL
+  version needs the artifact's nullable tenant collapsed to a sentinel and a
+  three-column composite key, and the failure it prevents is a misconfiguration
+  by the trust root rather than an escalation by anyone below it.
+- **`effective_from` may not precede now.** `resolve(at=...)` is what a later
+  audit reads to ask whether an action was within envelope; a backdatable
+  binding lets the party being audited write that answer afterwards.
+
+**A name collision worth knowing about before reading ARC.**
+`arc_expected_impact_envelopes` is a blast-radius forecast attached to an
+authoring proposal version — how many selections change if a revision activates.
+It is about a document, not a principal, and shares only the word. Everything
+added here says `autonomy` rather than relying on context to disambiguate.
+
+Also fixed here, because it was in the file this depends on:
+`ArtifactScope.capability_id` survived the E1-T6b rename next to a guard message
+already reading "an entity-scoped artifact requires an entity id". Five lines
+across two modules and two tests.
+
 Acceptance:
     .venv/bin/python -m alembic upgrade head
     make lint && make typecheck && make test-coverage
 
 ### E1-T6b — Applicability says `capability` where it means `entity`
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — `openapi.json` · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — `openapi.json` · **Repo:** contextplane
 
 Goal: `AuthorityScope.CAPABILITY` becomes `ENTITY`, and `capability_ids` /
-`capability_labels` become `entity_ids` / `entity_labels`, through the procedure
-ADR-0009 sets for renaming a published surface.
+`capability_labels` become `entity_ids` / `entity_labels`.
+
+**Landed as a plain rename in place, not as ADR-0009's published-surface
+procedure.** This task was written expecting an alias window — `deprecated:
+true`, `x-sunset-on`, `x-successor`, the way E18-T4 handled the external-ID
+lookup — and that expectation was wrong. That procedure exists for names
+consumers already hold; this service has never been released, so there are no
+signed manifests, no generated clients and no stored artifacts spelled the old
+way. Migration `0061_arc_entity_scope` renames columns and closed-value checks
+in place, following `0049_arc_intent_nomenclature` step for step. The paragraph
+below describing the alias is left standing because it records what was assumed
+and why it did not survive contact with the fact that nothing has shipped.
+
+Same reason the manifest side renamed here too rather than being frozen: the
+digest-stability argument below is sound and applies to hosts that do not exist.
+
+Two live bugs surfaced while doing it, both fixed in the same change:
+`arc_admin.py:216` validated `lower_scope_kind` against
+`^(tenant|domain|capability|task)$` while line 470 fed the value to
+`AuthorityScope(...)`, so `task` returned 500 and the correct `intent` was
+rejected with 422. And `ArtifactScope.capability_id` was missed entirely; it was
+caught later, during E1-T6a, sitting next to a guard message that already read
+"an entity-scoped artifact requires an entity id".
 
 **One table backs the whole catalog.** There is no `capabilities` table —
 `Entity`, `__tablename__ = "entities"`, with `entity_type` discriminating
@@ -1538,12 +1661,11 @@ name appears on both sides of the match:
   does not rename here.** It is the same reason ADR-0006 gave for leaving ARC's
   `data_sensitivity` open.
 
-So the task deliberately leaves `rule.entity_ids` matched against
-`manifest.capability_ids`, which reads oddly and is correct: one is a name this
-deployment owns and the other is a name every host already signed. Say so at the
-match site in `selection.py`, because an unexplained mismatch there is the first
-thing a later reader will "fix". Moving the manifest side is a coordinated change
-with every host, or a claims-version negotiation, and it is not this task.
+In the event **both sides renamed**, so the mismatch this paragraph was written
+to explain never came into being. The reasoning holds for a released service and
+this one is not: no host has signed anything, so there was no digest to preserve
+and no coordinated change to stage. Had even one deployment existed, the split
+above would have been the right answer.
 
 Blocking E1-T6c rather than merely adjacent to it: a matrix written in a
 vocabulary that says capability when it means entity teaches every envelope
@@ -1563,28 +1685,107 @@ the rule that a principal is never one of its dimensions.
 
 **The dimensions line up, and that was checked rather than assumed.**
 `ApplicabilityRule` (`contextplane/arc/types.py:462`) selects on
-`intent_kinds`, `action_classes`, `capability_ids`, `capability_labels`,
+`intent_kinds`, `action_classes`, `entity_ids`, `entity_labels`,
 `domain_ids`, `environments` and `data_sensitivity_tiers`. `IntentManifest`
 (`types.py:494`) — "the attested description of what the agent is about to do" —
-carries `intent_kind`, `requested_action_classes`, `capability_ids`,
+carries `intent_kind`, `requested_action_classes`, `entity_ids`,
 `domain_ids`, `environment`, `data_sensitivity` and `repository_identity`. They
 map one to one, and those are the dimensions E1's body names when it says
 "stream-scoped action-class and sensitivity declarations". So the matrix is
 expressed in the predicate that already ships rather than beside it.
 
 **A principal is not among them, and must not be smuggled in.** `AuthorityScope`
-is `global | tenant | domain | capability | intent` and the rule has no actor
-column. An implementer reaching for `domain_ids` or `capability_labels` to encode
+is `global | tenant | domain | entity | intent` and the rule has no actor
+column. An implementer reaching for `domain_ids` or `entity_labels` to encode
 which principal an envelope governs would put principal-scoping outside
 `_SCOPE_ORDER`, so precedence would not see it — and a rule meant to narrow
 authority for one agent would widen it for every agent matching the same domain.
 That is the failure this task exists to prevent, which is why the binding is
 E1-T6a's and the predicate is only ever about the act.
 
+**There is a second candidate substrate, and it loses.**
+`arc_observation_class_predicate_v2` (`schemas/authoring_profile_shapes.py:146`)
+is a closed, schema-validated, canonicalizable predicate over
+`intent_kind | requested_action_classes | environment | data_sensitivity_tier |
+entity_ids | domain_ids` — the same six dimensions, already frozen at V1 and
+active at V2, already carrying the `min_items` and non-overlap checks
+`arc_expected_impact_envelope_items` needs. It looks like a better fit than an
+applicability rule and is not, for two reasons. It has **no precedence**: its
+items are required to be non-overlapping, which is a different rule from
+`_SCOPE_ORDER` resolving which of several matching rules wins, and an authority
+matrix needs the second. And it is **hashed into host-signed attestation
+bytes**, so giving it an authority meaning would entangle what an agent may do
+with what a host has signed. E1's own body says "applicability rules", and this
+is why that is right rather than merely what it says.
+
 `data_sensitivity_tiers` is a bare `ARRAY(Text)`. E1-T5's closed vocabulary is
 what gives those strings meaning; validating rule values against it is part of
 this task, because without it the column admits any label and the matrix
 silently widens on a typo.
+
+**A widening bug found while grounding E1-T6a, and this task owns it.**
+`entity_labels` is stored, submitted, snapshotted, materialised and round-tripped
+everywhere — and **never matched**. `rule_applies` (`selection.py:198`) has no
+`entity_labels` branch, and `IntentManifest` has no labels field to match
+against. Meanwhile `ApplicabilityRule.__post_init__` accepts labels *alone* as
+satisfying the entity-scope requirement, and so does the database:
+`ck_arc_rules_entity_scope_target`, read from the live schema, is
+
+    scope <> 'entity' OR array_length(entity_ids,1) >= 1
+                      OR array_length(entity_labels,1) >= 1
+
+So this constructs, passes every constraint, and returns `True` against a
+manifest about something else entirely:
+
+    ApplicabilityRule(scope=ENTITY, entity_labels=frozenset({"payments"}))
+
+The narrowest scope above `intent` becomes the widest. `_matches_any`'s own
+docstring says "the dangerous cases are refused at construction rather than
+silently widened here" — and this is the door construction leaves open.
+
+**The repo believes this is unreachable, and that belief is out of date.**
+`tests/unit/test_arc_selection.py` calls `entity_labels` "the live example" and
+says it is "inert only because nothing populates the column"; `corpus.py`'s
+`_obligation_rule` says the asymmetry "is inert only because `rule_applies`
+matches on `entity_ids`". Both were written against **one** of the two write
+paths. `ApplicabilityDraft` — direct artifact registration — indeed has no
+`entity_labels` field and cannot express it. But the **authoring-proposal path
+can**: `_applicability_rule` in `authoring_profile_shapes.py` accepts
+`entity_labels` on the wire, `submission.py:597` reads it off the candidate,
+`_applicability_rule_row` carries it into `MaterialisedApplicabilityRule`, and
+`insert_applicability_rule` writes it — with nothing but the CHECK above in
+between, which permits labels-only.
+
+**Confirmed by observation, through the real write and read paths.** A probe
+called `insert_applicability_rule` (the function `submission.py:314` calls) with
+`entity_ids=None, entity_labels=("payments",), scope="entity"`; the database
+accepted the row. Reading it back through `corpus._rule_from_row` rehydrated
+`ApplicabilityRule(scope=entity, entity_ids=set(), entity_labels={'payments'})`,
+and `rule_applies` returned **True** for a manifest carrying an unrelated entity
+id and an unrelated domain. Nothing was hand-constructed. So the "inert" claims
+in `test_arc_selection.py` and `corpus.py` need retracting along with the fix —
+they are true of `ApplicabilityDraft` and false of the service as a whole.
+
+Three ways out, to be decided with grounding rather than now:
+
+- **Drop `entity_labels`.** It cannot be evaluated by a pure matcher — resolving
+  a label to an entity needs the catalog, and `rule_applies` is deliberately
+  I/O-free so a receipt replays identically months later. A selector that cannot
+  be evaluated is a hole, not a feature. Costs a column drop plus the wire
+  schema, submission, materialisation, provenance, corpus and shadow paths.
+- **Require `entity_ids` for entity scope**, leaving labels as an unmatched
+  annotation. One line, closes the widening, and leaves a dimension that still
+  reads like a selector and is not one.
+- **Match it**, by adding labels to `IntentManifest`. Free of the usual
+  digest-stability objection now that nothing has shipped, but it makes the
+  agent's own declaration authoritative for a label the catalog owns.
+
+Whichever wins, the guard belongs in `__post_init__` next to the existing two,
+because that is where the tenant and entity cases are already refused. Note that
+`tests/unit/test_arc_directive_types.py::test_a_capability_rule_may_use_labels_instead_of_ids`
+asserts exactly the construction that widens, so it pins the bug in place and
+has to change with the fix — a test asserting a defect is not a reason to keep
+the defect, but it is a reason to state what the test was for.
 
 Acceptance:
     .venv/bin/python -m pytest tests/unit -q -k "envelope and applicability"

@@ -111,7 +111,7 @@ class ArtifactScope:
 
     scope: AuthorityScope
     tenant_id: uuid.UUID | None = None
-    capability_id: uuid.UUID | None = None
+    entity_id: uuid.UUID | None = None
 
     def __post_init__(self) -> None:
         if self.scope is AuthorityScope.GLOBAL:
@@ -121,7 +121,7 @@ class ArtifactScope:
         elif self.tenant_id is None:
             msg = f"a {self.scope} artifact requires a tenant_id"
             raise ValueError(msg)
-        if self.scope is AuthorityScope.ENTITY and self.capability_id is None:
+        if self.scope is AuthorityScope.ENTITY and self.entity_id is None:
             msg = "an entity-scoped artifact requires an entity id"
             raise ValueError(msg)
 

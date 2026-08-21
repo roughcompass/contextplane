@@ -49,6 +49,10 @@ __all__ = [
     "ARC_ARTIFACT_INVALIDATED",
     "ARC_EXCEPTION_APPROVED",
     "ARC_EXCEPTION_REVOKED",
+    "ARC_ENVELOPE_BOUND",
+    "ARC_ENVELOPE_SUSPENDED",
+    "ARC_ENVELOPE_REINSTATED",
+    "ARC_ENVELOPE_REVOKED",
     "ARC_APPROVAL_VERIFIER_REGISTERED",
     "ARC_APPROVAL_VERIFIER_REVOKED",
     "ARC_APPROVAL_EVIDENCE_REVOKED",
@@ -190,6 +194,15 @@ ARC_ARTIFACT_INVALIDATED: Final[str] = "arc.artifact.invalidated"
 # Approved lower-scope exceptions to a delegable directive.
 ARC_EXCEPTION_APPROVED: Final[str] = "arc.exception.approved"
 ARC_EXCEPTION_REVOKED: Final[str] = "arc.exception.revoked"
+
+# Autonomy-envelope bindings: which `policy` revision governs which agent
+# principal. Four events rather than a generic "changed", because suspend,
+# reinstate and revoke are different acts with different consequences and an
+# auditor reading "changed" would have to reconstruct which one happened.
+ARC_ENVELOPE_BOUND: Final[str] = "arc.envelope.bound"
+ARC_ENVELOPE_SUSPENDED: Final[str] = "arc.envelope.suspended"
+ARC_ENVELOPE_REINSTATED: Final[str] = "arc.envelope.reinstated"
+ARC_ENVELOPE_REVOKED: Final[str] = "arc.envelope.revoked"
 
 # Approval-trust administration. Verifier revocation cascades to every active
 # projection that depended on it, so it is audited in its own right.
