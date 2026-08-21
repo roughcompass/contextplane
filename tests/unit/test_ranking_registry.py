@@ -93,6 +93,69 @@ def test_the_declared_consumers_still_read_the_registry() -> None:
             assert entry["coupling"] == "pinned", f"{entry['model_id']}: unknown coupling"
 
 
+def test_a_threshold_is_readable_and_refuses_the_wrong_form() -> None:
+    """`_FORMS` admitted `threshold` from the start and nothing could read one.
+
+    An entry declaring it would load and then be unreachable through either
+    accessor — a form the registry accepted and the module could not serve. The
+    wrong-form refusal is asserted alongside, because the form tag and the
+    payload are separate fields in a hand-edited artifact.
+    """
+    assert ranking.threshold("confidence-decay-floor@1") == pytest.approx(0.10)
+
+    with pytest.raises(ranking.UngovernedMagnitude, match="requested as"):
+        ranking.threshold("salience-weights@1")
+    with pytest.raises(ranking.UngovernedMagnitude, match="not a governed magnitude"):
+        ranking.threshold("no-such-model@1")
+
+
+def test_a_ladder_holding_the_wrong_payload_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The guard `weights` always had and `ladder` did not.
+
+    It was invisible while a dict was the only other shape: iterating one yields
+    its keys, so a mistagged weights entry came back as a ladder of field names
+    rather than as an error. Adding a numeric payload type surfaced it, because a
+    number is not iterable at all — and the fix belongs to both forms, not only
+    to the case that happened to fail type checking.
+
+    Patched at `_REGISTRY` rather than through the loader, because the refusal is
+    the accessor's: `_load` enforces form/shape agreement, and this is the second
+    line for an artifact where the tag and the payload are separate fields.
+    """
+    mistagged = ranking.GovernedMagnitude(
+        model_id="probe@1",
+        form="ladder",
+        parameters={"a": 1.0},
+        reason=" ".join(["word"] * 25),
+        validation_status="grandfathered",
+        requires_validated=False,
+    )
+    monkeypatch.setitem(ranking._REGISTRY, "probe@1", mistagged)
+
+    with pytest.raises(ranking.UngovernedMagnitude, match="tagged 'ladder' but holds"):
+        ranking.ladder("probe@1")
+
+
+def test_the_decay_floor_has_exactly_one_definition() -> None:
+    """The finding that justified the first ordering-site review.
+
+    `confidence.py` and `confidence_decay.py` each held their own `0.10` with
+    its own justifying comment and its own test importing its own copy. Neither
+    was wrong and nothing connected them, so a reviewer changing one would have
+    left the two paths flooring differently with both suites green.
+
+    Equality is not the assertion — two literals would satisfy that, which is
+    precisely the state this replaced. The assertion is that only one module
+    declares it and the other imports that name.
+    """
+    from contextplane.service.memory import confidence, confidence_decay
+
+    assert confidence.DECAY_FLOOR is confidence_decay.DECAY_FLOOR
+
+    source = (REPO_ROOT / "contextplane" / "service" / "memory" / "confidence.py").read_text(encoding="utf-8")
+    assert "DECAY_FLOOR = 0." not in source, "confidence.py declares its own decay floor again"
+
+
 def test_the_authority_ladder_matches_the_governance_vocabulary() -> None:
     """The registry is the authority on the order; the kernel keeps the names.
 

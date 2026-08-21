@@ -53,6 +53,8 @@ from __future__ import annotations
 import datetime
 from collections.abc import Mapping
 
+from contextplane import ranking
+
 # The age at which an assertion has lost half its value above the floor, per
 # category. Six numbers rather than twenty-six: the differences that are real are
 # between categories.
@@ -96,7 +98,13 @@ HISTORICAL_CATEGORIES: frozenset[str] = frozenset({"session_summary", "incident_
 # sits inside the bucket whose published meaning is "do not act on this", so a
 # fully-decayed claim stays visible and obviously stale rather than disappearing
 # under a caller's default minimum.
-DECAY_FLOOR = 0.10
+#
+# Read from the registry rather than held here, because it was held in two places:
+# `confidence.py` carried its own 0.10 with its own comment and its own test, so a
+# change to one would have left the two paths flooring differently with both suites
+# still green. `confidence.py` now imports this name; the registry is where the
+# value and its reason live.
+DECAY_FLOOR = ranking.threshold("confidence-decay-floor@1")
 
 # A subject changing every thirty days decays at its category's rate. Faster
 # subjects decay faster and slower ones slower, bounded so no subject differs from

@@ -151,7 +151,7 @@ disposition surface.
 
 ### E9 — Governed magnitudes ⚙
 
-**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane
+**Kind:** epic · **Status:** done · **Blocked by:** none · **Repo:** contextplane
 
 Restated, because the original property could not be built. It read "no
 ungoverned score orders anything a user sees", enforced automatically. Three
@@ -225,6 +225,18 @@ and cover what the closure cannot (semantic ranking, UI-side reordering) by
 periodic review of new ordering sites rather than a gate pretending to be
 exhaustive. E9-T4 runs the first such review and, because a cadence with no
 mechanism is a wish, gives the next one a trigger.
+
+**Closed with E9-T4.** All four tasks are done and what is left belongs
+elsewhere by design: E15–E17 register their own magnitudes as they land, and the
+quarterly review issue carries the part no gate can. Two things this epic does
+*not* claim, so nobody later reads the closure as more than it is. Automatic
+detection of unregistered rankers remains unbuilt and unbuildable here, which is
+a stated boundary rather than a deferral. And no magnitude in the registry is
+validated — the schema, the artifact gate, the loader refusal and the coupling
+rule are all in place, and every one of the seven entries is `grandfathered`,
+because producing validation evidence needs an evaluation harness and that is
+E8. The mechanism is complete; the evidence is not, and the ordering between
+those two is deliberate.
 
 ### E6 — Tamper-evident spine + records management
 
@@ -2866,7 +2878,7 @@ Acceptance:
 
 ### E9-T4 — The first review of ordering sites, and a trigger for the next
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: run the review the epic promises instead of the closure it could not
 build, and leave behind something that makes the next one happen.
@@ -2899,6 +2911,53 @@ Scope note: E15–E17 each bring their own new magnitudes under the registry as
 they land. Those are their tasks, not this one; this covers what is in the tree
 today and what no epic owns.
 
+**What the sweep found**, recorded in full at
+[`.develop/reviews/ordering-sites.md`](../reviews/ordering-sites.md):
+
+- **`DECAY_FLOOR = 0.10` was declared twice** -- `service/memory/confidence.py`
+  and `service/memory/confidence_decay.py`, each with its own justifying comment
+  and its own test importing its own copy. Neither was wrong and nothing
+  connected them, so a reviewer changing one would have left the two paths
+  flooring differently with both suites green. This is the registry's own stated
+  failure -- "no way for a reviewer to find its siblings" -- sitting in the tree,
+  and it is the finding that justifies the review existing.
+- **The salience weights were governed and their saturation ceilings were not**,
+  which governed half an arithmetic: the registered weights are applied to values
+  `_ENTITY_DENSITY_CEILING` and `_TOOL_DIVERSITY_CEILING` normalise, so moving a
+  ceiling reorders every episode while every weight stays put.
+- `CONTRADICTION_PENALTY` **qualifies and was deliberately not registered.** None
+  of the three forms describes a single multiplicative coefficient, and calling
+  it a one-key weights map is the vocabulary abuse the registry exists to
+  prevent. Adding a `coefficient` form is a change to `ranking.py` that its own
+  docstring says is not made in passing. Left with the reason, as the entry that
+  justifies the form when somebody adds it.
+- Evaluation-treatment parameters, calibration bucket counts, sample sizes,
+  page limits and every resource-shaped constant were considered and excluded,
+  each with the reason. Those non-findings are the compounding half: the sweep's
+  regex finds them every quarter, and without the record the next reviewer
+  re-derives the same exclusions.
+
+**Two gaps closed on the way, both surfaced by the work rather than sought.**
+`_FORMS` had admitted `threshold` since the module was written with no accessor
+to read one, so the registry accepted a form it could not serve -- registering
+the three entries above is what surfaced it. And `ladder()` had no payload guard
+where `weights()` did: invisible while a dict was the only other shape, because
+iterating one yields its keys, so a mistagged weights entry came back as a ladder
+of field names rather than an error. Widening the payload type to admit a number
+is what made it fail, and the fix belongs to both forms.
+
+**The trigger is a quarterly issue, not a check.** `ordering-site-review.yml`
+follows `stale-claims.yml` and knows nothing about the tree. A check claiming to
+find unregistered rankers is the exhaustive closure this epic already rejected
+three designs of; an issue is honest about being a prompt for a human. It opens
+one at a time -- a second would not mean twice the review, it would mean the
+first was not done, and two stale prompts are easier to ignore than one.
+
+Not swept: the UI repository. E9 names UI-side reordering as uncoverable by the
+closure and it is equally uncovered here; claiming otherwise would be the
+overclaim the whole approach is written against.
+
 Acceptance:
     make governed-magnitudes
-    make lint && make typecheck
+    .venv/bin/python -m pytest tests/unit/test_ranking_registry.py -q
+    make all

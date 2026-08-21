@@ -122,14 +122,19 @@ _ENTITY_TOKEN = re.compile(
     re.VERBOSE,
 )
 
-#: Above this many distinct named things per event, the signal saturates. Set
-#: at three because the point is to separate a transcript that talks about
-#: specific systems from one that does not, and past a few per turn the
-#: difference stops meaning more.
-_ENTITY_DENSITY_CEILING: Final = 3.0
+#: Above this many distinct named things per event, the signal saturates.
+#:
+#: Governed rather than held here, and registered by the first review of ordering
+#: sites: the salience weights were already in the registry and these were not,
+#: which governed half an arithmetic. The weights are applied to a value these
+#: normalise, so moving a ceiling reorders every episode while every weight stays
+#: put -- the registry entry carries why each holds its value.
+_ENTITY_DENSITY_CEILING: Final = ranking.threshold("salience-entity-density-ceiling@1")
 
-#: Distinct tools at which diversity saturates, for the same reason.
-_TOOL_DIVERSITY_CEILING: Final = 4.0
+#: Distinct tools at which diversity saturates. Higher than the entity ceiling
+#: because tool invocations are sparser than named entities in the same
+#: transcript; see the registry entry.
+_TOOL_DIVERSITY_CEILING: Final = ranking.threshold("salience-tool-diversity-ceiling@1")
 
 
 def _contains_any(haystack: str, needles: Sequence[str]) -> bool:
