@@ -54,6 +54,9 @@ from contextplane.arc import (
     ArtifactMaterialisationService,
     ArtifactService,
     AttestationService,
+    AutonomyDecisionService,
+    AutonomyEnforcementService,
+    AutonomyEnvelopeService,
     ChallengeService,
     CheckpointExportService,
     CorpusReader,
@@ -216,6 +219,9 @@ class Services:
     arc_preflight: PreflightRegistry
     arc_artifacts: ArtifactService
     arc_exceptions: ExceptionService
+    arc_envelopes: AutonomyEnvelopeService
+    arc_envelope_decisions: AutonomyDecisionService
+    arc_envelope_enforcement: AutonomyEnforcementService
     arc_source_admission: SourceAdmissionService
     arc_graph_source_admission: GraphPromotionAdmissionService
     arc_source_status: SourceStatusService

@@ -24,10 +24,12 @@ from fastapi import APIRouter, Depends, Path, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from contextplane.api.container import Services
+from contextplane.api.envelope_guard import enforce_envelope
 from contextplane.api.errors import build_error
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.middleware.tenant import get_tenant_context
 from contextplane.api.pii_guard import run_admission
+from contextplane.arc import AutonomyEnforcementService, IntentKind, IntentManifest
 from contextplane.exceptions import NotFoundError, ValidationError
 from contextplane.service.memory.claim_serving import (
     PERSONA_AGENT,
@@ -50,6 +52,21 @@ router = APIRouter(tags=["memory"], prefix="/v1/memory")
 # The logical field the PII scanner and its detection log record this under, so
 # a tenant can set a policy for conversation bodies distinct from artifacts.
 PII_FIELD = "memory_session_event.body"
+
+
+def _enforcement(request: Request) -> AutonomyEnforcementService:
+    """The envelope gate.
+
+    Not optional, unlike `_service` below: `memory` is `| None` because a
+    deployment may legitimately not run session memory, while enforcement is
+    built unconditionally in `build_arc_services`. A write that silently skipped
+    the authority check because a dependency was missing would be the worst
+    possible reading of a wiring bug, so the container types it as always
+    present and an absence is an import-time failure rather than a quiet
+    ungoverned write.
+    """
+    services: Services = request.app.state.services
+    return services.arc_envelope_enforcement
 
 
 def _service(request: Request) -> MemoryService:
@@ -175,6 +192,21 @@ async def record_event(
     nothing, rather than detected and stored. `metadata` is not scanned -- see
     the request model.
     """
+    # Authority first, then content. Both gates run before the write, and this
+    # order is deliberate: a principal with no envelope should be told that
+    # rather than having its body scanned first, and in `advisory` the envelope
+    # gate refuses nothing anyway, so the ordering costs nothing until a tenant
+    # graduates.
+    #
+    # The manifest describes the act, not the payload. `data_access` and
+    # `kind` are what an envelope's matrix can select on; the body is what the
+    # PII scan below is for.
+    await enforce_envelope(
+        request,
+        ctx,
+        _enforcement(request),
+        IntentManifest(session_id=session_id, intent_kind=IntentKind.DATA_ACCESS),
+    )
     # The session is the subject an auditor can look up. Admission runs before
     # the write, so there is no event id yet to name instead.
     await run_admission(request, ctx, body.body, PII_FIELD, subject=session_id)

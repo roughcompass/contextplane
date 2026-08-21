@@ -63,8 +63,16 @@ decomposed tasks finished is the same error that closed E19 prematurely.
 `POST /v1/sessions/{id}/observations`. Sync: auth/tenant via the visibility
 chokepoint, envelope digest check, idempotency, closed-schema + provenance
 completeness (`observed_time` and `external_record_id` caller-supplied where
-the stream declares an external source), PII scan per tenant policy, cheap
-synchronous embedding, one partitioned insert. All else async with per-tenant
+the stream declares an external source), PII scan per tenant policy, one
+partitioned insert.
+
+**Amended: "cheap synchronous embedding" is struck from this list**, by
+ADR-0010. Session events are not an embedding target -- `EMBEDDING_TARGETS` is
+`{fact, claim}` -- and no shipped reader of them wants one: replay is by `seq`
+and resume by `sequence`, so the two-call loop already sees its own write. The
+clause asked to introduce a target *and* implement it in the one shape that
+contradicts how both existing targets work, at the cost of a model call inside
+the p99 this same epic wants published. All else async with per-tenant
 fairness and lag stamps. Published p99 includes the PII-block mode.
 
 ### E3 — Resolve-as-receipt fused retrieval
@@ -2277,7 +2285,7 @@ embedding became synchronous, which had already conceded the question.
 
 ### E2-T1 — The envelope decision reaches a write path
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `AutonomyEnforcementService.evaluate` consulted by
 `POST /v1/memory/sessions/{session_id}/events`, refusing in `enforcing` and
@@ -2302,8 +2310,41 @@ point as "the intent write routes whose authority model is `AuthorityOrigin` in
 memory events route is the one real enforcement point the ADR names, and this
 task is only that one.
 
+**What it took, beyond the call site.** The three autonomy services existed but
+were reachable from nowhere: not exported from `contextplane.arc`'s front door,
+not built in `build_arc_services`, not fields on the typed container. So the
+task was mostly composition -- export, construct, type -- and the actual gate is
+one `await` in `record_event`.
+
+**The gate is a `Depends`-free adapter in `api/envelope_guard.py`, shaped after
+`api/pii_guard.py`.** A route carrying both now reads the same way twice, and
+the second gate did not invent a third pattern for "check something before the
+write".
+
+**`arc_envelope_enforcement` is not `| None` on the container**, unlike
+`memory`. A deployment may legitimately not run session memory; none may
+legitimately run ungoverned. Typing it as always present makes a missing
+dependency an import-time failure rather than a write that quietly skipped its
+authority check.
+
+**Authority runs before the PII scan.** A principal with no authority to write
+should be told that, rather than having its body scanned first and refused on
+content it was never entitled to submit. Ordering is only observable when both
+would refuse, so there is a test that sends a body tripping admission and
+asserts the envelope refusal wins.
+
+**The refusal names the verdict, not the envelope.** `envelope_absent` and
+`envelope_excluded` are different tickets -- one is an operator's job, the other
+is the agent doing something it should not -- but the message says nothing about
+the revision, the rule or the matrix, because a caller that learns *why* it is
+outside its envelope can map that envelope one probe at a time. A test asserts
+the absence of those words rather than trusting the message to stay terse.
+
+Four of the five tests fail with the call site removed, which is what says they
+test the gate rather than the route.
+
 Acceptance:
-    .venv/bin/python -m pytest tests/integration -q -k "memory_events and envelope"
+    .venv/bin/python -m pytest tests/integration -q -k "memory_events_envelope_gate"
     make lint && make typecheck && make test-coverage
 
 ### E2-T2 — Provenance completeness: when the caller must say when and which
@@ -2360,7 +2401,7 @@ Acceptance:
 
 ### E2-T4 — ADR: what the two-call loop needs from a just-written event
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: decide read-after-write visibility for a freshly written event. **The
 shipped asynchronous drain is the incumbent and the default outcome; the ADR
@@ -2402,13 +2443,39 @@ Six of the ten values E1 needed came from four ADRs written first, and the ones
 that went wrong went wrong where a task assumed instead. This is the same shape,
 with the addition that the thing not to assume here is the epic.
 
+**Concluded: keep the drain, strike the clause.** Three findings decided it,
+and the first was not anticipated when this task was written.
+
+`EMBEDDING_TARGETS` is `{fact, claim}` -- **a session event is not an embedding
+target at all.** So the clause was not asking to move an existing embedding onto
+the hot path; it was asking to add a new target and simultaneously implement it
+in the shape that contradicts both existing ones.
+
+**No shipped reader wants the property it would buy.** Replay orders by `seq`
+and resume by `sequence`, so a caller that writes a turn and replays the session
+already sees its own write -- the monotonic column does it, not a vector.
+
+**And the incumbent is hardened by an outage, not merely shipped.** The drain
+carries `embedding_outbox_oldest_pending_seconds` beside queue depth because
+depth alone cannot tell a queue that is keeping up from one nothing is
+enqueueing, "the failure that hid an empty claim index for a whole phase". A
+second writer into `embeddings` would break the coverage gauge that makes the
+first trustworthy.
+
+The deliverable was therefore an amendment to E2's body rather than code, which
+is the standing rule working as intended: this is the first task in the plan
+whose output is the epic changing.
+
 Acceptance:
     test -f .develop/adr/0010-read-after-write-embedding.md
     make doc-links && make doc-refs
 
 ### E2-T5 — Per-tenant fairness and lag stamps for the async remainder
 
-**Kind:** task · **Status:** pending · **Blocked by:** E2-T4 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+*(Unblocked: ADR-0010 struck the synchronous-embedding clause, so what stays
+asynchronous is no longer an open question.)*
 
 Goal: the work E2 moves off the hot path, scheduled so one tenant cannot starve
 another, and stamped so lag is observable.
@@ -2420,8 +2487,6 @@ introduces a mechanism rather than applying one, and its first job is to say
 what "fair" means here: equal share per tenant, share proportional to some
 entitlement, or bounded worst-case latency regardless of share.
 
-Blocked by T4 because what remains asynchronous is what T4 decides.
-
 **Lag cannot be a tenant-labelled metric.** `contextplane/metrics.py` forbids
 tenant labels, so "how far behind is tenant X" has to be a column and a query,
 the same conclusion E1-T8 reached for the advisory records.
@@ -2432,7 +2497,7 @@ Acceptance:
 
 ### E2-T6 — The published p99, including the PII-block mode
 
-**Kind:** task · **Status:** pending · **Blocked by:** E2-T1, E2-T4 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a p99 for the write path that is asserted, not stated.
 
@@ -2447,5 +2512,5 @@ seconds, so any figure outside that range is unmeasurable on what ships and must
 not be published — the same constraint that made E1-T7's suspension SLO a bound
 on operations rather than on wall-clock.
 
-Blocked by T1 and T4 because both add work to the path being measured, and a
-number published before they land measures a path that will not exist.
+Unblocked. T1 has landed and ADR-0010 removed the model call, so the path being
+measured is now the path that will ship -- which was the only reason to wait.

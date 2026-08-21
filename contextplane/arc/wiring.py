@@ -46,6 +46,9 @@ from contextplane.arc.service.approved_exceptions import ExceptionService
 from contextplane.arc.service.artifact import ArtifactService
 from contextplane.arc.service.attestation import AttestationService, HostSignerKeyRegistry
 from contextplane.arc.service.authorization import ArcAuthorizationService
+from contextplane.arc.service.autonomy_decision import AutonomyDecisionService
+from contextplane.arc.service.autonomy_enforcement import AutonomyEnforcementService
+from contextplane.arc.service.autonomy_envelope import AutonomyEnvelopeService
 from contextplane.arc.service.challenge import ChallengeNonceDeriver, ChallengeService
 from contextplane.arc.service.checkpoint_export import CheckpointExportService
 from contextplane.arc.service.continuation import ContinuationTokenProvider
@@ -104,6 +107,9 @@ class ArcServices:
     arc_preflight: PreflightRegistry
     arc_artifacts: ArtifactService
     arc_exceptions: ExceptionService
+    arc_envelopes: AutonomyEnvelopeService
+    arc_envelope_decisions: AutonomyDecisionService
+    arc_envelope_enforcement: AutonomyEnforcementService
     arc_source_admission: SourceAdmissionService
     # The third admission authority. Composes the service above rather than
     # duplicating its transaction: one place writes an evidence row.
@@ -231,6 +237,16 @@ def build_arc_services(
     arc_preflight = PreflightRegistry()
     arc_artifacts = ArtifactService(session_factory, authorization=authorization, clock=clock)
     arc_exceptions = ExceptionService(session_factory, authorization=authorization, clock=clock)
+    # The autonomy-envelope trio, wired unconditionally for the same reason as
+    # the two above: no key material, only the session factory, the shared
+    # authorization chokepoint and the clock. They compose in one direction --
+    # enforcement wraps the decision, which reads the binding -- so the
+    # construction order is the dependency order.
+    arc_envelopes = AutonomyEnvelopeService(session_factory, authorization=authorization, clock=clock)
+    arc_envelope_decisions = AutonomyDecisionService(
+        session_factory, envelopes=arc_envelopes, authorization=authorization, clock=clock
+    )
+    arc_envelope_enforcement = AutonomyEnforcementService(session_factory, decisions=arc_envelope_decisions)
     # Wired unconditionally, like the two services above: source admission
     # needs no key material, only the session factory, the shared
     # authorization chokepoint, and the clock.
@@ -415,6 +431,9 @@ def build_arc_services(
         arc_preflight=arc_preflight,
         arc_artifacts=arc_artifacts,
         arc_exceptions=arc_exceptions,
+        arc_envelopes=arc_envelopes,
+        arc_envelope_decisions=arc_envelope_decisions,
+        arc_envelope_enforcement=arc_envelope_enforcement,
         arc_source_admission=arc_source_admission,
         arc_graph_source_admission=arc_graph_source_admission,
         arc_source_status=arc_source_status,
