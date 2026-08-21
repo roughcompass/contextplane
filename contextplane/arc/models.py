@@ -50,6 +50,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, BYTEA, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from contextplane.arc.models_approval_challenge import ArcApprovalChallenge, ArcProjectionApprovalEvidence
+from contextplane.arc.models_autonomy_envelope import ArcAutonomyEnvelopeBinding
 from contextplane.arc.models_observation import (
     ArcObservationCohort,
     ArcObservationCohortMember,
@@ -793,4 +794,5 @@ ARC_MODELS: tuple[type[Base], ...] = (
     ArcObservationResult,
     ArcObservationReplayCorpus,
     ArcObservationQualification,
+    ArcAutonomyEnvelopeBinding,
 )

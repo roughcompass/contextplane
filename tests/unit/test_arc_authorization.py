@@ -81,7 +81,7 @@ def _scope(scope: AuthorityScope, tenant_id: uuid.UUID | None = _TENANT) -> Arti
     if scope is AuthorityScope.GLOBAL:
         return ArtifactScope(scope=scope)
     if scope is AuthorityScope.ENTITY:
-        return ArtifactScope(scope=scope, tenant_id=tenant_id, capability_id=_CAPABILITY)
+        return ArtifactScope(scope=scope, tenant_id=tenant_id, entity_id=_CAPABILITY)
     return ArtifactScope(scope=scope, tenant_id=tenant_id)
 
 

@@ -176,14 +176,14 @@ def _item_match(item: dict[str, Any], environments: tuple[str, ...], tiers: tupl
     unconstrained fields fall back to a fixed representative value so the
     class stays concrete rather than partially unconstrained."""
     predicate = item.get("class_predicate") or {}
-    capability_id = _first(predicate.get("entity_ids"))
+    entity_id = _first(predicate.get("entity_ids"))
     domain_id = _first(predicate.get("domain_ids"))
     return _class(
         intent_kind=[_first(predicate.get("intent_kind")) or _TASK_KINDS[0].value],
         requested_action_classes=[_first(predicate.get("requested_action_classes")) or _ACTION_CLASSES[0].value],
         environment=[_first(predicate.get("environment")) or environments[0]],
         data_sensitivity_tier=[_first(predicate.get("data_sensitivity_tier")) or tiers[0]],
-        entity_ids=[capability_id] if capability_id is not None else None,
+        entity_ids=[entity_id] if entity_id is not None else None,
         domain_ids=[domain_id] if domain_id is not None else None,
     )
 
