@@ -426,3 +426,65 @@ jobs:
       - run: make install-dev
       - run: make test-perf
 
+  # The single check `main` requires, and the reason it exists rather than
+  # requiring `unit` directly.
+  #
+  # A required status check must be able to *report* on every PR. `unit` cannot:
+  # it is conditional on `changes.outputs.code`, so a docs-only PR skips it, and
+  # GitHub reads a skipped required check as permanently pending rather than as
+  # satisfied. Requiring it would block exactly the PRs it was never meant to
+  # run on. That is why protection had drifted to lint and typecheck — the two
+  # unconditional jobs — leaving a PR whose test tier was red mergeable, which
+  # is how #51 landed a broken unit suite on main.
+  #
+  # This job always runs, so it can be required, and it decides for itself what
+  # each upstream result means: `success` and `skipped` pass, anything else --
+  # failure, cancellation, a job that never started -- fails.
+  #
+  # **`skipped` counts as passing, and that is safe only because of how the
+  # graph is shaped.** A tier is skipped for one of two reasons: its own `if`
+  # declined (docs-only, or nightly-only), or something it needed failed. In the
+  # second case the *failure* is also in this list, because every conditional
+  # tier needs `unit` and `unit` needs `changes`, both of which are gated here.
+  # So a skip can never hide a failure behind it. A new job that depends on
+  # something outside this list breaks that argument and must be added here.
+  gate:
+    if: always()
+    needs:
+      - changes
+      - lint
+      - typecheck
+      - unit
+      - integration
+      - conformance
+      - arc-vectors
+      - image
+      # Nightly-only, and listed anyway. On a PR they skip and cost nothing; on
+      # the scheduled run this makes the gate mean "the whole run is green"
+      # rather than "the PR subset is green", which is the only place those two
+      # tiers ever report.
+      - native-stack
+      - perf
+    runs-on: ubuntu-latest
+    steps:
+      - name: every tier passed or was deliberately skipped
+        env:
+          # Through the environment, not string-interpolated into the script:
+          # `${{ }}` inside a `run` block splices attacker-influenceable text
+          # straight into the shell.
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+
+          needs = json.loads(os.environ["NEEDS"])
+          for name, job in sorted(needs.items()):
+              print(f"{job['result']:>10}  {name}")
+
+          bad = sorted(n for n, j in needs.items() if j["result"] not in ("success", "skipped"))
+          if bad:
+              print("\nnot green: " + ", ".join(bad))
+              sys.exit(1)
+          print("\nall tiers green")
+          PY
+
