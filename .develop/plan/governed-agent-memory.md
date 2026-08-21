@@ -58,7 +58,7 @@ decomposed tasks finished is the same error that closed E19 prematurely.
 
 ### E2 — Hot observation write path
 
-**Kind:** epic · **Status:** pending · **Blocked by:** E1 · **Repo:** contextplane
+**Kind:** epic · **Status:** done · **Blocked by:** E1 · **Repo:** contextplane
 
 `POST /v1/sessions/{id}/observations`. Sync: auth/tenant via the visibility
 chokepoint, envelope digest check, idempotency, closed-schema + provenance
@@ -74,6 +74,33 @@ clause asked to introduce a target *and* implement it in the one shape that
 contradicts how both existing targets work, at the cost of a model call inside
 the p99 this same epic wants published. All else async with per-tenant
 fairness and lag stamps. Published p99 includes the PII-block mode.
+
+**Closed.** Every clause above is accounted for, and three of them were closed
+by amendment rather than by code — which is the point of walking the list here
+rather than counting six green tasks:
+
+- *The route.* `POST /v1/sessions/{id}/observations` never existed, and neither
+  did an observations table. The write path is `POST
+  /v1/memory/sessions/{session_id}/events`; recorded in the third wave's
+  preamble before any task was cut against the wrong surface.
+- *Auth, envelope digest check.* E2-T1 — the envelope decision reaching the
+  write path, ahead of admission.
+- *Idempotency, closed schema, PII scan per tenant policy.* Already shipped;
+  `_Strict` forbids unknown fields and `run_admission` carries the policy.
+- *Provenance completeness.* E2-T2, with `observed_at` rather than
+  `observed_time` and the conditional keyed per event.
+- *One partitioned insert.* E2-T3, hashed on `tenant_id` rather than ranged on
+  time, because ranging would have weakened the key sequence allocation
+  depends on.
+- *Cheap synchronous embedding.* Struck by ADR-0010 (E2-T4).
+- *Async remainder with per-tenant fairness and lag stamps.* E2-T5.
+- *Published p99 including block mode.* E2-T6, published as p95 with the
+  arithmetic for why 40 samples cannot support a p99 — an amendment stated in
+  the test rather than a bound quietly loosened until it stopped failing.
+
+E1 stays open: one clause of its body — stream-scoped action-class and
+sensitivity declarations at source-namespace registration — is unresolved, and
+E2-T2 deliberately declined to pre-empt it.
 
 ### E3 — Resolve-as-receipt fused retrieval
 
@@ -149,16 +176,55 @@ What was never defeated — and stays, because E3 and E5 carry the ⚙ pointing
 here — is validation gating activation for **named** components: the registry
 entry for a magnitude E3 or E5 consumes must carry independent-validation
 evidence (who validated, against what data, with what result) before the
-consuming feature's flag turns on, and that is encoded as a required check
-when the first E3/E5 task is cut. Registration says a number is owned;
-validation says somebody checked it predicts. The core registry shipped with
-the first property only, so extending its schema with the evidence fields is
-part of this epic, not a separate one.
+consuming feature turns on. Registration says a number is owned; validation
+says somebody checked it predicts.
+
+**Two clauses of this body are now stale and are amended here rather than
+implemented.** Both were written before E9-T1 and E9-T2 landed.
+
+*"The core registry shipped with the first property only, so extending its
+schema with the evidence fields is part of this epic."* Done, in E9-T1. The
+block ships: `status` (`validated` | `grandfathered`), `validated_by`,
+`validated_on`, `method`, `result`, and `requires_validated`, with the loader
+refusing an entry that declares no status, a `grandfathered` entry with no
+reason, and a `validated` entry with no evidence behind the word.
+
+*"That is encoded as a required check when the first E3/E5 task is cut."* Also
+done, in E9-T2 — earlier than this sentence anticipated. `make
+governed-magnitudes` runs inside `make lint`, which CI runs and the `gate`
+required check covers, and it enforces `requires_validated: true ⇒ status:
+validated` against the artifact.
+
+**What both of those left behind is the part that actually gates, and this
+epic still owns it.** The rule lives only in CI. `ranking.py`'s loader does not
+enforce it, so a running service is *more permissive than the pipeline* — which
+inverts this module's own stated posture, where an unknown id raises and an
+empty registry raises at import. And `requires_validated()` has no caller
+outside its tests: nothing consults it at the moment a feature would serve.
+
+**"Before the consuming feature's flag turns on" presumed a flag mechanism that
+does not exist, and should not be built for this.** The repository has exactly
+one genuine feature switch (`arc_drafter_model_enabled`), and ADR-0005 rules out
+env-var flags that widen authority. What it does have is the right *shape*:
+`assert_drafter_decision_permits_serving` refuses to boot when a flag claims
+more than a committed artifact earned. The registry is such an artifact, and the
+chokepoint every consumer already passes through is the accessor — so the
+activation gate is the **read**, not a flag. A magnitude flagged as requiring
+validation and not yet validated cannot be read, and the three `consumed`
+entries are read at import, so the service refuses to start. Same guarantee as
+the drafter assertion, no new mechanism. E9-T3.
+
+**Nothing can currently be moved from `grandfathered` to `validated`**, because
+no evaluation harness exists to produce the evidence — that is E8. This is the
+fail-closed ordering rather than a gap: a flag cannot be set until it can be
+satisfied.
 
 Remaining otherwise: bring each new scoring magnitude under the registry as
-E15–E17 land, and cover what the closure cannot — semantic ranking, UI-side
-reordering — by periodic review of new ordering sites rather than a gate
-pretending to be exhaustive.
+E15–E17 land — those belong to those epics, with this one supplying the rule —
+and cover what the closure cannot (semantic ranking, UI-side reordering) by
+periodic review of new ordering sites rather than a gate pretending to be
+exhaustive. E9-T4 runs the first such review and, because a cadence with no
+mechanism is a wish, gives the next one a trigger.
 
 ### E6 — Tamper-evident spine + records management
 
@@ -685,10 +751,18 @@ E3 and E5's ⚙ points at — that any entry marked `requires_validated: true`
 `require_nonempty`: an empty registry already refuses to load, and the check
 fails rather than passes if it inspects zero entries.
 
+Landed differently from the third acceptance line below, which was written
+against a wiring shape that was not used and would fail if run: the string
+`governed-magnitudes` does not appear in `ci.yml`. It does not need to. `make
+lint` invokes the target, CI runs `make lint`, and the `gate` required check
+covers that job — so the check is required, by one wiring rather than two. The
+line is corrected rather than the wiring, because a stale acceptance criterion
+reads to the next person as a regression.
+
 Acceptance:
     make governed-magnitudes
     .venv/bin/python -m pytest tests/unit/test_check_governed_magnitudes.py -q
-    grep -q "governed-magnitudes" .github/workflows/ci.yml
+    make lint   # the target runs inside it; CI runs `make lint` under `gate`
 
 ### E15-T1 — Rename SearchResult.score to fused_rank_score
 
@@ -2706,3 +2780,115 @@ vocabulary moved, the block-mode measurement would silently become a second
 measurement of the faster clean path and its budget would never fire -- and one
 asserts an advisory record exists, proving the envelope decision ran inside the
 number rather than being bypassed by the harness.
+
+## Task decomposition — fourth wave (E9's remainder, against what shipped)
+
+E9's first two tasks landed before its epic body was last revised, so the
+grounding pass found the body describing work that exists. The evidence schema
+ships; the artifact gate ships and is required. What is left is smaller than the
+body implies and more load-bearing: the rule those tasks encoded lives only in
+CI, and the field that names it has no consumer at the moment a feature would
+serve.
+
+### E9-T3 — `requires_validated` refuses at the read, because there is no flag to gate
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the coupling rule holds at runtime, not only in the pipeline, and it holds
+at the one place every consumer already passes through.
+
+Three changes, each small:
+
+1. **`ranking._load` refuses `requires_validated: true` with a status other than
+   `validated`** — the same rule `scripts/check_governed_magnitudes.py` already
+   enforces on the artifact. Today the loader accepts it, so the running service
+   is more permissive than CI. That is backwards for a module whose own
+   docstring says an unknown id raises and an empty registry raises at import,
+   and it means the guarantee survives only as long as nobody edits the artifact
+   without running the gate.
+
+2. **The gate additionally requires `coupling: consumed` when
+   `requires_validated` is true.** A `pinned` entry — one whose agreement is
+   asserted by a test rather than read by the code, like
+   `source-authority-ladder@1` — is never read on a serving path, so a refusal
+   at the accessor would never fire for it. Flagging such an entry as
+   validation-gated would look like protection and be none.
+
+3. **A test that the refusal reaches process start.** The three `consumed`
+   entries are read at import (`claim_serving.py` binds `_ARM_WEIGHTS` at module
+   level), so an unsatisfiable flag means the service does not boot. That is the
+   property worth pinning, and it is the same one
+   `assert_drafter_decision_permits_serving` pins for the drafter.
+
+**Why here and not in E3/E5, which is where the epic body puts it.** The body
+says the check is encoded "when the first E3/E5 task is cut". Left there, the
+first task that wants a validated magnitude has to build the governance
+machinery as a side quest, in a branch about fused retrieval, reviewed by
+somebody looking at retrieval. Built here, E3 and E5 each set one boolean. The
+machinery is also cheaper to get right in isolation, because its failure mode is
+"the service will not start" and that is easier to reason about away from a
+feature.
+
+**Why the read, and not a feature flag.** The body says "before the consuming
+feature's flag turns on", which presumes a flag mechanism. There is none: the
+repository has exactly one genuine feature switch (`arc_drafter_model_enabled`),
+every other "turn this on" is a purpose-built column on a purpose-built table,
+and ADR-0005 explicitly rules out an env-var flag that can widen authority. What
+the tree does have is the right shape — a startup assertion that refuses to
+serve when a flag claims more than a committed artifact earned. Making the
+accessor refuse gets the same guarantee with no new mechanism, no new table, and
+no new configuration surface for an operator to get wrong.
+
+**What this cannot do yet, stated rather than discovered later.** Nothing in the
+tree can move an entry from `grandfathered` to `validated`, because producing
+that evidence needs an evaluation harness and that is E8. So this ships a
+refusal nobody can currently satisfy. That is the fail-closed ordering working:
+the flag cannot be set until it can be met. It also means this task's own
+registry stays four `grandfathered` entries with `requires_validated: false`,
+and the refusals are proved against synthetic registries — the pattern
+`test_ranking_registry.py` already uses, and for the reason it states: a test
+that only inspects today's entries passes forever once they are correct.
+
+Acceptance:
+    make governed-magnitudes
+    .venv/bin/python -m pytest tests/unit/test_ranking_registry.py tests/unit/test_check_governed_magnitudes.py -q
+    make lint && make typecheck && make test-coverage
+
+### E9-T4 — The first review of ordering sites, and a trigger for the next
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: run the review the epic promises instead of the closure it could not
+build, and leave behind something that makes the next one happen.
+
+E9 concluded that automatic detection of unregistered rankers is not buildable —
+three designs, each defeated by separating the arithmetic from the sort — and
+that the honest substitute is periodic review. A periodic review that nothing
+schedules is a sentence in a plan.
+
+Two deliverables:
+
+**The sweep.** Every numeric literal in a weights, threshold, floor or ladder
+position across the scoring, ranking, confidence, salience and calibration
+paths, each either registered or recorded with the reason it does not qualify.
+`service/memory/confidence.py`'s `headroom` and `scale` are known candidates and
+are a good test of the boundary: E16 removes them outright when it replaces the
+saturating curve with noisy-OR, so registering them would govern a number
+already scheduled for deletion. Whichever way that goes, the answer is written
+down — the value of the sweep is as much the recorded non-findings as the
+findings, because the next reviewer starts from them rather than from scratch.
+
+**The trigger.** A scheduled workflow that opens an issue on a fixed cadence,
+following `stale-claims.yml`, which already does exactly this shape with
+`issues: write`. Deliberately *not* a gate: a check that claimed to find
+unregistered rankers would be the exhaustive-closure this epic already rejected
+three designs of, and a gate believed exhaustive but defeated in a few lines is
+worse than none. An issue is honest about being a prompt for a human.
+
+Scope note: E15–E17 each bring their own new magnitudes under the registry as
+they land. Those are their tasks, not this one; this covers what is in the tree
+today and what no epic owns.
+
+Acceptance:
+    make governed-magnitudes
+    make lint && make typecheck
