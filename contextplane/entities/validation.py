@@ -72,6 +72,13 @@ _GOVERNING_STATES: Final[tuple[str, ...]] = ("active", "validating")
 #: payload cannot be echoed back through an error response.
 MAX_REPORTED_VIOLATIONS: Final = 20
 
+#: A caller said it composed its body against a revision the tenant is not bound
+#: to. Named for the caller's claim being stale rather than for an incompatible
+#: revision: `incompatible_target_revision` is a publication-time compile
+#: conflict over content digests, and one code meaning two things on two surfaces
+#: is a code a reader cannot act on.
+STALE_TARGET_REVISION: Final = "stale_target_revision"
+
 #: How a declared value type is checked against a supplied value. `timestamp`
 #: and `reference` are strings on the wire and are checked as such; parsing them
 #: into datetimes or ids is the writer's business, and a validator that parsed
@@ -84,6 +91,39 @@ _PYTHON_TYPES: Final[Mapping[str, tuple[type, ...]]] = {
     "enum": (str,),
     "reference": (str,),
 }
+
+
+@dataclasses.dataclass(frozen=True)
+class TargetRevisionClaim:
+    """What a caller says it composed its body against.
+
+    Both halves optional, because a caller that cannot attest to one is better
+    off saying nothing than inventing a value: an unread claim was the original
+    defect and a fabricated one is the same defect with more steps. Absent means
+    unchecked, never means agreed.
+
+    A plain dataclass rather than the wire model, because this is consumed at the
+    `entities` layer and `api` sits nineteen layers above it.
+    """
+
+    profile_revision: str | None = None
+    binding_revision: str | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class GoverningProfile:
+    """The binding that governs a write, and the document it resolves to.
+
+    Carries `extension_set_digest` because a revision id alone does not identify
+    what validates a write: a tenant can rebind to a different extension set at
+    the same `profile_revision_id`, which is the rollback case
+    `0060_binding_extension_members` exists for.
+    """
+
+    revision_id: uuid.UUID
+    state: str
+    document: str
+    extension_set_digest: str
 
 
 @dataclasses.dataclass(frozen=True)
@@ -149,6 +189,7 @@ class EntityValidator:
         tenant_id: uuid.UUID,
         entity_type: str,
         attributes: Mapping[str, Any],
+        target_revision: TargetRevisionClaim | None = None,
     ) -> EntityValidationResult:
         """Check one entity's type and properties against the tenant's governing profile.
 
@@ -159,7 +200,11 @@ class EntityValidator:
         """
         async with self._session_factory() as session:
             return await validate_entity_write(
-                session, tenant_id=tenant_id, entity_type=entity_type, attributes=attributes
+                session,
+                tenant_id=tenant_id,
+                entity_type=entity_type,
+                attributes=attributes,
+                target_revision=target_revision,
             )
 
 
@@ -169,23 +214,26 @@ async def validate_entity_write(
     tenant_id: uuid.UUID,
     entity_type: str,
     attributes: Mapping[str, Any],
+    target_revision: TargetRevisionClaim | None = None,
 ) -> EntityValidationResult:
     """Check one entity write against its tenant's governing profile, on a caller's session."""
     governing = await governing_profile(session, tenant_id)
     if governing is None:
         return EntityValidationResult(mode=UNBOUND, entity_type=entity_type, profile_revision_id=None)
 
-    revision_id, state, document = governing
-    mode = MANDATORY if state == "active" else ADVISORY
+    mode = MANDATORY if governing.state == "active" else ADVISORY
+    revision_id = governing.revision_id
+    stale = target_revision_violations(target_revision, governing)
 
-    declared = declared_types(document, ENTITY_FAMILY)
+    declared = declared_types(governing.document, ENTITY_FAMILY)
     found = declared.get(entity_type)
     if found is None:
         return _bounded(
             mode,
             entity_type,
             revision_id,
-            [
+            stale
+            + [
                 Violation(
                     code="unknown_entity_type",
                     property_name=None,
@@ -198,10 +246,10 @@ async def validate_entity_write(
             ],
         )
 
-    return _bounded(mode, entity_type, revision_id, property_violations(found, attributes))
+    return _bounded(mode, entity_type, revision_id, stale + property_violations(found, attributes))
 
 
-async def governing_profile(session: AsyncSession, tenant_id: uuid.UUID) -> tuple[uuid.UUID, str, str] | None:
+async def governing_profile(session: AsyncSession, tenant_id: uuid.UUID) -> GoverningProfile | None:
     """The revision, binding state and canonical document governing this tenant.
 
     One query rather than a binding read followed by a revision read: the two
@@ -211,7 +259,7 @@ async def governing_profile(session: AsyncSession, tenant_id: uuid.UUID) -> tupl
     row = (
         await session.execute(
             text(
-                "SELECT b.profile_revision_id, b.state, r.canonical_document"
+                "SELECT b.profile_revision_id, b.state, r.canonical_document, b.extension_set_digest"
                 "  FROM profile_bindings b"
                 "  JOIN profile_revisions r ON r.profile_revision_id = b.profile_revision_id"
                 " WHERE b.tenant_id = :tenant AND b.state = ANY(CAST(:states AS TEXT[]))"
@@ -231,7 +279,58 @@ async def governing_profile(session: AsyncSession, tenant_id: uuid.UUID) -> tupl
     # parser below expects.
     if not isinstance(document, str):
         document = json.dumps(document)
-    return row[0], row[1], document
+    return GoverningProfile(revision_id=row[0], state=row[1], document=document, extension_set_digest=row[3])
+
+
+def target_revision_violations(
+    claim: TargetRevisionClaim | None,
+    governing: GoverningProfile,
+) -> list[Violation]:
+    """Whether the caller composed against the governance that is about to validate it.
+
+    This is the check `TargetRevisionV1` was declared for and never got. It is a
+    *violation* rather than a refusal, so the binding keeps deciding the mode --
+    mandatory refuses it, advisory reports it, and an unbound tenant never
+    reaches here. A router refusing on a caller-supplied string would be a caller
+    choosing its own enforcement level, which is the bypass this module exists to
+    close.
+
+    Compared here, against the same row `governing_profile` just resolved, rather
+    than in a caller. A second binding read would be separately consistent and
+    jointly stale -- the defect that function's own docstring warns about -- so a
+    pre-check somewhere else could not promise the checked revision is the
+    validating revision.
+    """
+    if claim is None:
+        return []
+
+    violations: list[Violation] = []
+    expected_revision = str(governing.revision_id)
+    if claim.profile_revision is not None and claim.profile_revision != expected_revision:
+        violations.append(
+            Violation(
+                code=STALE_TARGET_REVISION,
+                property_name=None,
+                detail=(
+                    f"this write was composed against profile revision {claim.profile_revision!r} and is being "
+                    f"validated against {expected_revision!r}; the rules that accept or refuse it are not the "
+                    "rules it was written for"
+                ),
+            )
+        )
+    if claim.binding_revision is not None and claim.binding_revision != governing.extension_set_digest:
+        violations.append(
+            Violation(
+                code=STALE_TARGET_REVISION,
+                property_name=None,
+                detail=(
+                    f"this write was composed against extension set {claim.binding_revision!r} and is being "
+                    f"validated against {governing.extension_set_digest!r}; a rebind can change the extension "
+                    "set while leaving the revision id untouched, so the revision agreeing is not enough"
+                ),
+            )
+        )
+    return violations
 
 
 def declared_types(document: str, family: str) -> Mapping[str, Mapping[str, Any]]:
@@ -356,7 +455,14 @@ __all__ = [
     "MANDATORY",
     "MAX_REPORTED_VIOLATIONS",
     "UNBOUND",
+    "STALE_TARGET_REVISION",
     "EntityValidationResult",
     "EntityValidator",
+    "GoverningProfile",
+    "TargetRevisionClaim",
     "Violation",
+    "declared_types",
+    "governing_profile",
+    "property_violations",
+    "target_revision_violations",
 ]

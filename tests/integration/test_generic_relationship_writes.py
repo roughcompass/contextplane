@@ -69,8 +69,16 @@ def _definition(**overrides: object) -> RelationshipTypeDefinition:
     return RelationshipTypeDefinition(**fields)  # type: ignore[arg-type]
 
 
+#: The extension-set digest the seeded binding carries, so a test can attest to it.
+_EXTENSION_SET_DIGEST = "seeded-extension-set"
+
+
 async def _seed(pg_url: str, tenant_slug: str, definition: RelationshipTypeDefinition) -> dict[str, uuid.UUID]:
-    """Bind the tenant to a profile declaring this relationship, and make two endpoints."""
+    """Bind the tenant to a profile declaring this relationship, and make two endpoints.
+
+    Returns the endpoint ids plus `profile_revision`, which is what a caller must
+    put in `target_revision` -- the binding's revision id, not a version string.
+    """
     document = compile_profile(
         entities=[
             EntityTypeDefinition(namespace=_NS, type_name=_SRC_TYPE),
@@ -120,7 +128,7 @@ async def _seed(pg_url: str, tenant_slug: str, definition: RelationshipTypeDefin
                     "bid": uuid.uuid4(),
                     "tid": tenant_id,
                     "rid": revision_id,
-                    "digest": revision_id.hex,
+                    "digest": _EXTENSION_SET_DIGEST,
                     "now": _NOW_DT,
                 },
             )
@@ -145,6 +153,7 @@ async def _seed(pg_url: str, tenant_slug: str, definition: RelationshipTypeDefin
                     },
                 )
                 ids[role] = entity_id
+            ids["profile_revision"] = revision_id
             return ids
     finally:
         await engine.dispose()
@@ -170,7 +179,7 @@ def _body(intent: str, ids: dict[str, uuid.UUID], **extra: object) -> dict[str, 
             "source_entity_id": str(ids["source"]),
             "destination_entity_id": str(ids["destination"]),
         },
-        "target_revision": {"profile_revision": "1.0.0"},
+        "target_revision": {"profile_revision": str(ids["profile_revision"])},
         "temporal": {"valid_from": _NOW},
         "idempotency_key": uuid.uuid4().hex,
         "provenance": {
@@ -272,7 +281,7 @@ async def test_an_endpoint_of_the_wrong_type_is_refused_by_name(
 ) -> None:
     persona = await _persona(harness, pg_container)
     ids = await _seed(pg_container, persona.slug, _definition())
-    swapped = {"source": ids["destination"], "destination": ids["source"]}
+    swapped = {**ids, "source": ids["destination"], "destination": ids["source"]}
     async with AsyncClient(transport=ASGITransport(app=harness.app), base_url="http://test") as client:
         harness.configure_fetcher_for(persona)
         with patch_validator_for_actor(persona):
@@ -817,3 +826,79 @@ async def test_a_wildcard_validator_matches_whatever_is_current(
             )
 
     assert amended.status_code == 200, amended.text
+
+
+# --- the caller's claim about what it composed against ------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_claim_agreeing_with_the_binding_adds_no_violation(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    """The vacuity control for the two below: agreeing is silent."""
+    persona = await _persona(harness, pg_container)
+    ids = await _seed(pg_container, persona.slug, _definition())
+    body = _body("observation", ids)
+    body["target_revision"] = {
+        "profile_revision": str(ids["profile_revision"]),
+        "binding_revision": _EXTENSION_SET_DIGEST,
+    }
+    async with AsyncClient(transport=ASGITransport(app=harness.app), base_url="http://test") as client:
+        harness.configure_fetcher_for(persona)
+        with patch_validator_for_actor(persona):
+            response = await _post(client, persona, body)
+
+    assert response.status_code == 201, response.text
+    assert response.json()["validation"]["violations"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_stale_revision_claim_is_refused_under_a_mandatory_binding(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    """The binding decides, and this tenant's binding is `active`.
+
+    Reported as a violation rather than raised as a refusal in the router, so the
+    same disagreement under a `validating` binding would be reported and allowed.
+    What makes it bite here is the mode, not the check.
+    """
+    persona = await _persona(harness, pg_container)
+    ids = await _seed(pg_container, persona.slug, _definition())
+    body = _body("observation", ids)
+    body["target_revision"] = {"profile_revision": str(uuid.uuid4())}
+    async with AsyncClient(transport=ASGITransport(app=harness.app), base_url="http://test") as client:
+        harness.configure_fetcher_for(persona)
+        with patch_validator_for_actor(persona):
+            response = await _post(client, persona, body)
+
+    assert response.status_code == 201, response.text
+    validation = response.json()["validation"]
+    assert validation["valid"] is False
+    assert any("stale_target_revision" in message for message in validation["violations"]), validation
+
+
+@pytest.mark.asyncio
+async def test_a_rebind_that_changed_only_the_extension_set_is_still_caught(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    """The case a revision-only check passes.
+
+    The revision id agrees; the extension set does not. A caller attesting to the
+    set it composed against learns the rules moved underneath it, which is what
+    the field was declared for.
+    """
+    persona = await _persona(harness, pg_container)
+    ids = await _seed(pg_container, persona.slug, _definition())
+    body = _body("observation", ids)
+    body["target_revision"] = {
+        "profile_revision": str(ids["profile_revision"]),
+        "binding_revision": "a-set-this-tenant-is-not-bound-to",
+    }
+    async with AsyncClient(transport=ASGITransport(app=harness.app), base_url="http://test") as client:
+        harness.configure_fetcher_for(persona)
+        with patch_validator_for_actor(persona):
+            response = await _post(client, persona, body)
+
+    assert response.status_code == 201, response.text
+    validation = response.json()["validation"]
+    assert any("extension set" in message for message in validation["violations"]), validation

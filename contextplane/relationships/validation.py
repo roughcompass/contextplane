@@ -43,10 +43,12 @@ from contextplane.entities.validation import (
     MANDATORY,
     MAX_REPORTED_VIOLATIONS,
     UNBOUND,
+    TargetRevisionClaim,
     Violation,
     declared_types,
     governing_profile,
     property_violations,
+    target_revision_violations,
 )
 from contextplane.profile.compiler import RELATIONSHIP_FAMILY
 
@@ -107,6 +109,7 @@ class RelationshipValidator:
         tenant_id: uuid.UUID,
         relationship_type: str,
         properties: Mapping[str, Any],
+        target_revision: TargetRevisionClaim | None = None,
     ) -> RelationshipValidationResult:
         """Check one relationship's type and properties against the governing profile."""
         async with self._session_factory() as session:
@@ -115,6 +118,7 @@ class RelationshipValidator:
                 tenant_id=tenant_id,
                 relationship_type=relationship_type,
                 properties=properties,
+                target_revision=target_revision,
             )
 
 
@@ -124,23 +128,26 @@ async def validate_relationship_write(
     tenant_id: uuid.UUID,
     relationship_type: str,
     properties: Mapping[str, Any],
+    target_revision: TargetRevisionClaim | None = None,
 ) -> RelationshipValidationResult:
     """Check one relationship write against its tenant's governing profile."""
     governing = await governing_profile(session, tenant_id)
     if governing is None:
         return RelationshipValidationResult(mode=UNBOUND, relationship_type=relationship_type, profile_revision_id=None)
 
-    revision_id, state, document = governing
-    mode = MANDATORY if state == "active" else ADVISORY
+    mode = MANDATORY if governing.state == "active" else ADVISORY
+    revision_id = governing.revision_id
+    stale = target_revision_violations(target_revision, governing)
 
-    declared = declared_types(document, RELATIONSHIP_FAMILY)
+    declared = declared_types(governing.document, RELATIONSHIP_FAMILY)
     found = declared.get(relationship_type)
     if found is None:
         return _bounded(
             mode,
             relationship_type,
             revision_id,
-            [
+            stale
+            + [
                 Violation(
                     code=UNKNOWN_RELATIONSHIP_TYPE,
                     property_name=None,
@@ -153,7 +160,7 @@ async def validate_relationship_write(
             ],
         )
 
-    return _bounded(mode, relationship_type, revision_id, property_violations(found, properties))
+    return _bounded(mode, relationship_type, revision_id, stale + property_violations(found, properties))
 
 
 def _bounded(

@@ -54,7 +54,11 @@ from contextplane.api.schemas.entity_writes import (
     ValidationOutcomeV1,
 )
 from contextplane.entities.identity import AmbiguousIdentity, UnknownIdentity
-from contextplane.entities.validation import EntityValidationResult, EntityValidator
+from contextplane.entities.validation import (
+    EntityValidationResult,
+    EntityValidator,
+    TargetRevisionClaim,
+)
 from contextplane.entities.write_intent import (
     AUTHORITY_OBSERVED_EVIDENCE,
     AUTHORITY_REQUESTER_ENTITLEMENT,
@@ -253,7 +257,7 @@ async def _routed_write(
     except RefusedProfileWrite as refused:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(refused)) from refused
 
-    validation = await _validate(services, ctx, body.subject_type, body.properties)
+    validation = await _validate(services, ctx, body.subject_type, body.properties, _claimed_revision(body))
 
     if routed.effect == EFFECT_CANONICAL_ASSERTION_WRITE:
         return await _canonical(services, ctx, body, routed, validation, entity_id=entity_id)
@@ -331,10 +335,29 @@ async def _canonical(
 
 
 async def _validate(
-    services: Services, ctx: TenantContext, entity_type: str, properties: dict[str, Any]
+    services: Services,
+    ctx: TenantContext,
+    entity_type: str,
+    properties: dict[str, Any],
+    target_revision: TargetRevisionClaim | None = None,
 ) -> EntityValidationResult:
     return await EntityValidator(services.session_factory).validate(
-        tenant_id=ctx.tenant_id, entity_type=entity_type, attributes=properties
+        tenant_id=ctx.tenant_id,
+        entity_type=entity_type,
+        attributes=properties,
+        target_revision=target_revision,
+    )
+
+
+def _claimed_revision(body: EntityWriteRequestV1) -> TargetRevisionClaim:
+    """The caller's claim about what it composed against, unwrapped for the validator.
+
+    Mapped here rather than passed as the wire model: the validator sits at the
+    `entities` layer and cannot import `api`.
+    """
+    return TargetRevisionClaim(
+        profile_revision=body.target_revision.profile_revision,
+        binding_revision=body.target_revision.binding_revision,
     )
 
 

@@ -45,6 +45,7 @@ from contextplane.api.schemas.relationship_writes import (
     RelationshipWriteRequestV1,
     RelationshipWriteResultV1,
 )
+from contextplane.entities.validation import TargetRevisionClaim
 from contextplane.entities.write_intent import (
     AUTHORITY_OBSERVED_EVIDENCE,
     AUTHORITY_REQUESTER_ENTITLEMENT,
@@ -280,7 +281,13 @@ async def _routed_write(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(refused)) from refused
 
     validation = await RelationshipValidator(services.session_factory).validate(
-        tenant_id=ctx.tenant_id, relationship_type=body.subject_type, properties=body.properties
+        tenant_id=ctx.tenant_id,
+        relationship_type=body.subject_type,
+        properties=body.properties,
+        target_revision=TargetRevisionClaim(
+            profile_revision=body.target_revision.profile_revision,
+            binding_revision=body.target_revision.binding_revision,
+        ),
     )
 
     if routed.effect == EFFECT_CANONICAL_ASSERTION_WRITE:
