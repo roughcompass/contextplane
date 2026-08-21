@@ -9,16 +9,29 @@ it by construction, and would keep passing through the one commit that matters.
 
 So this reads the JSON directly. It never calls the accessors it is checking.
 
-The rule this exists for is the last one, and it is the machine-readable half of
-a safety ordering E3 and E5 both depend on:
+The rule this exists for is the machine-readable half of a safety ordering E3
+and E5 both depend on:
 
     an entry with `requires_validated: true` must have `status: validated`
 
 Registration says a number is owned and has a written reason. Validation says
 somebody checked it predicts, and names who, against what data, and with what
-result. `grandfathered` says neither, honestly. A feature flag whose activation
-is gated on validation must not be able to turn on against a number nobody
-checked — and without this check, the field that says so is a comment.
+result. `grandfathered` says neither, honestly. A feature whose activation is
+gated on validation must not be able to turn on against a number nobody checked.
+
+The loader now enforces that rule too, and refuses the whole registry so the
+process does not start. This still runs: it fails in review rather than at boot,
+and it survives a change that relaxes the loader.
+
+The one rule that is only here, because it is about the artifact rather than the
+run:
+
+    an entry with `requires_validated: true` must have `coupling: consumed`
+
+A `pinned` magnitude is one a test asserts agreement with rather than one the
+code reads, so nothing on a serving path calls its accessor. Gating it is
+protection in appearance only, and the loader cannot notice — the entry is
+well-formed, it just never governs anything.
 
 Everything else here is a shape rule that keeps the last one meaningful. A
 `validated` status with no evidence behind it is a word, and the word is what a
@@ -99,6 +112,22 @@ def _violations(entry: dict[str, Any]) -> list[str]:
             f"{model_id}: `requires_validated` is true but the status is {status!r}. "
             "A feature whose activation is gated on validation cannot turn on against a number "
             "nobody checked — either validate it and record the evidence, or clear the flag."
+        )
+
+    coupling = entry.get("coupling")
+    if requires is True and coupling != "consumed":
+        # A `pinned` entry is one a test asserts agreement with rather than one
+        # the code reads — the authority ladder, whose order the governance
+        # kernel keeps its own copy of. Nothing on a serving path calls the
+        # accessor for it, so the loader's refusal never reaches production for
+        # that magnitude and the flag protects nothing while looking like it
+        # does. This epic's whole thesis is that a gate believed exhaustive and
+        # quietly defeated is worse than none; the same applies one entry at a
+        # time.
+        found.append(
+            f"{model_id}: `requires_validated` is true but coupling is {coupling!r}, not 'consumed'. "
+            "Only a consumed magnitude is read on a serving path, so gating a pinned one is protection "
+            "in appearance only — either make the consumer read it, or clear the flag."
         )
 
     return found

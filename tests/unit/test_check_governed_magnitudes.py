@@ -27,6 +27,9 @@ def _grandfathered(**overrides: Any) -> dict[str, Any]:
     entry: dict[str, Any] = {
         "model_id": "test-magnitude@1",
         "form": "weights",
+        # Present because a real entry has it and one rule below reads it: a
+        # helper missing a field the gate inspects tests a shape nothing ships.
+        "coupling": "consumed",
         "requires_validated": False,
         "validation": {
             "status": "grandfathered",
@@ -45,6 +48,7 @@ def _validated(**overrides: Any) -> dict[str, Any]:
     entry: dict[str, Any] = {
         "model_id": "test-magnitude@1",
         "form": "weights",
+        "coupling": "consumed",
         "requires_validated": True,
         "validation": {
             "status": "validated",
@@ -79,6 +83,40 @@ def test_a_grandfathered_number_no_flag_demands_is_fine() -> None:
     """Where every shipped magnitude sits today. Grandfathered is an honest
     state, not a defect."""
     assert _violations(_grandfathered()) == []
+
+
+def test_a_gated_magnitude_nothing_reads_is_refused() -> None:
+    """The rule that lives only here, because the loader cannot see it.
+
+    A `pinned` entry is one a test asserts agreement with rather than one the
+    code reads — `source-authority-ladder@1`, whose order the governance kernel
+    keeps its own copy of. Nothing on a serving path calls its accessor, so the
+    loader's refusal never reaches production for it and the flag protects
+    nothing while looking like it does. The entry is perfectly well-formed,
+    which is exactly why only a gate reading the artifact can catch it.
+    """
+    found = _violations(_validated(coupling="pinned"))
+
+    assert any("coupling" in line and "pinned" in line for line in found), found
+
+
+def test_a_gated_magnitude_with_no_coupling_at_all_is_refused() -> None:
+    """Absent is not read as 'consumed'. An omitted field would be the quiet
+    way to acquire the exemption the test above refuses to grant."""
+    entry = _validated()
+    del entry["coupling"]
+
+    assert any("coupling" in line for line in _violations(entry))
+
+
+def test_coupling_is_only_checked_for_a_gated_magnitude() -> None:
+    """`pinned` is a legitimate state — the shipped authority ladder is one.
+
+    The rule is about gating something nothing reads, not about pinning.
+    Without this control the new check would read as 'pinned is deprecated',
+    and the next author would 'fix' the ladder by inventing a consumer for it.
+    """
+    assert _violations(_grandfathered(coupling="pinned")) == []
 
 
 # --- the shape rules that keep it meaningful --------------------------------------
