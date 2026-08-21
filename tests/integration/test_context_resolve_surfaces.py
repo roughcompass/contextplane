@@ -579,9 +579,26 @@ async def test_without_a_profile_both_claims_are_served(surface: _Surface) -> No
             predicate=predicate,
         )
 
-    body = (await _resolve(surface)).json()
+    block = _claims_block((await _resolve(surface)).json())
 
-    assert len(_claims_block(body)["items"]) == 2
+    # State before count. `/v1/context/resolve` runs its arms under a 2s
+    # per-arm timeout (`assembler.DEFAULT_ARM_TIMEOUT_S`) and a timeout degrades
+    # the block rather than failing the response -- by design, so one slow arm
+    # cannot take down the other three. The consequence for a test is that an
+    # arm which never answered and an arm which answered wrongly both surface as
+    # a short `items` list, and `0 == 2` says nothing about which.
+    #
+    # This has fired in CI under eight parallel workers while passing locally.
+    # Asserting the state first makes that failure name itself as load rather
+    # than as a serving regression. It is deliberately still a failure: a skip
+    # here would let a systematically timing-out arm pass unnoticed, which is
+    # the vacuous-gate failure this suite is careful about elsewhere.
+    assert block["state"] != "degraded", (
+        f"the claims arm did not answer ({block['reason']}), so this control could not run. "
+        "That is an infrastructure signal -- the arm exceeded its 2s budget -- not a serving "
+        "regression."
+    )
+    assert len(block["items"]) == 2
 
 
 @pytest.mark.asyncio
