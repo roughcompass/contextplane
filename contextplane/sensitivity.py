@@ -41,14 +41,19 @@ from __future__ import annotations
 
 from typing import Final, Literal
 
+#: The same names as a type. Declared first because the tuple is typed with it:
+#: a `Literal` cannot be built from a runtime value, so this is the one form that
+#: is restated rather than derived, and the conformance test asserts the two
+#: agree.
+Tier = Literal["public", "internal", "confidential", "restricted"]
+
 #: The scale, least sensitive first. This tuple is the definition: every other
 #: form below is derived from it, so a fifth tier is one edit.
-TIERS: Final[tuple[str, ...]] = ("public", "internal", "confidential", "restricted")
-
-#: The same names as a type. Restated rather than derived because a `Literal`
-#: cannot be built from a runtime tuple, and a static checker is worth the one
-#: duplication -- the conformance test asserts the two agree.
-Tier = Literal["public", "internal", "confidential", "restricted"]
+#:
+#: Typed `tuple[Tier, ...]` rather than `tuple[str, ...]` so a caller indexing it
+#: gets a `Tier` back. `workspaces/recall.py` returns one directly, and a `str`
+#: there is a narrowing a reader would have to do by hand.
+TIERS: Final[tuple[Tier, ...]] = ("public", "internal", "confidential", "restricted")
 
 #: Membership, derived. Callers asking "is this a tier" want a set lookup and
 #: should not pay a scan, but the answer comes from the order rather than from a
@@ -58,7 +63,7 @@ TIER_SET: Final[frozenset[str]] = frozenset(TIERS)
 #: The most restrictive tier, derived. A call site that treats an unreadable
 #: label as maximally sensitive names this rather than the literal, so adding a
 #: tier above `restricted` does not silently leave those call sites one short.
-MOST_RESTRICTIVE: Final[str] = TIERS[-1]
+MOST_RESTRICTIVE: Final[Tier] = TIERS[-1]
 
 
 class UnknownSensitivityTier(ValueError):
