@@ -30,6 +30,7 @@ import uuid
 from collections.abc import Sequence
 from typing import Final
 
+from contextplane.sensitivity import at_most, is_tier
 from contextplane.sharing.grants import CrossOrgGrant
 
 #: The closed set of denial reasons. Deliberately coarse: a reason precise enough
@@ -46,7 +47,6 @@ DENIAL_REASONS: Final[frozenset[str]] = frozenset(
 
 #: Classification order, least to most sensitive. A ceiling is a refusal, not a
 #: filter: content above it is not shared at all rather than shared redacted.
-_CLASSIFICATION_ORDER: Final[tuple[str, ...]] = ("public", "internal", "confidential", "restricted")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -143,9 +143,14 @@ def _within_ceiling(ceiling: str, classification: str | None) -> bool:
     """
     if classification is None:
         return True
-    if ceiling not in _CLASSIFICATION_ORDER or classification not in _CLASSIFICATION_ORDER:
+    # An unreadable label refuses rather than ranking. That rule stays here
+    # rather than in the vocabulary: this is a cross-organization sharing
+    # ceiling, and "I cannot compare these" is the right answer to it even
+    # though `context/evaluation/judge.py` is right to answer the opposite
+    # question by assuming the worst.
+    if not is_tier(ceiling) or not is_tier(classification):
         return False
-    return _CLASSIFICATION_ORDER.index(classification) <= _CLASSIFICATION_ORDER.index(ceiling)
+    return at_most(classification, ceiling)
 
 
 __all__ = [

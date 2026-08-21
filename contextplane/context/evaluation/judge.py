@@ -30,6 +30,7 @@ import dataclasses
 from typing import TYPE_CHECKING, Final
 
 from contextplane.context.schemas.envelope import BLOCK_WORKSPACE
+from contextplane.sensitivity import MOST_RESTRICTIVE, TIERS, is_tier, rank
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections.abc import Iterable
@@ -50,7 +51,9 @@ RUBRIC: Final = (
 #: Least to most restrictive. The scenario declares a ceiling and an item above
 #: it is a violation; an unreadable label is treated as the most restrictive
 #: thing it could be, because guessing downward is what publishes it.
-CLASSIFICATION_ORDER: Final[tuple[str, ...]] = ("public", "internal", "confidential", "restricted")
+#: Re-exported rather than redeclared. Imported across modules under this name,
+#: so the alias stays while the definition moves to the one place that has it.
+CLASSIFICATION_ORDER: Final[tuple[str, ...]] = TIERS
 
 # The four ways a served item can fail the scenario's declared facts. Named
 # rather than described in free text: an operator reading a violation report
@@ -131,9 +134,15 @@ class ScenarioScore:
 
 
 def _classification_rank(label: object) -> int:
-    if not isinstance(label, str) or label not in CLASSIFICATION_ORDER:
-        return len(CLASSIFICATION_ORDER) - 1
-    return CLASSIFICATION_ORDER.index(label)
+    """An unreadable label ranks as the most sensitive thing.
+
+    That rule stays here rather than in the vocabulary: it is the right answer to
+    "how should I handle something I cannot classify" and the wrong one to "can I
+    compare these two", and `sharing/authorization.py` asks the second.
+    """
+    if not is_tier(label):
+        return rank(MOST_RESTRICTIVE)
+    return rank(str(label))
 
 
 def workspace_items(envelope: ContextEnvelopeV1) -> tuple[ContextItemV1, ...]:

@@ -63,6 +63,7 @@ from contextplane.context.assembler import ArmOutcome, Exclusion, contextual_ite
 from contextplane.context.models import ContextExternalReference, ContextReferenceBinding
 from contextplane.context.schemas.envelope import BLOCK_WORKSPACE, ContextItemV1
 from contextplane.context.schemas.trust import Classification, TrustMetadataV1
+from contextplane.sensitivity import MOST_RESTRICTIVE, TIERS, is_tier, rank
 from contextplane.workers.derivative_propagation import pending_overdue
 from contextplane.workspaces.models import IntentCheckpoint
 
@@ -88,7 +89,6 @@ DEFAULT_LIMIT = 20
 #: Least to most restrictive. Used to pick a checkpoint's classification from
 #: the references it cites, so a checkpoint quoting restricted evidence is
 #: itself treated as restricted.
-_CLASSIFICATION_ORDER: tuple[Classification, ...] = ("public", "internal", "confidential", "restricted")
 
 #: Where a checkpoint's classification starts when it cites no references.
 #:
@@ -126,18 +126,18 @@ def classification_for(evidence: Sequence[Any]) -> Classification:
     labelling the whole item by whichever reference happened to be first would
     make the label depend on write order.
     """
-    worst = _CLASSIFICATION_ORDER.index(CLASSIFICATION_FLOOR)
+    worst = rank(CLASSIFICATION_FLOOR)
     for reference in evidence:
         if not isinstance(reference, dict):
             continue
         label = reference.get("classification")
-        if not isinstance(label, str) or label not in _CLASSIFICATION_ORDER:
+        if not is_tier(label):
             # An unreadable or unknown label is treated as the most restrictive
             # thing it could be. Guessing downward would publish it.
-            worst = len(_CLASSIFICATION_ORDER) - 1
+            worst = rank(MOST_RESTRICTIVE)
             continue
-        worst = max(worst, _CLASSIFICATION_ORDER.index(label))
-    return _CLASSIFICATION_ORDER[worst]
+        worst = max(worst, rank(str(label)))
+    return TIERS[worst]
 
 
 def _trust_for(row: IntentCheckpoint) -> TrustMetadataV1:

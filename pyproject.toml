@@ -557,7 +557,13 @@ layers = [
     # reachable from every consumer, so `ranking` imports nothing from
     # `contextplane` at all -- a constraint this contract imposes, not a
     # preference.
-    "ranking",
+    #
+    # `sensitivity` is here for the same reason and joins as a `|` sibling: the
+    # handling scale is read from `context` (6), `arc` (7), `sharing` (13) and
+    # `workspaces` (4), and only the bottom layer is reachable from all four.
+    # Three of them had grown a private copy of the order rather than work
+    # around the layering, which is what ADR-0006 is about.
+    "ranking | sensitivity",
 ]
 
 # Every entry below is an upward import this phase deliberately left standing,
@@ -709,6 +715,7 @@ source_modules = [
     "contextplane.pagination",
     "contextplane.profile",
     "contextplane.ranking",
+    "contextplane.sensitivity",
     "contextplane.relationships",
     "contextplane.retention",
     "contextplane.security",
