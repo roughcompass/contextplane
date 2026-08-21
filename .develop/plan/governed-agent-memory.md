@@ -281,6 +281,28 @@ on 0.95 is overconfident. That buys slower promotion or a larger replay suite;
 the choice is recorded, not defaulted. The gate waits on procedural memory
 existing to promote; the harness does not, and comes first.
 
+**Audited clause by clause after its three tasks finished, and it does not
+close.** Two of the four things this body says remain are still remaining:
+
+- *Extraction precision/recall per predicate* — E8-T1.
+- *Retrieval relevance judged against receipts* — E8-T2.
+- *Multi-session recall* — **nothing.** No fixture, no report, no test. It is
+  not blocked on anything: extracted claims are the cross-session carrier, they
+  are already an embedding target, and whether a claim extracted in one session
+  is retrievable from another is measurable today. E8-T4.
+- *`eval_score`, an empirical pass rate on a held-out replay suite* — **nothing,
+  and this one is genuinely blocked.** The string `eval_score` appears nowhere
+  in the tree outside this plan. E8-T3 built the Wilson bound the gate will
+  rest on and said plainly it had no consumer, which was right. But the body's
+  claim that "the harness does not [wait on procedural memory], and comes
+  first" only half holds: the *arithmetic* could come first and did; the
+  *suite* cannot, because a held-out replay suite is held out from mining, and
+  nothing mines procedures. There is no artifact to score. That is a correction
+  to this body, not a task somebody forgot.
+
+So E8 stays open on E8-T4, and its last clause stays blocked on procedural
+memory with the reason written down rather than rediscovered.
+
 ### E10 — UI/IA workstream
 
 **Kind:** epic · **Status:** pending · **Blocked by:** E5 (screens), none (bug fixes) · **Repo:** contextplane, contextplane-ui
@@ -368,9 +390,35 @@ tracked by reliability diagram and Brier score. The retention threshold is a
 precision/recall operating point chosen from the same label data, not a
 constant — it moves when storage or precision economics move.
 
+**Audited clause by clause after its tasks finished, and it does not close.**
+
+**"No field named bare `score` survives the change" is false, in the place it
+matters most.** `SearchResultItem` on the wire still has one, and
+`api/routers/_common.py` populates it with `score=result.fused_rank_score` —
+the field is renamed internally for a stated reason and renamed straight back at
+the API boundary. That is worse than not having renamed it: an internal name and
+a wire name now disagree about the same number, and the wire name is the one a
+UI author reads. E15-T1's acceptance was `! grep "score: float"
+contextplane/types.py`, which is narrower than its own goal sentence and passed
+while the contract kept the field. E15-T6.
+
+**The retention threshold does not exist, and deliberately is not being cut as a
+task.** E15-T5 built the label data a threshold would be chosen from — retrieval
+rate per salience bucket, with a Brier score beside it — which was the right
+order. Choosing the operating point needs observed volume that no development
+tree has. Unlike the validation refusal in E9, a wrong threshold here fails
+*open* in the destructive direction: it discards memories. So this is recorded as
+the next step with its precondition named, rather than built against no data.
+
+Everything else holds: the six signals are computed at write with novelty the
+only one that is not (T3), the weights and now their saturation ceilings are
+governed magnitudes (T4, E9-T4), the reliability diagram and Brier score ship
+(T5), and learned weights stay out of scope with the missing citation-to-outcome
+join as the stated reason.
+
 ### E16 — Truth confidence: corroboration and measured volatility
 
-**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane
+**Kind:** epic · **Status:** done · **Blocked by:** none · **Repo:** contextplane
 
 Refines a built system rather than building one. Source-tier base scores,
 lineage-digested corroboration and bin-based calibration all ship today;
@@ -400,6 +448,16 @@ before it may select, reusing the rule calibration.py already applies.
 Confidence is never averaged with salience or eval_score (ADR-0002). They are
 three quantities that happen to share a scale.
 
+**Closed, and the only one of four audited together that could be.** Every
+clause was checked against the tree rather than against its task list:
+`confidence.py` computes `1 - Π(1 - pᵢ)` and the `headroom`/`scale` knobs are
+gone from the file, not merely unused (T1); same-session corroboration counts
+once (T2); `confidence_decay.py` reads a predicate's measured rate where twenty
+supersessions in a year support one and falls back to the category otherwise,
+with the first fit inspected before it may select (T3, T4); and confidence never
+meets salience anywhere — the two are computed in modules that do not import
+each other, which is a stronger guarantee than a rule nobody enforces.
+
 ### E17 — Tenant-scoped scoring configuration
 
 **Kind:** epic · **Status:** pending · **Blocked by:** E15 · **Repo:** contextplane
@@ -424,6 +482,29 @@ Per-tenant weights imply **per-tenant calibration**: a tenant on its own
 weights needs its own reliability curve, since a global one describes a
 population no tenant matches. That is the real cost of this epic and it lands
 after the decision does. Single-tenant deployments pay none of it.
+
+**Audited after its three tasks finished, and it is the worst of the four: the
+epic's central property is not true.** This body requires that "every consumer
+must resolve through one accessor, because that accessor is where tenant
+resolution happens and a consumer reading the registry directly silently ignores
+overrides". `profile/scoring.py` says the same thing about itself, at length,
+and calls it "the failure this module exists to make impossible to write by
+accident".
+
+`resolve_weights` has **no production caller.** Only its own unit tests. Every
+scoring consumer in the tree reads `ranking.weights(...)` directly —
+`claim_serving.py` at import, so it could not be tenant-scoped even in
+principle; `search.py` and `salience.py` inside functions, so they could be.
+
+What ships is therefore a complete override lifecycle a tenant can publish,
+validate, activate and roll back, whose result nothing reads. A tenant that
+configures its own scoring gets the core values and no indication otherwise —
+which this body already names as indistinguishable from an override that failed,
+at every layer above. E17-T4.
+
+This is the same shape as the `requires_validated` field E9-T3 had to give teeth:
+a governance object nothing consults governs nothing. Twice in one audit is
+enough to make it a thing to check for rather than a thing to notice.
 
 ### E18 — Contract surface coherence
 
@@ -3075,3 +3156,123 @@ Acceptance:
     make governed-magnitudes
     .venv/bin/python -m pytest tests/unit/test_ranking_registry.py -q
     make all
+
+## Task decomposition — fifth wave (what the four-epic audit found)
+
+E8, E15, E16 and E17 all had every task done and all four sat marked pending.
+Walking each body against the tree rather than against its task list closed one
+and reopened three, which is the same ratio E19's audit produced and the reason
+that ritual exists: a finished task list is evidence about the tasks, not about
+the epic.
+
+Two of the three findings are the same defect wearing different clothes -- a
+mechanism built, correct, tested, and consulted by nothing. E9-T3 fixed a third
+instance in the same session. It is now a thing to look for rather than a thing
+to notice.
+
+### E8-T4 — Multi-session recall has no measurement
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a fixture and a report answering whether material from one session is
+retrievable from another, joined into `make eval` beside the existing recall@10
+and precision@k.
+
+E8's body names multi-session recall as one of four things remaining and no task
+covered it. It is not blocked: **extracted claims are the cross-session carrier,
+not session events.** ADR-0010 declined to make session events an embedding
+target and said so, but claims already are one, and a claim extracted from
+session A is exactly what a later session should be able to reach. So the
+question the fixture asks is "was the claim extracted in an earlier session
+retrieved in this one", and it is answerable against what ships.
+
+Report first, threshold later, following E8-T1's discipline and for the reason
+that task learned the hard way -- its first measurement was a fixture bug, and a
+threshold set beside that number would have been set against the defect.
+
+The fixture is frozen after first measurement and never edited in place, per
+`eval/EVAL.md`. Whether the measurement needs a live embedder decides whether it
+runs always or opt-in on a credential, the same split E8-T1 made and for the same
+reason: a recall figure measured against a stub measures the stub.
+
+Acceptance:
+    make eval
+    .venv/bin/python -m pytest tests/integration -q -k "multi_session"
+    make lint && make typecheck
+
+### E15-T6 — The rename stopped at the adapter
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — openapi.json · **Repo:** contextplane, contextplane-ui
+
+Goal: `SearchResultItem.score` becomes `fused_rank_score` on the wire, the
+contract is exported, and the UI pin follows.
+
+E15's body says no field named bare `score` survives, and one does.
+`api/routers/_common.py` writes `score=result.fused_rank_score`, so the rename
+E15-T1 made for a stated reason is undone one layer later. That is worse than
+never having renamed it: the internal name and the wire name now disagree about
+the same number, and the wire name is the one a UI author reads and copies.
+
+**How it survived is the part worth carrying forward.** E15-T1's acceptance line
+was `! grep -rn "score: float" contextplane/types.py`. Its goal sentence was "no
+bare `score` field survives where the three scoring quantities can reach". The
+acceptance checked one file; the goal described the tree. A green acceptance
+narrower than its own goal is indistinguishable from a met goal, and this is the
+second time in two audits that a passing check has certified something it did not
+cover -- the first being an adapter test that pinned body and method but not path.
+
+So this task's own acceptance greps the *contract*, not a module.
+
+Cross-repo, backward-incompatible on a response field, so it follows the shape
+the workspace already uses: the service PR renames and exports, one UI PR bumps
+the pin and regenerates the client together.
+
+Acceptance:
+    make openapi-export
+    sh -c '! grep -n "\"score\"" openapi.json'
+    make lint && make typecheck && make test-coverage
+
+### E17-T4 — The tenant accessor no consumer calls
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the scoring consumers resolve through `profile.scoring.resolve_weights`,
+so a tenant's activated override actually changes what that tenant is served.
+
+E17 ships a complete override lifecycle -- publish, validate, activate, roll back
+-- whose result nothing reads. `resolve_weights` has no caller outside its unit
+tests, and every consumer reads `ranking.weights(...)` directly, which
+`profile/scoring.py`'s own docstring describes as "the failure this module exists
+to make impossible to write by accident".
+
+Three consumers, and they are not equally hard, which is most of this task:
+
+- `search.py` reads inside a function that already has the request's tenant.
+  Straightforward.
+- `salience.py` reads inside `score()`, which is called from extraction where a
+  tenant is in scope. Straightforward, with the caveat that salience is computed
+  at write and a tenant changing weights does not retroactively rescore -- worth
+  stating in the module rather than discovering.
+- `claim_serving.py` binds `_ARM_WEIGHTS` at **import**, so it cannot be
+  tenant-scoped without moving the read into the request path. That is the real
+  work and it is also what makes the module's current shape wrong: an
+  import-time bind is a decision that this number is the same for everybody,
+  taken before anybody asked.
+
+**The refusal matters more than the resolution.** Wiring two of three and leaving
+the third is the state this task exists to end, so the deliverable includes
+something that fails when a scoring consumer reads the registry directly.
+`ranking.py` cannot enforce it -- it sits below the profile system and cannot
+know who is allowed to call it -- so the enforcement is a lint or
+architecture check over call sites, in the shape the repository already uses for
+boundaries it will not leave to documentation.
+
+E9-T3 solved the neighbouring problem and its shape does not transfer: there, a
+refusal at the read was possible because *nobody* should read an unvalidated
+magnitude. Here the direct read is legitimate for the core default and wrong only
+for a tenant-scoped consumer, so the check is about the caller and not the value.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit/test_scoring_accessor.py -q
+    .venv/bin/python -m pytest tests/integration -q -k "tenant_scoring"
+    make lint && make typecheck && make test-coverage
