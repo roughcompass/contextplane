@@ -63,6 +63,7 @@ __all__ = [
     "ladder",
     "model_ids",
     "requires_validated",
+    "threshold",
     "validation_status",
     "weights",
 ]
@@ -82,8 +83,10 @@ _FORMS: Final = frozenset({"weights", "ladder", "threshold"})
 #: examined ones is worse than no registry at all.
 _VALIDATION_STATUSES: Final = frozenset({"validated", "grandfathered"})
 
-#: The two shapes a magnitude may hold: a named weight map, or an ordered ladder.
-type Parameters = dict[str, float] | list[str]
+#: The three shapes a magnitude may hold: a named weight map, an ordered ladder,
+#: or a single number. One shape per form in `_FORMS`, which is why adding a
+#: form is a change to this module rather than a field a branch fills in.
+type Parameters = dict[str, float] | list[str] | float
 
 
 class UngovernedMagnitude(RuntimeError):
@@ -270,4 +273,34 @@ def weights(model_id: str) -> dict[str, float]:
 def ladder(model_id: str) -> tuple[str, ...]:
     """The frozen ordered ladder for *model_id*, strongest first."""
     entry = _entry(model_id, "ladder")
-    return tuple(str(v) for v in entry._parameters)
+    parameters = entry._parameters
+    if not isinstance(parameters, list):
+        # The guard `weights` always had and this one did not. It was invisible
+        # while the only other shape was a dict -- iterating one yields its keys,
+        # so a mistagged weights entry came back as a ladder of field names
+        # rather than as an error. Adding `float` to the payload types is what
+        # surfaced it, since a number is not iterable at all.
+        msg = f"{model_id!r} is tagged 'ladder' but holds {type(parameters).__name__}"
+        raise UngovernedMagnitude(msg)
+    return tuple(str(v) for v in parameters)
+
+
+def threshold(model_id: str) -> float:
+    """The single governed number for *model_id* — a floor, ceiling or cutoff.
+
+    `_FORMS` has admitted `threshold` since this module was written and nothing
+    could read one, so the registry accepted a form it could not serve: an entry
+    declaring it would load, and then be unreachable through either accessor.
+    Found by the first review of ordering sites, which is also what produced the
+    entries that now use it.
+
+    Same shape refusal as the other two: the form tag and the payload are
+    separate fields in a hand-edited artifact, so a `threshold` holding a map is
+    refused rather than coerced.
+    """
+    entry = _entry(model_id, "threshold")
+    parameters = entry._parameters
+    if isinstance(parameters, dict | list):
+        msg = f"{model_id!r} is tagged 'threshold' but holds {type(parameters).__name__}"
+        raise UngovernedMagnitude(msg)
+    return float(parameters)

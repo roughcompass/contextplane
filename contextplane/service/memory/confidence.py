@@ -38,6 +38,10 @@ from contextplane.service.governance.authority import (
     SOURCE_AUTHORITY_RANK,
 )
 
+# `DECAY_FLOOR` comes from the module that owns the decay arithmetic, which reads
+# it from the governed-magnitude registry. One value, one reason, one place.
+from contextplane.service.memory.confidence_decay import DECAY_FLOOR
+
 # Identifies the function that produced a score. Bumped whenever the arithmetic
 # changes, because without it a scoring change makes every historical score
 # unreproducible and turns a calibration set into a mixture of numbers from
@@ -106,10 +110,10 @@ BUCKET_SEMANTICS: dict[str, str] = {
 # to express "and this one was checked twice".
 MAX_CONFIDENCE = 0.98
 
-# Below this, age stops lowering a score. An assertion somebody made, citing
-# evidence that still exists, never becomes less informative than no assertion at
-# all -- decaying to zero would claim it is indistinguishable from an invention.
-DECAY_FLOOR = 0.10
+# `DECAY_FLOOR` is imported from `confidence_decay` above rather than declared
+# here. It used to be declared here: a second 0.10 with its own justifying
+# comment and its own test, and no way for a reviewer changing one to find the
+# other.
 
 # --- base score by authority tier -------------------------------------------
 #

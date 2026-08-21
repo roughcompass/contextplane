@@ -129,6 +129,57 @@
         "result": null
       },
       "requires_validated": false
+    },
+    {
+      "model_id": "confidence-decay-floor@1",
+      "form": "threshold",
+      "consumer": "contextplane/service/memory/confidence_decay.py",
+      "parameters": 0.1,
+      "reason": "Below this, age stops lowering a claim's confidence. An assertion somebody made, citing evidence that still exists, never becomes less informative than no assertion at all -- decaying to zero would claim it is indistinguishable from an invention. The floor sits inside the bucket whose published meaning is \"do not act on this\", so a fully-decayed claim stays visible and obviously stale rather than vanishing under a caller's default minimum. It is here rather than in the two modules that use it because it was in both: `confidence.py` and `confidence_decay.py` each held their own 0.10 with their own justifying comment and their own test, so changing one would have left the two paths flooring differently while both suites stayed green. That is the sibling invisibility this registry exists for, found by the first review of ordering sites.",
+      "coupling": "consumed",
+      "validation": {
+        "status": "grandfathered",
+        "reason": "Nothing has checked that 0.10 is the right floor. It is a reasoned position -- it must sit inside the do-not-act bucket and above zero -- and the interval that leaves is wide. Validating it needs evidence about how people actually treat fully-decayed claims, which no harness produces today.",
+        "validated_by": null,
+        "validated_on": null,
+        "method": null,
+        "result": null
+      },
+      "requires_validated": false
+    },
+    {
+      "model_id": "salience-entity-density-ceiling@1",
+      "form": "threshold",
+      "consumer": "contextplane/extraction/salience.py",
+      "parameters": 3.0,
+      "reason": "Distinct named things per event above which the entity-density signal saturates. Set at three because the point of the signal is to separate a transcript that talks about specific systems from one that does not, and past a few per turn the difference stops meaning more. Governed because it reorders exactly as a weight does: the salience weights already in this registry are applied to a value this number normalises, so moving the ceiling from 3 to 6 changes every episode's score while every weight stays put. Registering the weights and not their saturation points governed half an arithmetic.",
+      "coupling": "consumed",
+      "validation": {
+        "status": "grandfathered",
+        "reason": "Same position as `salience-weights@1`, and for the same reason: the label a validation would rest on -- whether an episode was later retrieved and cited on a succeeding turn -- needs a citation-to-outcome join that does not exist.",
+        "validated_by": null,
+        "validated_on": null,
+        "method": null,
+        "result": null
+      },
+      "requires_validated": false
+    },
+    {
+      "model_id": "salience-tool-diversity-ceiling@1",
+      "form": "threshold",
+      "consumer": "contextplane/extraction/salience.py",
+      "parameters": 4.0,
+      "reason": "Distinct tools per episode above which the tool-diversity signal saturates, for the same reason as the entity-density ceiling: past a handful, more tools indicate a busy session rather than a more consequential one. Held one higher than the entity ceiling because tool invocations are sparser than named entities in the same transcript, so an equal ceiling would saturate the two signals at different rates of actual activity. Governed for the same reason as its sibling -- it normalises a value the registered salience weights are applied to, so it reorders episodes without any weight changing.",
+      "coupling": "consumed",
+      "validation": {
+        "status": "grandfathered",
+        "reason": "Unvalidated on the same grounds as the other two salience entries. Its relationship to the entity ceiling is reasoned from how often each signal appears, not measured.",
+        "validated_by": null,
+        "validated_on": null,
+        "method": null,
+        "result": null
+      },
+      "requires_validated": false
     }
   ]
 }

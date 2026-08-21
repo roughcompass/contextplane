@@ -1,0 +1,81 @@
+# Opens an issue each quarter asking somebody to sweep for ungoverned
+# magnitudes, and does nothing else.
+#
+# Deliberately not a check. Automatic detection of unregistered rankers is not
+# buildable here -- three designs were attempted and each was defeated by
+# separating the arithmetic from the sort, because any comparison produces an
+# order and a closure over "code that ranks" degenerates into one over all code.
+# A gate believed exhaustive and quietly defeated is worse than none, since a
+# reviewer who finds the hole trusts nothing else it reports.
+#
+# So this is honest about being a prompt for a human. It knows nothing about the
+# tree and never fails; the record of what each sweep found lives in
+# `.develop/reviews/ordering-sites.md`, and the artifact-coherence rules stay in
+# `scripts/check_governed_magnitudes.py`, which is a real gate about a different
+# question.
+name: Ordering-site review
+
+on:
+  schedule:
+    # 09:00 UTC on the first of January, April, July and October. Quarterly
+    # rather than monthly: the sweep is only worth running against a quarter's
+    # accumulated change, and a prompt that arrives faster than it can be acted
+    # on trains people to close it unread.
+    - cron: "0 9 1 1,4,7,10 *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  open-review-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const LABEL = "ordering-site-review";
+            const title = `Ordering-site review — ${new Date().toISOString().slice(0, 7)}`;
+
+            // One open review at a time. A second issue would not mean twice
+            // the review; it would mean the first one was not done, and two
+            // stale prompts are easier to ignore than one.
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              ...context.repo, state: "open", labels: LABEL,
+            });
+            if (open.length) {
+              core.info(`#${open[0].number} is still open; not opening a second.`);
+              return;
+            }
+
+            await github.rest.issues.createLabel({
+              ...context.repo, name: LABEL, color: "0e8a16",
+              description: "Quarterly sweep for magnitudes that decide an order and are not registered",
+            }).catch(() => {});
+
+            await github.rest.issues.create({
+              ...context.repo, title, labels: [LABEL],
+              body: [
+                "Quarterly sweep for numbers that decide an order and are not in",
+                "`contextplane/ranking_registry.json`.",
+                "",
+                "This is a prompt, not a finding — nothing has been detected. Automatic",
+                "detection of unregistered rankers is not buildable here, which",
+                "`contextplane/ranking.py` explains at length; this issue is the honest",
+                "substitute for the closure that could not be built.",
+                "",
+                "**What to do**",
+                "",
+                "1. Read the previous entry in `.develop/reviews/ordering-sites.md`, especially",
+                "   the *Considered and not registered* section — it exists so you do not",
+                "   re-decide the same borderline cases.",
+                "2. Sweep constants and inline literals in the scoring, ranking, confidence,",
+                "   salience and calibration paths for anything that changes an order.",
+                "3. Register what qualifies, and **write down what does not, with the reason**.",
+                "   The non-findings are the half that compounds.",
+                "4. Append a dated section to that file. Close this issue with a link to the PR.",
+                "",
+                "A sweep that finds nothing is a result worth recording, not a reason to skip",
+                "the entry.",
+              ].join("\n"),
+            });
