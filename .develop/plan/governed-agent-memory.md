@@ -1454,52 +1454,145 @@ Acceptance:
     make lint
     make test-unit
 
-### E1-T6 — An envelope is a `policy` artifact, and its authority matrix is applicability
+### E1-T6a — An envelope is a `policy` artifact bound to a principal
 
 **Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
-Goal: an Autonomy Envelope written as an ARC artifact of kind `policy`, whose
-applicability rules carry the delegated-authority matrix — the shape E1's body
-specifies, using the vocabulary that already ships.
+Goal: the envelope object — an ARC artifact of kind `policy`, and the binding
+that says which agent principal it governs.
 
 `ck_arc_artifacts_kind` (`0001_baseline_schema.py:2420`) admits `standard`,
 `policy`, `adr`, `runbook` and `capability_contract`, so `policy` needs no
-migration. **`autonomy_envelope` is deliberately not added here.** E1's body
-makes the new kind conditional on envelopes needing to be listable as their own
-class, and nothing in this task needs that: the cost is a CHECK-constraint
-migration plus an `ArtifactKind` member whose docstring currently records that
-"this phase adds no new kind", and it buys a filter nobody has asked for. When
-a listing surface wants it, that is its own task and its own migration.
+migration. **`autonomy_envelope` is deliberately not added.** E1's body makes the
+new kind conditional on envelopes needing to be listable as their own class, and
+nothing here needs that: it costs a CHECK-constraint migration plus an
+`ArtifactKind` member whose docstring currently records that "this phase adds no
+new kind", and buys a filter nobody has asked for.
 
-**The matrix already has a table, and its columns are already the right ones.**
-`ArcApplicabilityRule` (`contextplane/arc/models.py:265`) is a "structured
-applicability predicate over a task manifest" carrying `action_classes`,
-`data_sensitivity_tiers`, `environments`, `intent_kinds`, `capability_ids`,
-`capability_labels`, `domain_ids`, a scope, a `target_tenant_id`, an
-`effective_from`/`effective_until` window and `is_mandatory`. Those are the
-dimensions E1's body names when it says "stream-scoped action-class and
-sensitivity declarations", so the matrix is expressed in the existing predicate
-rather than beside it.
+**The binding is the new thing, and the reason this task split.** E1's body says
+identities bind to IAM workload identities, and nothing in the tree does that.
+The nearest existing record is `actors`, which carries `oidc_subject` and an
+`actor_kind` that already distinguishes `human` from `sync_worker`
+(`0001_baseline_schema.py:217`). `arc_directive_identities` is unrelated — it
+identifies directives, not principals.
 
-Two things to check rather than assume. The predicate is over a *task manifest*
-and an authority decision is about a *principal*, so the task must establish that
-the dimensions a decision selects on are reachable from what a decision knows —
-a matrix expressed in dimensions the resolver cannot read is a document, not a
-policy. And `data_sensitivity_tiers` is a bare `ARRAY(Text)`, so E1-T5's closed
-vocabulary is what gives those strings meaning; without it the column admits any
-label and the matrix silently widens on a typo.
-
-Beware the name collision: `applicability_dimensions` in
-`contextplane/service/memory/derivation.py:441` is an unrelated memory-claim
-concept over free text with reserved keys. It is not this.
+Without a binding, an envelope is indistinguishable from any other `policy`
+artifact, which is why the matrix (E1-T6c) is not the half to build first.
 
 Acceptance:
-    .venv/bin/python -m pytest tests/unit -q -k "envelope"
-    make lint && make test-coverage
+    .venv/bin/python -m alembic upgrade head
+    make lint && make typecheck && make test-coverage
+
+### E1-T6b — Applicability says `capability` where it means `entity`
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — `openapi.json` · **Repo:** contextplane
+
+Goal: `AuthorityScope.CAPABILITY` becomes `ENTITY`, and `capability_ids` /
+`capability_labels` become `entity_ids` / `entity_labels`, through the procedure
+ADR-0009 sets for renaming a published surface.
+
+**One table backs the whole catalog.** There is no `capabilities` table —
+`Entity`, `__tablename__ = "entities"`, with `entity_type` discriminating
+capability, concept and operation. E18 fixed exactly this confusion on the HTTP
+paths, where one resource had three names for its identifier; the same confusion
+survives untouched in ARC's applicability vocabulary.
+
+**Nothing enforces the narrower name, which is the evidence it is wrong.**
+`submission.py:596` parses `capability_ids` as bare UUIDs and validates nothing
+about their type; `selection.py:229` matches them as opaque set membership
+against the manifest's set. So an applicability rule scoped to a *concept* or an
+*operation* is already expressible — the only obstacle is that the field
+telling you what you are scoping to says the wrong word. The vocabulary is
+narrower than the mechanism, which is the direction that misleads: a reader
+concludes the matrix cannot scope to an operation, and it can.
+
+This is a **published-surface rename**: `scope` is a wire enum on
+`ArtifactApplicabilityRule` and both fields are wire properties, so it takes
+ADR-0009's marking — the alias stays with `deprecated: true`, an
+`x-sunset-on` and an `x-successor`, exactly as E18-T4 did for the external-ID
+lookup. The DB columns, the Python dataclass, the `__post_init__` guard whose
+message reads "capability-scoped but names no capability", and the selection and
+submission paths all follow.
+
+**`0049_arc_intent_nomenclature` is the template, and it is a close one.** That
+revision renamed two columns and six closed-value checks in place, and it records
+the order the checks force: drop the check, update the rows, re-add it naming the
+new value — updating first violates the old check, adding first violates on the
+old rows. It also rewrites `applicability_snapshot` and recomputes
+`applicability_digest`, copying the digest algorithm inline rather than importing
+it, "because a migration is a statement about one moment in the schema's history
+and must keep producing the same bytes after the service it was written beside
+has moved on".
+
+**Only one of the two `capability_ids` may move, and the other must not.** The
+name appears on both sides of the match:
+
+- `ApplicabilityRule.capability_ids` — the *rule's* selector. Its snapshot digest
+  is derived state, is "not signed evidence and nothing external verifies it"
+  per `0049`, and is recomputable. **This one renames.**
+- `IntentManifest.capability_ids`, mirrored into `ManifestClaims.as_claims_dict()`
+  — the *manifest's* declaration, hashed into the claims digest a **host signs**
+  and verification recomputes. Renaming the key changes the digest for every host
+  that has not changed with it, and the failure is
+  `403 blocked_manifest_unverified` rather than a validation error. **This one
+  does not rename here.** It is the same reason ADR-0006 gave for leaving ARC's
+  `data_sensitivity` open.
+
+So the task deliberately leaves `rule.entity_ids` matched against
+`manifest.capability_ids`, which reads oddly and is correct: one is a name this
+deployment owns and the other is a name every host already signed. Say so at the
+match site in `selection.py`, because an unexplained mismatch there is the first
+thing a later reader will "fix". Moving the manifest side is a coordinated change
+with every host, or a claims-version negotiation, and it is not this task.
+
+Blocking E1-T6c rather than merely adjacent to it: a matrix written in a
+vocabulary that says capability when it means entity teaches every envelope
+author the same wrong thing, and renaming after envelopes exist is a migration
+rather than a rename.
+
+Acceptance:
+    make openapi-export && git diff --exit-code -- openapi.json
+    make lint && make typecheck && make test-coverage
+
+### E1-T6c — The authority matrix is applicability, and never names a principal
+
+**Kind:** task · **Status:** pending · **Blocked by:** E1-T6b · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the delegated-authority matrix expressed in `arc_applicability_rules`, and
+the rule that a principal is never one of its dimensions.
+
+**The dimensions line up, and that was checked rather than assumed.**
+`ApplicabilityRule` (`contextplane/arc/types.py:462`) selects on
+`intent_kinds`, `action_classes`, `capability_ids`, `capability_labels`,
+`domain_ids`, `environments` and `data_sensitivity_tiers`. `IntentManifest`
+(`types.py:494`) — "the attested description of what the agent is about to do" —
+carries `intent_kind`, `requested_action_classes`, `capability_ids`,
+`domain_ids`, `environment`, `data_sensitivity` and `repository_identity`. They
+map one to one, and those are the dimensions E1's body names when it says
+"stream-scoped action-class and sensitivity declarations". So the matrix is
+expressed in the predicate that already ships rather than beside it.
+
+**A principal is not among them, and must not be smuggled in.** `AuthorityScope`
+is `global | tenant | domain | capability | intent` and the rule has no actor
+column. An implementer reaching for `domain_ids` or `capability_labels` to encode
+which principal an envelope governs would put principal-scoping outside
+`_SCOPE_ORDER`, so precedence would not see it — and a rule meant to narrow
+authority for one agent would widen it for every agent matching the same domain.
+That is the failure this task exists to prevent, which is why the binding is
+E1-T6a's and the predicate is only ever about the act.
+
+`data_sensitivity_tiers` is a bare `ARRAY(Text)`. E1-T5's closed vocabulary is
+what gives those strings meaning; validating rule values against it is part of
+this task, because without it the column admits any label and the matrix
+silently widens on a typo.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit -q -k "envelope and applicability"
+    make lint && make typecheck && make test-coverage
 
 ### E1-T7 — The authority decision, computed and never cached
 
-**Kind:** task · **Status:** pending · **Blocked by:** E1-T6 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** pending · **Blocked by:** E1-T6c · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the decision point that reads an envelope and answers whether a principal
 may act — derived from the envelope row on every decision, per ADR-0007, with no
