@@ -1514,6 +1514,37 @@ lookup. The DB columns, the Python dataclass, the `__post_init__` guard whose
 message reads "capability-scoped but names no capability", and the selection and
 submission paths all follow.
 
+**`0049_arc_intent_nomenclature` is the template, and it is a close one.** That
+revision renamed two columns and six closed-value checks in place, and it records
+the order the checks force: drop the check, update the rows, re-add it naming the
+new value — updating first violates the old check, adding first violates on the
+old rows. It also rewrites `applicability_snapshot` and recomputes
+`applicability_digest`, copying the digest algorithm inline rather than importing
+it, "because a migration is a statement about one moment in the schema's history
+and must keep producing the same bytes after the service it was written beside
+has moved on".
+
+**Only one of the two `capability_ids` may move, and the other must not.** The
+name appears on both sides of the match:
+
+- `ApplicabilityRule.capability_ids` — the *rule's* selector. Its snapshot digest
+  is derived state, is "not signed evidence and nothing external verifies it"
+  per `0049`, and is recomputable. **This one renames.**
+- `IntentManifest.capability_ids`, mirrored into `ManifestClaims.as_claims_dict()`
+  — the *manifest's* declaration, hashed into the claims digest a **host signs**
+  and verification recomputes. Renaming the key changes the digest for every host
+  that has not changed with it, and the failure is
+  `403 blocked_manifest_unverified` rather than a validation error. **This one
+  does not rename here.** It is the same reason ADR-0006 gave for leaving ARC's
+  `data_sensitivity` open.
+
+So the task deliberately leaves `rule.entity_ids` matched against
+`manifest.capability_ids`, which reads oddly and is correct: one is a name this
+deployment owns and the other is a name every host already signed. Say so at the
+match site in `selection.py`, because an unexplained mismatch there is the first
+thing a later reader will "fix". Moving the manifest side is a coordinated change
+with every host, or a claims-version negotiation, and it is not this task.
+
 Blocking E1-T6c rather than merely adjacent to it: a matrix written in a
 vocabulary that says capability when it means entity teaches every envelope
 author the same wrong thing, and renaming after envelopes exist is a migration
