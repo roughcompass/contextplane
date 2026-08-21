@@ -399,14 +399,18 @@ thing, and capability, concept and operation are its types. The UI adopts that
 regardless of what E18 settles on the wire, because the adapter layer is where
 a contract seam is absorbed rather than mirrored into the IA.
 
-**Not done, and #34 was wrong to close it.** Six tasks were cut and all six
-shipped, but a first wave is the claimable frontier rather than the scope — the
-rule this file states two sections down, which the close ignored. What the body
-names and no task covers is `POST /v1/entities`: the generic profile-governed
-entity write still reaches the generated client and stops there, with no adapter
-and no caller, exactly as the paragraph above says. E19-T2 wired concepts and
-operations through their dedicated create routes, which is a different surface.
-That gap is E19-T6, cut below.
+**Still not done, and the reason moved.** #34 closed this epic because all six
+first-wave tasks had shipped; a first wave is the claimable frontier rather than
+the scope, and #35 reverted it. The gap that close missed — `POST /v1/entities`
+having no client — is now closed by E19-T6.
+
+What remains was found by auditing this body claim by claim rather than
+assuming, which is how the last close went wrong. Its complaint about every
+surface it names has two halves, "no adapter function, no caller", and one
+surface still has only the first: `POST /v1/relationships:query` got its adapter
+in E19-T1a and nothing calls it. Grepping the callers of all eight adapters this
+epic produced also turned up `updateEntity`, shipped in T6 with no caller and
+since removed. Both are E19-T7.
 
 **What this epic cost so far, and what it found.** Six tasks were cut; nine PRs landed
 on the UI and six on the service, because five of the six tasks had a premise
@@ -1194,9 +1198,42 @@ Acceptance:
     pnpm --filter admin-dashboard test -- -t "graph"
     pnpm lint && pnpm type-check && pnpm test && pnpm build
 
+### E19-T7 — The governed reads and edits nothing calls yet
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+
+Found by auditing E19's body claim by claim before deciding whether the epic
+could close. Its complaint has two halves — "no adapter function, no caller" —
+and one surface still has only the first.
+
+**`queryRelationships` has no caller.** E19-T1a shipped the adapter for
+`POST /v1/relationships:query` and nothing uses it. The Explore area reads the
+older dependency, dependents and blast-radius endpoints, which return bare edges;
+the governed query returns `GovernedRelationship` rows carrying profile,
+provenance, validation and readiness. That is a different answer to a different
+question, so this is not a swap: it is deciding where an operator should see the
+governance on an edge, and the honest candidate is the entity detail dialog,
+where they are already looking at one thing.
+
+**A governed entity edit.** `updateCapability`, the dedicated PATCH, is called
+from `CapabilityOverviewPanel`. Its generic twin was shipped in T6 with no caller
+and removed again rather than left standing, because an adapter without a caller
+is the defect this epic is about. Bringing it back means the panel growing an
+edit that routes by intent, the same choice T6 gave the create — and the same
+reason: an edit that should be reviewed and an edit a producer makes on something
+they own outright are different acts.
+
+Not folded into T6. T6's question was which surface a *create* takes and it
+answered it; this is the same question for reads and edits, and answering both in
+one change would have made the create's answer hard to see.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "governed"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
 ### E19-T6 — The generic entity write has no client
 
-**Kind:** task · **Status:** pending · **Blocked by:** E19-T5 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E19-T5 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: an adapter and a caller for `POST /v1/entities`, the surface E19's own
 body names alongside the three that now have one. It reaches the generated
@@ -1229,7 +1266,7 @@ Acceptance:
 
 ### E19-T5 — `target_revision` is required and read by nothing
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Every generic write requires `target_revision` on `ProfileWriteRequestV1`
 (`contextplane/api/schemas/profile_writes.py:170`). `TargetRevisionV1` says why:
