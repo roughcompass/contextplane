@@ -32,6 +32,30 @@ sensitivity declarations at source-namespace registration. Owned cold start:
 initial template envelope approved by a named authority, posture
 auto-accept-with-maximum-sampling.
 
+**Status note — ten tasks done, one clause of this body not built.** T1–T10
+cover the authority object, the binding, the matrix, the decision, the
+advisory stage, graduation and cold start. What they do not cover is
+*"stream-scoped action-class and sensitivity declarations at source-namespace
+registration"*. E1-T6c quotes that phrase but reads it as naming the matrix's
+dimensions, which drops the part that says **where** the declaration happens.
+
+It is genuinely unbuilt. `arc_source_connectors` is the only registration
+surface in the tree and it declares schemes, hosts, media types, verifiers and
+a size ceiling — no action class and no sensitivity tier.
+
+**And it cannot be built here, because its subject belongs to E2.** "Stream"
+is E2's word throughout this plan — E2 speaks of "where the stream declares an
+external source" and E6 of a "PII block tier for undeclared streams" — and E2
+is the observation write path, which ADR-0005 established does not exist. So
+the clause depends on a concept defined by an epic that is itself blocked by
+this one. That circularity is the finding, not an oversight to fix silently.
+
+The scoping call belongs to a human: either the clause moves to E2, where the
+stream it scopes is defined, or E1 gains a task blocked on E2 and this epic
+stays open across it. **E1 is deliberately not marked done** — a first wave is
+the claimable frontier, not the scope, and closing an epic because its
+decomposed tasks finished is the same error that closed E19 prematurely.
+
 ### E2 — Hot observation write path
 
 **Kind:** epic · **Status:** pending · **Blocked by:** E1 · **Repo:** contextplane
@@ -1428,7 +1452,7 @@ memory-claim concept.
 
 ### E1-T5 — The sensitivity vocabulary becomes one closed, ordered module
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `contextplane/sensitivity.py`, exactly as ADR-0006 decided — a closed
 ordered tuple at the bottom import layer, declared `"ranking | sensitivity"` in
