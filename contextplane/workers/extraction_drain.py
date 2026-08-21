@@ -78,6 +78,24 @@ _PENDING = Gauge(
     "Rows currently queued for extraction.",
 )
 
+# Age of the oldest waiting row, beside the depth above -- the lesson the
+# embedding drain records having learned: "depth alone cannot distinguish a
+# queue that is short because it is keeping up from one that is short because
+# nothing is being enqueued", and the second is the failure that hid an empty
+# claim index for a whole phase. This queue had the depth and not the age, so
+# it carried exactly that blind spot.
+#
+# Deliberately unlabelled. Per-tenant lag is the number an operator actually
+# wants during an incident, and `contextplane/metrics.py` forbids
+# tenant-labelled series -- so that question is a query over
+# `memory_extraction_outbox`, the same conclusion the envelope advisory records
+# reached. This gauge answers the fleet-level question a dashboard can hold:
+# is anything falling behind at all.
+_OLDEST_PENDING_SECONDS = Gauge(
+    "contextplane_extraction_outbox_oldest_pending_seconds",
+    "Age of the oldest row queued for extraction.",
+)
+
 _DRAINED = Counter(
     "contextplane_extraction_outbox_drained_total",
     "Outbox rows processed, by outcome.",
@@ -172,22 +190,55 @@ class ExtractionDrainWorker:
     # -- claiming ---------------------------------------------------------------
 
     async def _claim(self, now: datetime.datetime) -> list[_Row]:
-        """Take up to `batch_size` eligible rows, locking them for this worker.
+        """Take up to `batch_size` eligible rows, round-robin across tenants.
 
         SKIP LOCKED rather than a status column: a crashed worker's rows become
         claimable again when its transaction dies, with nothing to reconcile. A
         status flag would need a reaper for exactly that case.
+
+        **Ordered by per-tenant rank before age, which is this module's own
+        isolation principle applied one level up.** The docstring above already
+        says a provider that times out on one session "must not stall the twenty
+        behind it". Plain `ORDER BY enqueued_at` -- what this claimed before --
+        honours that between rows and abandons it between tenants: a tenant with
+        more pending rows than `batch_size` takes every tick, indefinitely, and
+        a tenant with one row waits behind all of them. Nothing bounded that
+        wait, and nothing measured it.
+
+        So rows are ranked oldest-first *within* each tenant, and the batch is
+        filled by rank: every tenant's oldest row before any tenant's second.
+        The worst case a tenant can impose on another drops from "until my
+        backlog clears" to one row per tick.
+
+        **This is the smallest mechanism that removes head-of-line blocking, and
+        deliberately not a scheduler.** Equal shares weighted by entitlement
+        would need an entitlement concept this queue does not have, and a
+        latency target would need a deadline column. Both invent configuration
+        to solve a problem ordering already solves; if a tenant later needs a
+        *larger* share than its peers, that is when a weight is worth adding.
+
+        The window function forces the two-step shape: Postgres refuses
+        `FOR UPDATE` on a query with `row_number()`, so the rank is computed in
+        a CTE and the lock is taken on the join back to the table.
         """
         async with self._session_factory() as session, session.begin():
             result = await session.execute(
                 text(
-                    "SELECT outbox_id, tenant_id, actor_id, session_id, strategy_id, "
-                    "       from_seq, through_seq, attempts, enqueued_at "
-                    "FROM memory_extraction_outbox "
-                    "WHERE next_attempt_at IS NULL OR next_attempt_at <= CAST(:now AS TIMESTAMPTZ) "
-                    "ORDER BY enqueued_at "
+                    "WITH eligible AS ("
+                    "  SELECT outbox_id,"
+                    "         row_number() OVER ("
+                    "           PARTITION BY tenant_id ORDER BY enqueued_at, outbox_id"
+                    "         ) AS tenant_rank"
+                    "  FROM memory_extraction_outbox"
+                    "  WHERE next_attempt_at IS NULL OR next_attempt_at <= CAST(:now AS TIMESTAMPTZ)"
+                    ") "
+                    "SELECT o.outbox_id, o.tenant_id, o.actor_id, o.session_id, o.strategy_id, "
+                    "       o.from_seq, o.through_seq, o.attempts, o.enqueued_at "
+                    "FROM memory_extraction_outbox o "
+                    "JOIN eligible e ON e.outbox_id = o.outbox_id "
+                    "ORDER BY e.tenant_rank, o.enqueued_at, o.outbox_id "
                     "LIMIT :lim "
-                    "FOR UPDATE SKIP LOCKED"
+                    "FOR UPDATE OF o SKIP LOCKED"
                 ),
                 {"now": now, "lim": self._batch_size},
             )
@@ -448,9 +499,29 @@ class ExtractionDrainWorker:
         )
 
     async def _refresh_pending_gauge(self) -> None:
+        """Depth and age together, in one pass.
+
+        Age is `now - min(enqueued_at)` rather than a stored column so it cannot
+        drift from the rows it describes, and it reads 0 on an empty queue --
+        which is the honest answer: nothing is waiting, so nothing is late.
+        """
         async with self._session_factory() as session:
-            pending = (await session.execute(text("SELECT count(*) FROM memory_extraction_outbox"))).scalar_one()
-        _PENDING.set(pending)
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT count(*) AS pending, "
+                        "       COALESCE(EXTRACT(EPOCH FROM (CAST(:now AS TIMESTAMPTZ) - min(enqueued_at))), 0) "
+                        "         AS oldest_seconds "
+                        "FROM memory_extraction_outbox"
+                    ),
+                    {"now": self._clock.now()},
+                )
+            ).one()
+        _PENDING.set(row.pending)
+        # Clamped at zero: a worker whose clock trails a row's `enqueued_at` --
+        # possible across replicas -- would otherwise report a negative age,
+        # which reads on a dashboard as a queue that is ahead of itself.
+        _OLDEST_PENDING_SECONDS.set(max(0.0, float(row.oldest_seconds)))
 
 
 async def enqueue_extraction(
