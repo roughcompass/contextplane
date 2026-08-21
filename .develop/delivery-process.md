@@ -90,9 +90,24 @@ merge queue may be added later if PR volume warrants it; it is not core.
   `build`, bundle budgets, and the generated-client drift check. Standing this
   CI up is step zero for the UI repo.
 
+**Require the `gate` job, not the tiers individually.** Naming tiers here and
+requiring them by name is what let protection drift away from this list: most
+tiers are conditional (`unit` skips on a docs-only PR, `perf` is nightly), and
+GitHub reads a *skipped* required check as pending rather than satisfied, so
+requiring one blocks exactly the PRs it was written not to run on. Protection
+therefore drifted to the handful of unconditional jobs, and a PR with a red test
+tier stayed mergeable — which is how #51 put a broken unit suite on `main` while
+GitHub reported the merge as allowed. `ci.yml`'s `gate` job always runs, depends
+on every other job, and fails unless each one succeeded or was deliberately
+skipped. Requiring that one context covers the whole list above and keeps
+covering it when a tier is added.
+
 **Branch protection on `main`, both repos:** required checks strict, force
 pushes disabled, deletions disabled, **"do not allow bypass" enabled for
-admins**. This last is what makes the audit trail real for a sole-owner org.
+admins**. This last is what makes the audit trail real for a sole-owner org —
+and it is also why a new required context is pointed at a job only *after* that
+job has reported once: with bypass off, a required check that never reports
+locks the repository instead of protecting it.
 
 **Review policy — honest for one human.** Branch protection carries **no
 approval count**: with one human identity and agents running under it, an
