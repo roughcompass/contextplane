@@ -143,7 +143,7 @@ def _manifest_claim_fields(kind: str, summary: str) -> tuple[str, ...]:
         "session_id",
         kind,
         "requested_action_classes",
-        "capability_ids",
+        "entity_ids",
         "domain_ids",
         "environment",
         "data_sensitivity",

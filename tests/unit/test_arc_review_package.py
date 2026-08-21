@@ -223,7 +223,7 @@ def test_observation_class_predicate_digest_delegates_to_authoring_profiles() ->
         "requested_action_classes": None,
         "environment": None,
         "data_sensitivity_tier": None,
-        "capability_ids": None,
+        "entity_ids": None,
         "domain_ids": None,
     }
     direct = authoring_profiles.canonicalize_observation_class_predicate_v2(dict(manifest))

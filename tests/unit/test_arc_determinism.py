@@ -92,7 +92,7 @@ def _candidate(rng: random.Random) -> tuple[Directive, ApplicabilityRule, dateti
         scope=scope,
         is_mandatory=rng.random() < 0.7,
         target_tenant_id=_TENANT if scope is AuthorityScope.TENANT else None,
-        capability_labels=frozenset({"x"}) if scope is AuthorityScope.CAPABILITY else frozenset(),
+        entity_labels=frozenset({"x"}) if scope is AuthorityScope.ENTITY else frozenset(),
         intent_kinds=frozenset(rng.sample(list(IntentKind), rng.randint(0, 2))),
         action_classes=frozenset(rng.sample(list(ActionClass), rng.randint(0, 2))),
     )
@@ -134,7 +134,7 @@ def _case(case: int) -> SelectionInput:
             session_id="s1",
             intent_kind=rng.choice(list(IntentKind)),
             requested_action_classes=frozenset(rng.sample(list(ActionClass), rng.randint(0, 3))),
-            capability_ids=frozenset(),
+            entity_ids=frozenset(),
             domain_ids=frozenset(),
             environment=rng.choice((None, "production", "staging")),
             data_sensitivity=rng.choice((None, "confidential")),

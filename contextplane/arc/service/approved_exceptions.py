@@ -48,9 +48,7 @@ from contextplane.types import Clock
 # an exception is by definition a narrowing, and a global exception would be
 # an amendment to the directive itself, which belongs on the write path that
 # registers a new revision.
-_LOWER_SCOPES = frozenset(
-    {AuthorityScope.TENANT, AuthorityScope.DOMAIN, AuthorityScope.CAPABILITY, AuthorityScope.INTENT}
-)
+_LOWER_SCOPES = frozenset({AuthorityScope.TENANT, AuthorityScope.DOMAIN, AuthorityScope.ENTITY, AuthorityScope.INTENT})
 
 
 class ExceptionNotPermitted(RegistryError):
@@ -103,7 +101,7 @@ class ExceptionDraft:
     justification: str
     effective_until: datetime.datetime | None = None
     lower_scope_domain_id: str | None = None
-    lower_scope_capability_id: uuid.UUID | None = None
+    lower_scope_entity_id: uuid.UUID | None = None
     lower_scope_intent_kind: str | None = None
     lower_scope_action_class: str | None = None
     lower_scope_environment: str | None = None
@@ -203,7 +201,7 @@ class ExceptionService:
                     "INSERT INTO arc_approved_exceptions ("
                     "  exception_id, higher_scope_directive_id, higher_scope_revision_id,"
                     "  lower_scope_kind, lower_scope_tenant_id, lower_scope_domain_id,"
-                    "  lower_scope_capability_id, lower_scope_intent_kind, lower_scope_action_class,"
+                    "  lower_scope_entity_id, lower_scope_intent_kind, lower_scope_action_class,"
                     "  lower_scope_environment, lower_scope_data_sensitivity,"
                     "  replacement_conflict_descriptor, exception_statement_plaintext,"
                     "  justification_plaintext, effective_from, effective_until,"
@@ -223,7 +221,7 @@ class ExceptionService:
                     # tenant would be a way to weaken somebody else's rules.
                     "ltenant": ctx.tenant_id,
                     "ldomain": draft.lower_scope_domain_id,
-                    "lcap": draft.lower_scope_capability_id,
+                    "lcap": draft.lower_scope_entity_id,
                     "ltask": draft.lower_scope_intent_kind,
                     "laction": draft.lower_scope_action_class,
                     "lenv": draft.lower_scope_environment,
@@ -295,8 +293,8 @@ class ExceptionService:
         if draft.lower_scope_kind is AuthorityScope.DOMAIN and not draft.lower_scope_domain_id:
             msg = "a domain-scoped exception requires lower_scope_domain_id"
             raise ValidationError(msg)
-        if draft.lower_scope_kind is AuthorityScope.CAPABILITY and draft.lower_scope_capability_id is None:
-            msg = "a capability-scoped exception requires lower_scope_capability_id"
+        if draft.lower_scope_kind is AuthorityScope.ENTITY and draft.lower_scope_entity_id is None:
+            msg = "an entity-scoped exception requires lower_scope_entity_id"
             raise ValidationError(msg)
         if draft.lower_scope_kind is AuthorityScope.INTENT and not (
             draft.lower_scope_intent_kind and draft.lower_scope_action_class

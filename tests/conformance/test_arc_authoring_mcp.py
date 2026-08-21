@@ -370,7 +370,7 @@ def _expected_impact_envelope(*, proposal_id: uuid.UUID, proposal_version: int) 
                     "requested_action_classes": None,
                     "environment": None,
                     "data_sensitivity_tier": None,
-                    "capability_ids": None,
+                    "entity_ids": None,
                     "domain_ids": None,
                 },
                 "minimum_count": 0,

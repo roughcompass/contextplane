@@ -103,7 +103,7 @@ def applicability_snapshot(
     *,
     scope: str,
     target_tenant_id: uuid.UUID | str | None,
-    capability_ids: Iterable[object] | None,
+    entity_ids: Iterable[object] | None,
     domain_ids: Iterable[object] | None,
     intent_kinds: Iterable[object] | None,
     action_classes: Iterable[object] | None,
@@ -131,7 +131,7 @@ def applicability_snapshot(
     return {
         "scope": scope,
         "target_tenant_id": str(target_tenant_id) if target_tenant_id else None,
-        "capability_ids": _sorted_strs(capability_ids),
+        "entity_ids": _sorted_strs(entity_ids),
         "domain_ids": _sorted_strs(domain_ids),
         "intent_kinds": _sorted_strs(intent_kinds),
         "action_classes": _sorted_strs(action_classes),

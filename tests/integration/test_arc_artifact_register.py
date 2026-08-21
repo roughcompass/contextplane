@@ -61,8 +61,8 @@ async def seed(factory: async_sessionmaker[AsyncSession]) -> ArcSeed:
 
 
 class _AllVisible:
-    async def visible_capability_ids(self, ctx: object, capability_ids: object) -> list[uuid.UUID]:
-        return list(capability_ids)  # type: ignore[arg-type]
+    async def visible_entity_ids(self, ctx: object, entity_ids: object) -> list[uuid.UUID]:
+        return list(entity_ids)  # type: ignore[arg-type]
 
 
 @pytest.fixture
@@ -422,7 +422,7 @@ async def test_a_tenant_scoped_rule_without_a_target_tenant_is_refused(service: 
 async def test_a_capability_scoped_rule_without_a_capability_is_refused(
     service: ArtifactService, seed: ArcSeed
 ) -> None:
-    rule = ApplicabilityDraft(scope=AuthorityScope.CAPABILITY, effective_from=ARC_NOW, capability_ids=())
+    rule = ApplicabilityDraft(scope=AuthorityScope.ENTITY, effective_from=ARC_NOW, entity_ids=())
     with pytest.raises(ValidationError, match="requires at least one capability"):
         await service.register_revision(_ctx(seed), _draft(seed, rules=(rule,)))
 

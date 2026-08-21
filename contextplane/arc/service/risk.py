@@ -61,7 +61,7 @@ CURRENT_RISK_ALGORITHM_VERSION = "arc_risk_reducer_v1"
 # because a global rule's mandatory/non-mandatory split does not compete
 # against the non-global scopes at all -- any global rule always outranks
 # every non-global one regardless of mandatory status.
-_SCOPE_ORDER: dict[str, int] = {"tenant": 4, "domain": 3, "capability": 2, "intent": 1}
+_SCOPE_ORDER: dict[str, int] = {"tenant": 4, "domain": 3, "entity": 2, "intent": 1}
 
 
 class RiskClassificationError(RegistryError):

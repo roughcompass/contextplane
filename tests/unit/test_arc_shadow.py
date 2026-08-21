@@ -79,8 +79,8 @@ def _rule_dict(
         "scope": scope,
         "is_mandatory": is_mandatory,
         "target_tenant_id": None,
-        "capability_ids": None,
-        "capability_labels": None,
+        "entity_ids": None,
+        "entity_labels": None,
         "domain_ids": None,
         "intent_kinds": None,
         "action_classes": None,
@@ -337,7 +337,7 @@ def _item(item_id: str, delta_code: str, **predicate_overrides: Any) -> dict[str
         "requested_action_classes": None,
         "environment": None,
         "data_sensitivity_tier": None,
-        "capability_ids": None,
+        "entity_ids": None,
         "domain_ids": None,
     }
     predicate.update(predicate_overrides)
@@ -350,7 +350,7 @@ def _manifest_class(**overrides: Any) -> dict[str, Any]:
         "requested_action_classes": ["merge"],
         "environment": ["production"],
         "data_sensitivity_tier": ["internal"],
-        "capability_ids": None,
+        "entity_ids": None,
         "domain_ids": None,
     }
     base.update(overrides)

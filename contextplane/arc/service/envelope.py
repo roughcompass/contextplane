@@ -7,7 +7,7 @@ allowed to freeze, and computes its canonical digest.
 profiles.validate_expected_impact_envelope_v2` already enforces the six
 closed `ObservationClassPredicateV1` fields (`intent_kind`,
 `requested_action_classes`, `environment`, `data_sensitivity_tier`,
-`capability_ids`, `domain_ids`) via its schema's `additionalProperties:
+`entity_ids`, `domain_ids`) via its schema's `additionalProperties:
 false`-equivalent object check, rejects an empty set via that same schema's
 `min_items=1` on each field, and rejects overlapping items via its own
 `_check_envelope_non_overlap`. But that pure module's errors carry the

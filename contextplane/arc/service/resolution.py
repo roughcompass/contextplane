@@ -566,7 +566,7 @@ def parse_manifest(claims: ManifestClaims) -> IntentManifest:
         session_id=claims.session_id,
         intent_kind=parse_intent_kind(claims.intent_kind),
         requested_action_classes=frozenset(parse_action_class(a) for a in claims.requested_action_classes),
-        capability_ids=frozenset(uuid.UUID(c) for c in claims.capability_ids),
+        entity_ids=frozenset(uuid.UUID(c) for c in claims.entity_ids),
         domain_ids=frozenset(claims.domain_ids),
         environment=claims.environment,
         data_sensitivity=claims.data_sensitivity,

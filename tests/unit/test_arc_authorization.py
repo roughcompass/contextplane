@@ -36,7 +36,7 @@ _ALLOWLIST = ((_ISSUER, _OPERATOR_SUBJECT),)
 _NON_GLOBAL_SCOPES = [
     AuthorityScope.TENANT,
     AuthorityScope.DOMAIN,
-    AuthorityScope.CAPABILITY,
+    AuthorityScope.ENTITY,
     AuthorityScope.INTENT,
 ]
 
@@ -68,10 +68,8 @@ class _FakeVisibility:
         self.visible = visible if visible is not None else []
         self.calls: list[tuple[uuid.UUID, tuple[uuid.UUID, ...]]] = []
 
-    async def visible_capability_ids(
-        self, ctx: ArcRequestContext, capability_ids: Sequence[uuid.UUID]
-    ) -> list[uuid.UUID]:
-        self.calls.append((ctx.tenant_id, tuple(capability_ids)))
+    async def visible_entity_ids(self, ctx: ArcRequestContext, entity_ids: Sequence[uuid.UUID]) -> list[uuid.UUID]:
+        self.calls.append((ctx.tenant_id, tuple(entity_ids)))
         return self.visible
 
 
@@ -82,7 +80,7 @@ def _service(visibility: _FakeVisibility | None = None) -> ArcAuthorizationServi
 def _scope(scope: AuthorityScope, tenant_id: uuid.UUID | None = _TENANT) -> ArtifactScope:
     if scope is AuthorityScope.GLOBAL:
         return ArtifactScope(scope=scope)
-    if scope is AuthorityScope.CAPABILITY:
+    if scope is AuthorityScope.ENTITY:
         return ArtifactScope(scope=scope, tenant_id=tenant_id, capability_id=_CAPABILITY)
     return ArtifactScope(scope=scope, tenant_id=tenant_id)
 
@@ -294,7 +292,7 @@ async def test_capability_visibility_is_delegated_not_recomputed() -> None:
     """
     unrelated = [uuid.UUID("99999999-9999-9999-9999-999999999999")]
     visibility = _FakeVisibility(visible=unrelated)
-    got = await _service(visibility).visible_capability_ids(_ctx(), [_CAPABILITY])
+    got = await _service(visibility).visible_entity_ids(_ctx(), [_CAPABILITY])
     assert got == unrelated
     assert visibility.calls == [(_TENANT, (_CAPABILITY,))]
 
@@ -302,7 +300,7 @@ async def test_capability_visibility_is_delegated_not_recomputed() -> None:
 @pytest.mark.asyncio
 async def test_an_empty_capability_list_short_circuits() -> None:
     visibility = _FakeVisibility(visible=[_CAPABILITY])
-    got = await _service(visibility).visible_capability_ids(_ctx(), [])
+    got = await _service(visibility).visible_entity_ids(_ctx(), [])
     assert got == []
     assert visibility.calls == []
 
@@ -311,7 +309,7 @@ async def test_an_empty_capability_list_short_circuits() -> None:
 async def test_capability_visibility_rejects_the_deployment_tenant() -> None:
     visibility = _FakeVisibility()
     with pytest.raises(ArcAuthorizationError):
-        await _service(visibility).visible_capability_ids(_ctx(tenant_id=DEPLOYMENT_TENANT_ID), [_CAPABILITY])
+        await _service(visibility).visible_entity_ids(_ctx(tenant_id=DEPLOYMENT_TENANT_ID), [_CAPABILITY])
     assert visibility.calls == []
 
 
@@ -330,9 +328,9 @@ def test_a_non_global_artifact_without_a_tenant_is_rejected(scope: AuthorityScop
         ArtifactScope(scope=scope, tenant_id=None)
 
 
-def test_a_capability_scoped_artifact_requires_a_capability_id() -> None:
-    with pytest.raises(ValueError, match="requires a capability_id"):
-        ArtifactScope(scope=AuthorityScope.CAPABILITY, tenant_id=_TENANT)
+def test_an_entity_scoped_artifact_requires_an_entity_id() -> None:
+    with pytest.raises(ValueError, match="requires an entity id"):
+        ArtifactScope(scope=AuthorityScope.ENTITY, tenant_id=_TENANT)
 
 
 # --- protected-action authorization (§6.3) --------------------------------------

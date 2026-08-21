@@ -78,7 +78,7 @@ def seeded(sync_engine: Engine) -> dict[str, uuid.UUID]:
     snapshot: dict[str, object] = {
         "scope": "intent",
         "target_tenant_id": None,
-        "capability_ids": [],
+        "entity_ids": [],
         "domain_ids": [],
         "intent_kinds": sorted(_KINDS),
         "action_classes": [],

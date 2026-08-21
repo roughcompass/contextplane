@@ -1,7 +1,7 @@
 {
-  "artifact_semantics_digest": "5e866fbdef2cc976a8301d26230693b1c92f647f2352b56f7d590e50ab35a796",
+  "artifact_semantics_digest": "e0a7cb86c86af0d65ea3c034fdc5747fe884d8c12873c19fbd11f445e66aab06",
   "baseline_diff_digest": "39fe9d2680bd01dc8193038ddc6188c94f8d84376787a9e6d04854377102b420",
-  "expected_impact_envelope_digest": "72eb494da1fb257e131a6bbdc2cd3ef06a4135d50b0dea1c1dca05df1d57da40",
+  "expected_impact_envelope_digest": "a951061e6c79de4eb6f5c267f5e3ff099761a096eca3238a92b0473cfe7c7f86",
   "field_provenance": [
     {
       "author_issuer": null,

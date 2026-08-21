@@ -169,7 +169,7 @@ class AuthorityScope(enum.StrEnum):
     GLOBAL = "global"
     TENANT = "tenant"
     DOMAIN = "domain"
-    CAPABILITY = "capability"
+    ENTITY = "entity"
     INTENT = "intent"
 
     @property
@@ -182,7 +182,7 @@ _SCOPE_ORDER: tuple[AuthorityScope, ...] = (
     AuthorityScope.GLOBAL,
     AuthorityScope.TENANT,
     AuthorityScope.DOMAIN,
-    AuthorityScope.CAPABILITY,
+    AuthorityScope.ENTITY,
     AuthorityScope.INTENT,
 )
 
@@ -471,8 +471,8 @@ class ApplicabilityRule:
     scope: AuthorityScope
     is_mandatory: bool = True
     target_tenant_id: uuid.UUID | None = None
-    capability_ids: frozenset[uuid.UUID] = frozenset()
-    capability_labels: frozenset[str] = frozenset()
+    entity_ids: frozenset[uuid.UUID] = frozenset()
+    entity_labels: frozenset[str] = frozenset()
     domain_ids: frozenset[str] = frozenset()
     intent_kinds: frozenset[IntentKind] = frozenset()
     action_classes: frozenset[ActionClass] = frozenset()
@@ -485,8 +485,8 @@ class ApplicabilityRule:
         if self.scope is AuthorityScope.TENANT and self.target_tenant_id is None:
             msg = f"rule {self.rule_id} is tenant-scoped but names no target tenant"
             raise ArcVocabularyError(msg)
-        if self.scope is AuthorityScope.CAPABILITY and not (self.capability_ids or self.capability_labels):
-            msg = f"rule {self.rule_id} is capability-scoped but names no capability"
+        if self.scope is AuthorityScope.ENTITY and not (self.entity_ids or self.entity_labels):
+            msg = f"rule {self.rule_id} is entity-scoped but names no entity"
             raise ArcVocabularyError(msg)
 
 
@@ -503,7 +503,7 @@ class IntentManifest:
     session_id: str
     intent_kind: IntentKind
     requested_action_classes: frozenset[ActionClass] = frozenset()
-    capability_ids: frozenset[uuid.UUID] = frozenset()
+    entity_ids: frozenset[uuid.UUID] = frozenset()
     domain_ids: frozenset[str] = frozenset()
     environment: str | None = None
     data_sensitivity: str | None = None

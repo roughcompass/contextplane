@@ -26,7 +26,7 @@ _VALID = {
     "session_id": "s-1",
     "intent_kind": "code_change",
     "requested_action_classes": ["merge"],
-    "capability_ids": ["7b1f0c22-0000-4000-8000-000000000001"],
+    "entity_ids": ["7b1f0c22-0000-4000-8000-000000000001"],
     "domain_ids": ["payments"],
     "environment": "production",
     "data_sensitivity": "confidential",

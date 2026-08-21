@@ -210,7 +210,7 @@ def validate_candidate_semantics(semantics: Mapping[str, Any], *, stored: bool =
     text: "validates target tenant/capability/domain visibility") is not
     implemented here: this module's callers have no capability/domain
     existence registry in scope to check against, only
-    `ArcAuthorizationService.visible_capability_ids`, which answers "can
+    `ArcAuthorizationService.visible_entity_ids`, which answers "can
     *this caller* see it", not "does this deployment's registry recognize
     it" -- a real, separate check this task does not have the tools to
     build correctly. Left as a residual gap rather than a guess.
@@ -244,8 +244,8 @@ def _selector_tuple(rule: Mapping[str, Any]) -> tuple[Any, ...]:
     return (
         rule.get("scope"),
         rule.get("target_tenant_id"),
-        _frozen(rule.get("capability_ids")),
-        _frozen(rule.get("capability_labels")),
+        _frozen(rule.get("entity_ids")),
+        _frozen(rule.get("entity_labels")),
         _frozen(rule.get("domain_ids")),
         _frozen(rule.get("intent_kinds")),
         _frozen(rule.get("action_classes")),

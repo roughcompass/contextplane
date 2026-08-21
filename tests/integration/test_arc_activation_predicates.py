@@ -86,8 +86,8 @@ def _ctx(*, tenant_id: uuid.UUID, subject: str, roles: list[str] | None = None) 
 
 def _authorization() -> ArcAuthorizationService:
     class _AllowAll:
-        async def visible_capability_ids(self, ctx: object, capability_ids: Sequence[uuid.UUID]) -> list[uuid.UUID]:
-            return list(capability_ids)
+        async def visible_entity_ids(self, ctx: object, entity_ids: Sequence[uuid.UUID]) -> list[uuid.UUID]:
+            return list(entity_ids)
 
     return ArcAuthorizationService(visibility=_AllowAll())
 
@@ -187,8 +187,8 @@ def _candidate(
                 "rule_id": str(uuid.uuid4()),
                 "scope": "intent",
                 "target_tenant_id": None,
-                "capability_ids": None,
-                "capability_labels": None,
+                "entity_ids": None,
+                "entity_labels": None,
                 "domain_ids": None,
                 "intent_kinds": None,
                 "action_classes": None,
@@ -228,7 +228,7 @@ def _expected_impact_envelope(*, proposal_id: uuid.UUID, proposal_version: int) 
                     "requested_action_classes": None,
                     "environment": None,
                     "data_sensitivity_tier": None,
-                    "capability_ids": None,
+                    "entity_ids": None,
                     "domain_ids": None,
                 },
                 "minimum_count": 0,

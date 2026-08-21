@@ -80,7 +80,7 @@ def _manifest() -> ManifestClaims:
         session_id=_SESSION_ID,
         intent_kind="code_change",
         requested_action_classes=("merge",),
-        capability_ids=(),
+        entity_ids=(),
         domain_ids=("payments",),
         environment="production",
         data_sensitivity="confidential",

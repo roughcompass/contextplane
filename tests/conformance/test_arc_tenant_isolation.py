@@ -51,7 +51,7 @@ _SECRET_LOCATOR = "conf://internal/payments/deploy-policy@17"
 class _NeverVisible:
     """Visibility says no. Isolation must not depend on that saying yes."""
 
-    async def visible_capability_ids(self, ctx: object, capability_ids: object) -> list[uuid.UUID]:
+    async def visible_entity_ids(self, ctx: object, entity_ids: object) -> list[uuid.UUID]:
         return []
 
 
@@ -116,12 +116,12 @@ def test_the_denial_carries_no_detail_about_the_receipt() -> None:
 
 
 @pytest.mark.parametrize(
-    "scope", [AuthorityScope.TENANT, AuthorityScope.DOMAIN, AuthorityScope.CAPABILITY, AuthorityScope.INTENT]
+    "scope", [AuthorityScope.TENANT, AuthorityScope.DOMAIN, AuthorityScope.ENTITY, AuthorityScope.INTENT]
 )
 def test_tenant_b_cannot_read_a_tenant_a_artifact_at_any_scope(scope: AuthorityScope) -> None:
     artifact = (
         ArtifactScope(scope=scope, tenant_id=_TENANT_A, capability_id=uuid.uuid4())
-        if scope is AuthorityScope.CAPABILITY
+        if scope is AuthorityScope.ENTITY
         else ArtifactScope(scope=scope, tenant_id=_TENANT_A)
     )
     assert _service().can_read_artifact(_ctx(_TENANT_B, _ACTOR_B), artifact) is False
@@ -180,7 +180,7 @@ def test_the_deployment_tenant_is_refused_on_reads_including_global(scope: Autho
         else ArtifactScope(
             scope=scope,
             tenant_id=DEPLOYMENT_TENANT_ID,
-            capability_id=uuid.uuid4() if scope is AuthorityScope.CAPABILITY else None,
+            capability_id=uuid.uuid4() if scope is AuthorityScope.ENTITY else None,
         )
     )
     with pytest.raises(ArcAuthorizationError):
@@ -201,7 +201,7 @@ async def test_the_deployment_tenant_cannot_be_materialized_through_capabilities
     """The JIT path must not be a way to bring the sentinel into being as a
     working tenant."""
     with pytest.raises(ArcAuthorizationError):
-        await _service().visible_capability_ids(_ctx(DEPLOYMENT_TENANT_ID, _ACTOR_A), [uuid.uuid4()])
+        await _service().visible_entity_ids(_ctx(DEPLOYMENT_TENANT_ID, _ACTOR_A), [uuid.uuid4()])
 
 
 def test_the_deployment_tenant_is_not_the_seed_default_tenant() -> None:

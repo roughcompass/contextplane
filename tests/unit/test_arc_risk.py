@@ -76,13 +76,13 @@ def test_risk_classifications_vocabulary_has_exactly_ten_members() -> None:
         pytest.param([_rule("tenant", False)], "tenant_non_mandatory", id="tenant_non_mandatory"),
         pytest.param([_rule("domain", True)], "domain_mandatory", id="domain_mandatory"),
         pytest.param([_rule("domain", False)], "domain_non_mandatory", id="domain_non_mandatory"),
-        pytest.param([_rule("capability", True)], "capability_mandatory", id="capability_mandatory"),
-        pytest.param([_rule("capability", False)], "capability_non_mandatory", id="capability_non_mandatory"),
+        pytest.param([_rule("entity", True)], "entity_mandatory", id="entity_mandatory"),
+        pytest.param([_rule("entity", False)], "entity_non_mandatory", id="entity_non_mandatory"),
         pytest.param([_rule("intent", True)], "intent_mandatory", id="intent_mandatory"),
         pytest.param([_rule("intent", False)], "intent_non_mandatory", id="intent_non_mandatory"),
         pytest.param(
-            [_rule("intent", False), _rule("capability", True)],
-            "capability_mandatory",
+            [_rule("intent", False), _rule("entity", True)],
+            "entity_mandatory",
             id="highest_scope_wins_over_lower_scope_even_when_lower_is_mandatory_and_higher_is_not",
         ),
         pytest.param(
@@ -141,7 +141,7 @@ def _predicate(**overrides: Any) -> dict[str, Any]:
         "requested_action_classes": None,
         "environment": None,
         "data_sensitivity_tier": None,
-        "capability_ids": None,
+        "entity_ids": None,
         "domain_ids": None,
     }
     base.update(overrides)

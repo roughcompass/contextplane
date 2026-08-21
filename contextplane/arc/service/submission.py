@@ -593,8 +593,8 @@ class ArtifactMaterialisationService:
         """
         effective_from = rule.get("effective_from")
         effective_until = rule.get("effective_until")
-        capability_ids = rule.get("capability_ids")
-        capability_labels = rule.get("capability_labels")
+        entity_ids = rule.get("entity_ids")
+        entity_labels = rule.get("entity_labels")
         domain_ids = rule.get("domain_ids")
         intent_kinds = rule.get("intent_kinds")
         action_classes = rule.get("action_classes")
@@ -605,8 +605,8 @@ class ArtifactMaterialisationService:
             revision_id=revision_id,
             scope=str(rule["scope"]),
             target_tenant_id=(uuid.UUID(str(rule["target_tenant_id"])) if rule.get("target_tenant_id") else None),
-            capability_ids=(tuple(uuid.UUID(str(v)) for v in capability_ids) if capability_ids else None),
-            capability_labels=(tuple(str(v) for v in capability_labels) if capability_labels else None),
+            entity_ids=(tuple(uuid.UUID(str(v)) for v in entity_ids) if entity_ids else None),
+            entity_labels=(tuple(str(v) for v in entity_labels) if entity_labels else None),
             domain_ids=(tuple(str(v) for v in domain_ids) if domain_ids else None),
             intent_kinds=(tuple(str(v) for v in intent_kinds) if intent_kinds else None),
             action_classes=(tuple(str(v) for v in action_classes) if action_classes else None),

@@ -1,8 +1,4 @@
 {
-  "capability_ids": [
-    "00000000-0000-4000-8000-000000000007",
-    "00000000-0000-4000-8000-000000000006"
-  ],
   "data_sensitivity_tier": [
     "confidential",
     "internal"
@@ -10,6 +6,10 @@
   "domain_ids": [
     "payments",
     "billing"
+  ],
+  "entity_ids": [
+    "00000000-0000-4000-8000-000000000007",
+    "00000000-0000-4000-8000-000000000006"
   ],
   "environment": [
     "production",

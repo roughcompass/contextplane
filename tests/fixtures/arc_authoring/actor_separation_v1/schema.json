@@ -40,8 +40,8 @@
         "tenant_non_mandatory",
         "domain_mandatory",
         "domain_non_mandatory",
-        "capability_mandatory",
-        "capability_non_mandatory",
+        "entity_mandatory",
+        "entity_non_mandatory",
         "task_mandatory",
         "task_non_mandatory"
       ],

@@ -108,7 +108,7 @@ class _Harness:
             session_id="sess-1",
             intent_kind="code_change",
             requested_action_classes=("merge",),
-            capability_ids=(),
+            entity_ids=(),
             domain_ids=("payments",),
             environment="production",
             data_sensitivity="confidential",

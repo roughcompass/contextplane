@@ -195,7 +195,7 @@
             "items": [
               {
                 "class_predicate": {
-                  "capability_ids": null,
+                  "entity_ids": null,
                   "data_sensitivity_tier": null,
                   "domain_ids": null,
                   "environment": null,
@@ -407,8 +407,8 @@
             "applicability": [
               {
                 "action_classes": null,
-                "capability_ids": null,
-                "capability_labels": null,
+                "entity_ids": null,
+                "entity_labels": null,
                 "data_sensitivity_tiers": null,
                 "domain_ids": null,
                 "effective_from": null,
@@ -1076,7 +1076,7 @@
           "tests": [
             {
               "manifest": {
-                "capability_ids": null,
+                "entity_ids": null,
                 "data_sensitivity_tier": null,
                 "domain_ids": null,
                 "environment": null,
@@ -1127,7 +1127,7 @@
             "items": [
               {
                 "class_predicate": {
-                  "capability_ids": null,
+                  "entity_ids": null,
                   "data_sensitivity_tier": null,
                   "domain_ids": null,
                   "environment": null,

@@ -119,7 +119,7 @@ def _class(
     requested_action_classes: list[str] | None,
     environment: list[str] | None,
     data_sensitivity_tier: list[str] | None,
-    capability_ids: list[str] | None,
+    entity_ids: list[str] | None,
     domain_ids: list[str] | None,
 ) -> dict[str, Any]:
     return {
@@ -128,7 +128,7 @@ def _class(
         "requested_action_classes": requested_action_classes,
         "environment": environment,
         "data_sensitivity_tier": data_sensitivity_tier,
-        "capability_ids": capability_ids,
+        "entity_ids": entity_ids,
         "domain_ids": domain_ids,
     }
 
@@ -164,7 +164,7 @@ def _cross_product_classes(environments: tuple[str, ...], tiers: tuple[str, ...]
                 requested_action_classes=[action_class.value],
                 environment=[environment],
                 data_sensitivity_tier=[tier],
-                capability_ids=None,
+                entity_ids=None,
                 domain_ids=None,
             )
         )
@@ -176,14 +176,14 @@ def _item_match(item: dict[str, Any], environments: tuple[str, ...], tiers: tupl
     unconstrained fields fall back to a fixed representative value so the
     class stays concrete rather than partially unconstrained."""
     predicate = item.get("class_predicate") or {}
-    capability_id = _first(predicate.get("capability_ids"))
+    capability_id = _first(predicate.get("entity_ids"))
     domain_id = _first(predicate.get("domain_ids"))
     return _class(
         intent_kind=[_first(predicate.get("intent_kind")) or _TASK_KINDS[0].value],
         requested_action_classes=[_first(predicate.get("requested_action_classes")) or _ACTION_CLASSES[0].value],
         environment=[_first(predicate.get("environment")) or environments[0]],
         data_sensitivity_tier=[_first(predicate.get("data_sensitivity_tier")) or tiers[0]],
-        capability_ids=[capability_id] if capability_id is not None else None,
+        entity_ids=[capability_id] if capability_id is not None else None,
         domain_ids=[domain_id] if domain_id is not None else None,
     )
 
@@ -227,9 +227,9 @@ def _boundary_non_matches(
         flipped = dict(match)
         flipped["data_sensitivity_tier"] = [_outside(allowed, tiers)]
         boundaries.append(flipped)
-    if predicate.get("capability_ids"):
+    if predicate.get("entity_ids"):
         flipped = dict(match)
-        flipped["capability_ids"] = [str(uuid.uuid4())]
+        flipped["entity_ids"] = [str(uuid.uuid4())]
         boundaries.append(flipped)
     if predicate.get("domain_ids"):
         flipped = dict(match)
@@ -292,7 +292,7 @@ def generate_corpus(
                 requested_action_classes=[_ACTION_CLASSES[0].value],
                 environment=[f"padding-{i}"],
                 data_sensitivity_tier=[tiers[0]],
-                capability_ids=None,
+                entity_ids=None,
                 domain_ids=None,
             )
             by_key[_class_key(pad)] = pad
@@ -340,13 +340,13 @@ def _manifest_from_class(class_predicate: dict[str, Any], *, session_id: str) ->
         raise ReplayCorpusError(msg)
     intent_kind = IntentKind(task_kind_value)
     action_classes = frozenset(ActionClass(v) for v in class_predicate.get("requested_action_classes") or ())
-    capability_ids = frozenset(uuid.UUID(str(v)) for v in class_predicate.get("capability_ids") or ())
+    entity_ids = frozenset(uuid.UUID(str(v)) for v in class_predicate.get("entity_ids") or ())
     domain_ids = frozenset(str(v) for v in class_predicate.get("domain_ids") or ())
     return IntentManifest(
         session_id=session_id,
         intent_kind=intent_kind,
         requested_action_classes=action_classes,
-        capability_ids=capability_ids,
+        entity_ids=entity_ids,
         domain_ids=domain_ids,
         environment=_first(class_predicate.get("environment")),
         data_sensitivity=_first(class_predicate.get("data_sensitivity_tier")),

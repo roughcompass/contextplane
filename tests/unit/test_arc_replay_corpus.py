@@ -33,7 +33,7 @@ def _item(
         "requested_action_classes": None,
         "environment": None,
         "data_sensitivity_tier": None,
-        "capability_ids": None,
+        "entity_ids": None,
         "domain_ids": None,
     }
     base_predicate.update(predicate)
@@ -136,7 +136,7 @@ def _class(**overrides: Any) -> dict[str, Any]:
         "requested_action_classes": ["merge"],
         "environment": ["production"],
         "data_sensitivity_tier": ["internal"],
-        "capability_ids": None,
+        "entity_ids": None,
         "domain_ids": None,
     }
     base.update(overrides)

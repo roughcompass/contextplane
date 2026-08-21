@@ -95,10 +95,10 @@ class ArtifactApplicabilityRule(_ClosedModel):
     """
 
     rule_id: uuid.UUID
-    scope: Literal["global", "tenant", "domain", "capability", "intent"]
+    scope: Literal["global", "tenant", "domain", "entity", "intent"]
     target_tenant_id: uuid.UUID | None = None
-    capability_ids: list[uuid.UUID] | None = None
-    capability_labels: list[str] | None = None
+    entity_ids: list[uuid.UUID] | None = None
+    entity_labels: list[str] | None = None
     domain_ids: list[str] | None = None
     intent_kinds: list[str] | None = None
     action_classes: list[str] | None = None
@@ -174,7 +174,7 @@ class ObservationClassPredicate(_ClosedModel):
     requested_action_classes: list[str] | None = None
     environment: list[str] | None = None
     data_sensitivity_tier: list[str] | None = None
-    capability_ids: list[uuid.UUID] | None = None
+    entity_ids: list[uuid.UUID] | None = None
     domain_ids: list[str] | None = None
 
 

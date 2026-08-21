@@ -226,7 +226,7 @@ def rule_applies(
     # still owed.
     if not _matches_any(rule.action_classes, manifest.requested_action_classes):
         return False
-    if not _matches_any(rule.capability_ids, manifest.capability_ids):
+    if not _matches_any(rule.entity_ids, manifest.entity_ids):
         return False
     if not _matches_any(rule.domain_ids, manifest.domain_ids):
         return False

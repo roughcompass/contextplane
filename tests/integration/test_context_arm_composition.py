@@ -124,9 +124,7 @@ class _NoCapabilities:
     production wiring does not share.
     """
 
-    async def visible_capability_ids(
-        self, ctx: ArcRequestContext, capability_ids: Sequence[uuid.UUID]
-    ) -> list[uuid.UUID]:
+    async def visible_entity_ids(self, ctx: ArcRequestContext, entity_ids: Sequence[uuid.UUID]) -> list[uuid.UUID]:
         raise AssertionError("reading a receipt must not consult capability visibility")
 
 

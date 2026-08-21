@@ -6,14 +6,14 @@
   "items": [
     {
       "class_predicate": {
-        "capability_ids": [
-          "00000000-0000-4000-8000-000000000006"
-        ],
         "data_sensitivity_tier": [
           "confidential"
         ],
         "domain_ids": [
           "payments"
+        ],
+        "entity_ids": [
+          "00000000-0000-4000-8000-000000000006"
         ],
         "environment": [
           "production"
@@ -34,14 +34,14 @@
     },
     {
       "class_predicate": {
-        "capability_ids": [
-          "00000000-0000-4000-8000-000000000006"
-        ],
         "data_sensitivity_tier": [
           "confidential"
         ],
         "domain_ids": [
           "payments"
+        ],
+        "entity_ids": [
+          "00000000-0000-4000-8000-000000000006"
         ],
         "environment": [
           "production"

@@ -22,7 +22,7 @@
   },
   "event_type": "legal_hold_placed",
   "idempotency_key_digest": "11e6bd3b4a4d902cdd7a8ad30ef2c3e7a0cd6c8e41ac88ce531f489c783d3206",
-  "previous_event_digest": "0a943131f3824c619582d501fc4a9e7aee6e79d23e60e4613493f6150a99749a",
+  "previous_event_digest": "aba1527723ee1ef7349f1f4ef99c79700c52f9e3632d258f7ce1675a22effa79",
   "profile": "arc_operational_event_v1",
   "revision_id": "00000000-0000-4000-8000-000000000002",
   "sequence": 2,

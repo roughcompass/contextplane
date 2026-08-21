@@ -133,7 +133,7 @@ def _class_predicate(*, populated: bool = False) -> dict[str, Any]:
             "requested_action_classes": ["write"],
             "environment": ["prod"],
             "data_sensitivity_tier": ["low"],
-            "capability_ids": [_UUID1],
+            "entity_ids": [_UUID1],
             "domain_ids": ["domain-a"],
         }
     return {
@@ -142,7 +142,7 @@ def _class_predicate(*, populated: bool = False) -> dict[str, Any]:
         "requested_action_classes": None,
         "environment": None,
         "data_sensitivity_tier": None,
-        "capability_ids": None,
+        "entity_ids": None,
         "domain_ids": None,
     }
 
@@ -804,7 +804,7 @@ def _v1_predicate() -> dict[str, object]:
         "requested_action_classes": None,
         "environment": None,
         "data_sensitivity_tier": None,
-        "capability_ids": None,
+        "entity_ids": None,
         "domain_ids": None,
     }
 
@@ -816,7 +816,7 @@ def _v2_predicate() -> dict[str, object]:
         "requested_action_classes": None,
         "environment": None,
         "data_sensitivity_tier": None,
-        "capability_ids": None,
+        "entity_ids": None,
         "domain_ids": None,
     }
 

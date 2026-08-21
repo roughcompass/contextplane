@@ -31,7 +31,7 @@ _PREDICATE_FIELDS = (
     "requested_action_classes",
     "environment",
     "data_sensitivity_tier",
-    "capability_ids",
+    "entity_ids",
     "domain_ids",
 )
 
@@ -43,7 +43,7 @@ def _predicate(**overrides: Any) -> dict[str, Any]:
         "requested_action_classes": None,
         "environment": None,
         "data_sensitivity_tier": None,
-        "capability_ids": None,
+        "entity_ids": None,
         "domain_ids": None,
     }
     base.update(overrides)
@@ -157,7 +157,7 @@ def test_a_populated_set_is_accepted_and_canonicalized_in_sorted_order() -> None
     bytes, regardless of the order the request submitted it in -- the
     persisted `class_predicate` reflects that sorted order, not request
     order."""
-    predicate = _predicate(intent_kind=["research", "coding"], capability_ids=[str(uuid.uuid4())])
+    predicate = _predicate(intent_kind=["research", "coding"], entity_ids=[str(uuid.uuid4())])
     result = _validate(_envelope(_item("item-1", class_predicate=predicate)))
     assert result.envelope["items"][0]["class_predicate"]["intent_kind"] == ["coding", "research"]
 
@@ -223,7 +223,7 @@ def test_matrix_varying_one_predicate_field_at_a_time_between_two_same_delta_ite
         "requested_action_classes": (["read"], ["write"]),
         "environment": (["staging"], ["production"]),
         "data_sensitivity_tier": (["low"], ["high"]),
-        "capability_ids": ([str(uuid.uuid4())], [str(uuid.uuid4())]),
+        "entity_ids": ([str(uuid.uuid4())], [str(uuid.uuid4())]),
         "domain_ids": (["docs"], ["billing"]),
     }
     first_value, second_value = value_by_field[field]

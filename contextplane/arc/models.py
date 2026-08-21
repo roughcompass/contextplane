@@ -279,8 +279,8 @@ class ArcApplicabilityRule(Base):
     target_tenant_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), nullable=True
     )
-    capability_ids: Mapped[list[uuid.UUID] | None] = mapped_column(ARRAY(UUID(as_uuid=True)), nullable=True)
-    capability_labels: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
+    entity_ids: Mapped[list[uuid.UUID] | None] = mapped_column(ARRAY(UUID(as_uuid=True)), nullable=True)
+    entity_labels: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     domain_ids: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     intent_kinds: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     action_classes: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
@@ -494,7 +494,7 @@ class ArcApprovedException(Base):
         UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), nullable=False
     )
     lower_scope_domain_id: Mapped[str | None] = mapped_column(Text, nullable=True)
-    lower_scope_capability_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    lower_scope_entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     lower_scope_intent_kind: Mapped[str | None] = mapped_column(Text, nullable=True)
     lower_scope_action_class: Mapped[str | None] = mapped_column(Text, nullable=True)
     lower_scope_environment: Mapped[str | None] = mapped_column(Text, nullable=True)

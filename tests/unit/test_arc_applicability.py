@@ -36,7 +36,7 @@ def _manifest(**over: object) -> IntentManifest:
         "session_id": "s1",
         "intent_kind": IntentKind.CODE_CHANGE,
         "requested_action_classes": frozenset({ActionClass.MERGE}),
-        "capability_ids": frozenset({_CAP}),
+        "entity_ids": frozenset({_CAP}),
         "domain_ids": frozenset({"payments"}),
         "environment": "production",
         "data_sensitivity": "confidential",
@@ -98,9 +98,9 @@ def test_action_classes_match_on_overlap_not_equality() -> None:
 
 
 def test_capability_scope_matches_on_id_overlap() -> None:
-    r = _rule(AuthorityScope.CAPABILITY, capability_ids=frozenset({_CAP}))
+    r = _rule(AuthorityScope.ENTITY, entity_ids=frozenset({_CAP}))
     assert rule_applies(r, _manifest(), tenant_id=_T1, as_of=_NOW) is True
-    other = _manifest(capability_ids=frozenset({uuid.uuid4()}))
+    other = _manifest(entity_ids=frozenset({uuid.uuid4()}))
     assert rule_applies(r, other, tenant_id=_T1, as_of=_NOW) is False
 
 
@@ -146,7 +146,7 @@ def _scoped(scope: AuthorityScope, effective: datetime.datetime, did: uuid.UUID)
     rule = _rule(
         scope,
         target_tenant_id=_T1 if scope is AuthorityScope.TENANT else None,
-        capability_ids=frozenset({_CAP}) if scope is AuthorityScope.CAPABILITY else frozenset(),
+        entity_ids=frozenset({_CAP}) if scope is AuthorityScope.ENTITY else frozenset(),
     )
     return ScopedDirective(directive=_directive(did, rid), rule=rule, revision_effective_from=effective)
 
