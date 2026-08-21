@@ -2546,7 +2546,7 @@ Acceptance:
 
 ### E2-T6 — The published p99, including the PII-block mode
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a p99 for the write path that is asserted, not stated.
 
@@ -2563,3 +2563,34 @@ on operations rather than on wall-clock.
 
 Unblocked. T1 has landed and ADR-0010 removed the model call, so the path being
 measured is now the path that will ship -- which was the only reason to wait.
+
+**Landed as p95, not p99, and the reason is arithmetic rather than preference.**
+The harness takes 40 samples, following `tests/perf/test_arc_latency.py`. The
+99th percentile of 40 observations *is the 40th* -- the maximum -- which is not a
+percentile but the worst thing that happened, dominated by GC and container
+scheduling. A stable p99 wants roughly ten times the samples, on a test whose
+sibling already records that seeding dominates its runtime. So E2's body is
+amended: a p99 here would be a number that moved every run and got raised until
+it stopped failing.
+
+**Also amended: one bound, not two, because the gap was measured.** A first
+draft set 200ms clean and 250ms blocked, assuming refusing costs materially
+more. Observed local p95 is 10.3ms clean and 12.1ms blocked -- 18%, not a
+category. Two budgets 25% apart described a gap that is not there, and 200ms
+against a 10ms reality is twenty times the headroom needed to catch anything.
+One bound held by both modes is the stronger claim anyway: blocking may not
+become materially slower than passing, which separate budgets would license.
+
+**And a correction to ADR-0007's aside, repeated in this plan.** It says "the
+one published numeric SLO in this repository is webhook fan-out at p95 < 30s".
+There are more: `test_arc_latency.py` publishes `resolve_context` p95 <= 200ms
+and `retrieve_context_detail` p95 <= 250ms, with a fixture that builds a real
+2,000-revision design point. That file is the template this task followed, and
+it is a better one than the webhook test.
+
+Two anti-vacuity guards, because a perf test that measures the wrong path passes
+loudly: one asserts the blocked body still trips admission -- if the scanner
+vocabulary moved, the block-mode measurement would silently become a second
+measurement of the faster clean path and its budget would never fire -- and one
+asserts an advisory record exists, proving the envelope decision ran inside the
+number rather than being bypassed by the harness.
