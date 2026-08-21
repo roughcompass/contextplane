@@ -2250,6 +2250,31 @@ holds rather than re-specifying it.
 Three of those are ordinary build work. One is a decision that contradicts a
 shipped design and therefore takes an ADR first, the way E1's four did.
 
+**Standing rule for every decomposition from here: where the tree is
+architecturally better than the plan, the plan changes.** This document was
+written before most of the code existed, so a clause of an epic is a statement
+of intent, not a finding. Six task sets so far have hit a premise that did not
+survive contact with the tree, and the reflex those near-misses train is to
+treat the epic as authoritative and the code as behind. That reflex is wrong in
+one specific direction, and it is the expensive one: a task that "implements the
+spec" by replacing a better shipped design with a worse specified one is a
+regression that every gate will pass, because the tests get rewritten to match.
+
+Concretely, when a task and the tree disagree:
+
+- Say which is better *on the evidence*, and put the evidence in the task.
+- If the tree wins, the task's deliverable is an amendment to the epic, not a
+  change to the code. Record it here so the next reader sees the epic's sentence
+  and its correction together.
+- If the epic wins, say what the shipped design got wrong, because a reversal
+  nobody can justify later gets reversed again.
+- Where it is genuinely open, that is an ADR, and the ADR names the incumbent as
+  the default outcome. Moving off a working design is the change, and the change
+  is what carries the burden.
+
+E2-T4 is the live instance: a first draft of it asked what would happen *when*
+embedding became synchronous, which had already conceded the question.
+
 ### E2-T1 — The envelope decision reaches a write path
 
 **Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
@@ -2333,31 +2358,52 @@ Acceptance:
     .venv/bin/python -m alembic upgrade head
     make lint && make test-coverage
 
-### E2-T4 — ADR: synchronous embedding contradicts the shipped drain
+### E2-T4 — ADR: what the two-call loop needs from a just-written event
 
 **Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
-Goal: record the decision, because E2 asks for the opposite of what ships.
+Goal: decide read-after-write visibility for a freshly written event. **The
+shipped asynchronous drain is the incumbent and the default outcome; the ADR
+has to justify moving off it, not justify keeping it.**
 
 E2 says "cheap synchronous embedding" on the write path. The tree embeds
-**asynchronously**: `service/retrieval/embedding_drain.py` writes `embeddings`
-keyed `(target_type, target_id)`, and the table is already hash-partitioned.
-Making the write path embed synchronously is not an addition, it is a reversal,
-and it puts a model call inside the latency budget of the hot path E2 also wants
-a published p99 for.
+**asynchronously** -- `service/retrieval/embedding_drain.py` writes `embeddings`
+keyed `(target_type, target_id)` into an already hash-partitioned table. An
+earlier draft of this task asked what would happen *when* the path went
+synchronous, which quietly assumed the epic beats the implementation. It does
+not get to: a plan sentence is a statement of intent written before the code
+existed, and where the code is architecturally better the sentence is what
+changes.
 
-The ADR has to answer: what "cheap" means in milliseconds against that p99; what
-happens to the write when the embedding provider is slow or down (refuse, or
-write and enqueue); whether the drain remains for backfill and re-embedding on a
-model change; and whether a synchronously embedded row and a drained one are
-distinguishable, because a reader that cannot tell them apart cannot know
-whether a missing vector means "not yet" or "never".
+**On the evidence so far the incumbent looks stronger, and the epic looks
+self-contradictory.** A model call on the hot path sits inside the latency
+budget of the same p99 E2-T6 wants published. A provider outage forces a choice
+between refusing writes -- availability loss on a memory write path -- and
+write-then-enqueue, which is the async design with extra steps. Re-embedding
+after a model change needs a drain regardless, so synchronous embedding does not
+retire the drain; it adds a second path into one table and a reader that cannot
+tell which produced a row.
+
+**So the real question is not sync-versus-async.** It is what E7's two-call
+memory loop sees when it resolves immediately after a write, which is the only
+thing synchronous embedding would actually buy. The ADR should answer that
+directly, and the cheaper answers deserve to be ruled out before the expensive
+one is adopted: `embeddings` already carries a `ts_vector`, so a lexical arm can
+cover a row the vector arm has not reached yet; a bounded staleness window with
+a fail-closed read is the shape ARC source-status already uses; and a "pending
+embedding" discriminator lets a reader distinguish *not yet* from *never*, which
+is E3's own complaint about un-hydrated receipts.
+
+If synchronous embedding survives that, it is the right answer and the ADR says
+so with the numbers. If it does not, **the ADR amends E2's body** rather than
+the code being bent to match it.
 
 Six of the ten values E1 needed came from four ADRs written first, and the ones
-that went wrong went wrong where a task assumed instead. This is the same shape.
+that went wrong went wrong where a task assumed instead. This is the same shape,
+with the addition that the thing not to assume here is the epic.
 
 Acceptance:
-    test -f .develop/adr/0010-synchronous-embedding.md
+    test -f .develop/adr/0010-read-after-write-embedding.md
     make doc-links && make doc-refs
 
 ### E2-T5 — Per-tenant fairness and lag stamps for the async remainder
