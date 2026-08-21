@@ -24,6 +24,7 @@ from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from contextplane import ranking
 from contextplane.extraction import salience
 from contextplane.extraction.containment import (
     TRIGGER_DIRECTIVE,
@@ -827,9 +828,14 @@ async def test_a_staged_claim_carries_the_salience_of_the_episode_it_came_from(
     assert row.salience_weights_id == salience.WEIGHTS_MODEL_ID
     stored = row.salience_signals if isinstance(row.salience_signals, dict) else json.loads(row.salience_signals)
     assert set(stored) == set(salience.SIGNAL_NAMES)
-    # The stored number is the stored signals under the committed weights, so a
-    # reader can check the row without re-running the window.
-    assert float(row.salience) == pytest.approx(salience.combine(stored))
+    # The stored number is the stored signals under the weights that governed
+    # this tenant, so a reader can check the row without re-running the window.
+    # Core here because this tenant has no bound override; `combine` takes the
+    # map rather than choosing it, so that "which tenant's weights" is a question
+    # every caller answers out loud.
+    assert float(row.salience) == pytest.approx(
+        salience.combine(stored, weights=ranking.weights(salience.WEIGHTS_MODEL_ID))
+    )
 
 
 @pytest.mark.asyncio

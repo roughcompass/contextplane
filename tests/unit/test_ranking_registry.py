@@ -66,13 +66,32 @@ def test_fusion_weights_sum_to_one(model_id: str) -> None:
     assert total == pytest.approx(1.0), f"{model_id} weights sum to {total}"
 
 
+#: The two ways a consumer may legitimately obtain a governed value. A direct
+#: read is correct for a threshold or a ladder, neither of which is
+#: tenant-overridable; a weights consumer must go through the accessor that
+#: resolves the tenant's override first, which `scripts/check_scoring_accessor.py`
+#: enforces separately. Either way the module names its model id, which is the
+#: property this test is actually about.
+_GOVERNED_IMPORTS = (
+    "from contextplane import ranking",
+    "from contextplane.profile.scoring import resolve_weights",
+)
+
+
 def test_the_declared_consumers_still_read_the_registry() -> None:
     """The property that keeps this from being a second copy of the literal.
 
     Each entry names the module that consumes it. If that module stopped
-    importing `ranking`, the registry would still load, the values would still
-    be right, and the code would be back on a literal — passing every other test
-    in this file. So the coupling is asserted directly.
+    obtaining the value from the registry, the registry would still load, the
+    values would still be right, and the code would be back on a literal —
+    passing every other test in this file. So the coupling is asserted directly.
+
+    Two accepted spellings rather than one, since E17-T4: a weights consumer now
+    resolves through `profile.scoring`, because reading `ranking.weights`
+    directly would serve every tenant the core value and silently ignore an
+    override they had activated. The registry entry still names the module the
+    number *governs*, which is the useful thing for a reader to find, rather than
+    the accessor every weights entry would otherwise point at.
     """
     raw = json.loads(ranking.REGISTRY_PATH.read_text(encoding="utf-8"))
     for entry in raw["magnitudes"]:
@@ -80,9 +99,10 @@ def test_the_declared_consumers_still_read_the_registry() -> None:
         assert consumer.is_file(), f"{entry['model_id']}: consumer {entry['consumer']} does not exist"
         source = consumer.read_text(encoding="utf-8")
         if entry["coupling"] == "consumed":
-            assert (
-                "from contextplane import ranking" in source
-            ), f"{entry['model_id']}: {entry['consumer']} no longer imports the registry"
+            assert any(spelling in source for spelling in _GOVERNED_IMPORTS), (
+                f"{entry['model_id']}: {entry['consumer']} neither imports the registry nor resolves "
+                "through the scoring accessor"
+            )
             assert (
                 entry["model_id"] in source
             ), f"{entry['model_id']}: {entry['consumer']} no longer names it, so it reads a literal again"
@@ -335,9 +355,15 @@ def test_the_registry_is_read_at_import_so_a_refusal_stops_the_process() -> None
         "would surface at first use rather than at start"
     )
 
-    from contextplane.service.memory import claim_serving
+    # A threshold consumer, not a weights one. `claim_serving` used to bind its
+    # arm weights at import and was the witness here; E17-T4 moved that read into
+    # the request, because an import-time bind decides the number is the same for
+    # every tenant before any tenant has asked. Thresholds carry no tenant
+    # dimension, so they are still read at import and the boot-refusal property
+    # still has a witness.
+    from contextplane.service.memory import confidence_decay
 
-    assert isinstance(claim_serving._ARM_WEIGHTS, dict), (
+    assert isinstance(confidence_decay.DECAY_FLOOR, float), (
         "no consumer reads a governed magnitude at import, so a refusal would "
         "not stop a process that never touches one"
     )

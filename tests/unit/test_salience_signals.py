@@ -172,6 +172,40 @@ class TestSignalVector:
 # --- the weighted sum ------------------------------------------------------------
 
 
+#: The core defaults, stated at every call site below rather than defaulted
+#: inside `combine`. These tests are about the arithmetic, and the arithmetic is
+#: the same whoever's weights it runs on -- what changed is that the function no
+#: longer decides whose they are.
+_CORE = ranking.weights(salience.WEIGHTS_MODEL_ID)
+
+
+def test_combine_will_not_choose_whose_weights_to_use() -> None:
+    """The parameter is required, and that is the guard rather than a style.
+
+    This function used to read `ranking.weights(...)` itself, so it scored every
+    tenant on the deployment's core values and silently ignored an override the
+    tenant had published, validated and activated. A default here would restore
+    that path the first time somebody found the argument inconvenient.
+    """
+    with pytest.raises(TypeError, match="weights"):
+        salience.combine(dict.fromkeys(salience.SIGNAL_NAMES, 1.0))  # type: ignore[call-arg]
+
+
+def test_a_tenants_weights_change_the_score() -> None:
+    """What the whole accessor chain is for, at the point it lands.
+
+    Core weights lead with state change; a tenant that cares about human
+    engagement instead should get a different number for the same episode. If
+    this passed with identical scores the override would be reaching the
+    arithmetic and doing nothing.
+    """
+    signals = dict.fromkeys(salience.SIGNAL_NAMES, 0.0) | {"human_engagement": 1.0}
+    tenant_weights = dict.fromkeys(_CORE, 0.0) | {"human_engagement": 1.0}
+
+    assert salience.combine(signals, weights=_CORE) == pytest.approx(_CORE["human_engagement"])
+    assert salience.combine(signals, weights=tenant_weights) == pytest.approx(1.0)
+
+
 def test_the_weights_come_from_the_registry_and_sum_to_one() -> None:
     """A weighted sum whose weights do not sum to one produces a number that is
     not comparable between episodes, which is the only thing it is for."""
@@ -181,7 +215,7 @@ def test_the_weights_come_from_the_registry_and_sum_to_one() -> None:
 
 
 def test_an_empty_window_is_not_salient() -> None:
-    assert salience.combine(salience.signal_vector([])) == 0.0
+    assert salience.combine(salience.signal_vector([]), weights=_CORE) == 0.0
 
 
 def test_a_missing_novelty_costs_exactly_its_weight_and_no_more() -> None:
@@ -189,8 +223,8 @@ def test_a_missing_novelty_costs_exactly_its_weight_and_no_more() -> None:
     stated cost rather than a redistribution nobody can see."""
     everything = dict.fromkeys(salience.SIGNAL_NAMES, 1.0)
     novelty_weight = ranking.weights(salience.WEIGHTS_MODEL_ID)[salience.NOVELTY]
-    assert salience.combine(everything) == pytest.approx(1.0 - novelty_weight)
-    assert salience.combine(everything, novelty=1.0) == pytest.approx(1.0)
+    assert salience.combine(everything, weights=_CORE) == pytest.approx(1.0 - novelty_weight)
+    assert salience.combine(everything, weights=_CORE, novelty=1.0) == pytest.approx(1.0)
 
 
 def test_novelty_landing_can_only_raise_a_score() -> None:
@@ -199,9 +233,9 @@ def test_novelty_landing_can_only_raise_a_score() -> None:
     arrives, which reads as a bug however it is documented."""
     signals = {"state_change": 1.0, "outcome_decisive": 0.5, "human_engagement": 0.0}
     signals |= {"entity_density": 0.25, "tool_diversity": 0.0}
-    before = salience.combine(signals)
+    before = salience.combine(signals, weights=_CORE)
     for novelty in (0.0, 0.5, 1.0):
-        assert salience.combine(signals, novelty=novelty) >= before
+        assert salience.combine(signals, weights=_CORE, novelty=novelty) >= before
 
 
 def test_a_signal_the_weights_do_not_name_is_refused() -> None:
@@ -209,19 +243,19 @@ def test_a_signal_the_weights_do_not_name_is_refused() -> None:
     looks like a score."""
     signals = dict.fromkeys(salience.SIGNAL_NAMES, 0.5) | {"invented": 1.0}
     with pytest.raises(ranking.UngovernedMagnitude, match="invented"):
-        salience.combine(signals)
+        salience.combine(signals, weights=_CORE)
 
 
 def test_a_weighted_signal_nobody_supplied_is_refused() -> None:
     """The other direction: a dropped signal lowers every score by its weight,
     which looks like the corpus got less interesting."""
     with pytest.raises(ranking.UngovernedMagnitude, match="state_change"):
-        salience.combine({"outcome_decisive": 1.0})
+        salience.combine({"outcome_decisive": 1.0}, weights=_CORE)
 
 
 def test_novelty_alone_may_be_absent() -> None:
     """The one exception, and it is the whole reason the check is not symmetric."""
-    assert salience.combine(dict.fromkeys(salience.SIGNAL_NAMES, 0.0)) == 0.0
+    assert salience.combine(dict.fromkeys(salience.SIGNAL_NAMES, 0.0), weights=_CORE) == 0.0
 
 
 def test_the_result_stays_inside_the_range_the_column_accepts() -> None:
@@ -229,5 +263,5 @@ def test_the_result_stays_inside_the_range_the_column_accepts() -> None:
     constraint name rather than as a disagreement between two artifacts."""
     for value in (0.0, 0.25, 0.5, 0.75, 1.0):
         for novelty in (None, 0.0, 1.0):
-            result = salience.combine(dict.fromkeys(salience.SIGNAL_NAMES, value), novelty=novelty)
+            result = salience.combine(dict.fromkeys(salience.SIGNAL_NAMES, value), weights=_CORE, novelty=novelty)
             assert 0.0 <= result <= 1.0

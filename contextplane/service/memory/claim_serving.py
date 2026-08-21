@@ -39,8 +39,8 @@ from typing import Any, Final
 from sqlalchemy import RowMapping, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from contextplane import ranking
 from contextplane.exceptions import ValidationError
+from contextplane.profile.scoring import resolve_weights
 from contextplane.service.memory.confidence_decay import half_life_days
 from contextplane.service.memory.confidence_read import serve as serve_confidence
 from contextplane.service.retrieval.search import fuse_hybrid_arms
@@ -466,9 +466,10 @@ class ClaimServingService:
         async def _ready(rows: list[Any]) -> list[Any]:
             return rows
 
+        arm_weights = (await resolve_weights(session, tenant_id=tenant_id, model_id=_FUSION_MODEL_ID)).value
         fused, _failed = await fuse_hybrid_arms(
             {"semantic": _ready(semantic_rows), "lexical": _ready(lexical_rows)},
-            _ARM_WEIGHTS,
+            arm_weights,
             key=lambda row: row["claim_id"],
         )
         if not fused:
@@ -641,9 +642,15 @@ _BY_ID_SQL = f"""
 
 
 #: Governed magnitude; the value and its reason live in
-#: `contextplane/ranking_registry.json`.
+#: `contextplane/ranking_registry.json`, and a tenant may override it through a
+#: bound profile extension -- which is why the value is *not* bound here.
+#:
+#: It was: `_ARM_WEIGHTS = ranking.weights(...)` at module import. That is a
+#: decision that this number is the same for everybody, taken before anybody
+#: asked, and it made the tenant override unreachable on this path however the
+#: tenant configured it. The read now happens per request, where there is a
+#: tenant to resolve for.
 _FUSION_MODEL_ID: Final = "claim-serving-hybrid-fusion@1"
-_ARM_WEIGHTS: Final[dict[str, float]] = ranking.weights(_FUSION_MODEL_ID)
 
 # Fusion reorders, so each arm is read deeper than the answer needs. Cutting an arm
 # at top_k would drop rows the reordering would have promoted.

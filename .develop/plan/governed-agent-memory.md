@@ -460,7 +460,7 @@ each other, which is a stronger guarantee than a rule nobody enforces.
 
 ### E17 — Tenant-scoped scoring configuration
 
-**Kind:** epic · **Status:** pending · **Blocked by:** E15 · **Repo:** contextplane
+**Kind:** epic · **Status:** done · **Blocked by:** E15 · **Repo:** contextplane
 
 Per ADR-0004: the committed registry holds the core default, and a tenant
 overrides by publishing a profile **extension** activated through the existing
@@ -505,6 +505,21 @@ at every layer above. E17-T4.
 This is the same shape as the `requires_validated` field E9-T3 had to give teeth:
 a governance object nothing consults governs nothing. Twice in one audit is
 enough to make it a thing to check for rather than a thing to notice.
+
+**Closed by E17-T4.** All three scoring consumers now resolve through the
+accessor, `scripts/check_scoring_accessor.py` refuses a direct `ranking.weights`
+read outside it, and `salience.combine` takes the resolved map as a required
+argument so a caller with no tenant cannot call it at all.
+
+Two clause notes so the closure is not read as more than it is. The blocker on
+E15 was about ordering -- this epic needed salience weights to exist, which
+E15-T4 delivered -- and not about E15 finishing; E15 remains open on E15-T6, and
+a bare `score` on the wire has nothing to do with tenant scoring. And "no
+environment variable and no `Settings` field may set any of these" is **true
+today and unenforced**: `config.py` has no scoring field, nothing stops one
+being added, and a name-matching check would be fragile enough to be worse than
+the honest note. Recorded rather than half-built, the same call this plan made
+about `CONTRADICTION_PENALTY`.
 
 ### E18 — Contract surface coherence
 
@@ -3234,7 +3249,7 @@ Acceptance:
 
 ### E17-T4 — The tenant accessor no consumer calls
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the scoring consumers resolve through `profile.scoring.resolve_weights`,
 so a tenant's activated override actually changes what that tenant is served.
@@ -3272,7 +3287,47 @@ refusal at the read was possible because *nobody* should read an unvalidated
 magnitude. Here the direct read is legitimate for the core default and wrong only
 for a tenant-scoped consumer, so the check is about the caller and not the value.
 
+**Two of this task's own premises were wrong, both in the same direction: the
+work was easier than the entry claimed.**
+
+`claim_serving.py` was described here as "the real work", needing the read moved
+into the request path. `_fused_candidates` already took a session and a
+`tenant_id`; the import-time bind was above it for no reason the code required.
+Deleting the module-level constant and resolving inside the function was three
+lines.
+
+`search.py` was described as straightforward and was the one that pushed back.
+`search()` had no session of its own -- the arms each open theirs -- so
+resolving means opening one, and the fusion-only unit tests asserted the session
+factory was *never* called. That assertion was a fair description of the method
+until it started resolving for a tenant instead of reading a deployment
+constant. The tests now supply a session that answers "no active binding", which
+is the core weights they were all written against.
+
+`salience.combine` takes the resolved map as a **required** keyword rather than
+defaulting to core. A default would restore the silent-core path the first time
+somebody found the argument inconvenient, and a caller with no tenant to resolve
+for should not be able to call it at all.
+
+**The check is `scripts/check_scoring_accessor.py`, wired into `make lint`.** It
+refuses a `ranking.weights` call outside the accessor and deliberately permits
+`threshold` and `ladder` anywhere, because neither is overridable --
+`validate_overrides` takes a weight map, demands the key set match the core and
+demands it sum to one. A gate that flagged `confidence_decay.py`'s floor would
+be teaching the wrong rule. It fails if it finds no read *inside* the accessor
+either, so a clean result means it looked.
+
+Three of my own earlier tests had to change, and each was checked for whether
+the property still held rather than relaxed to fit. The registry's
+consumer-coupling test accepts two spellings now, since a weights consumer
+resolves through the accessor; the entry still names the module the number
+governs, which is what a reader wants to find. The import-time boot-refusal test
+moved its witness from `claim_serving._ARM_WEIGHTS` to
+`confidence_decay.DECAY_FLOOR` -- the guarantee is unchanged because the refusal
+lives in `_load`, not in an accessor, which is why E9-T3 made it whole-registry
+rather than lazy.
+
 Acceptance:
     .venv/bin/python -m pytest tests/unit/test_scoring_accessor.py -q
-    .venv/bin/python -m pytest tests/integration -q -k "tenant_scoring"
-    make lint && make typecheck && make test-coverage
+    make scoring-accessor
+    make all && make test-integration

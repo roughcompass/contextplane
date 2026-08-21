@@ -139,11 +139,17 @@ def _serving_session_factory(
 ) -> tuple[MagicMock, list[str]]:
     """SQL-string-keyed AsyncMock session factory for `ClaimServingService`.
 
-    Routes on a distinguishing substring of each of the module's five query
-    shapes (structural query, by-id, provenance, subject-visibility lookup,
-    the two hybrid-search arms) and raises on anything else, so a query this
-    module starts issuing without the test knowing about it fails loudly
-    rather than silently returning nothing.
+    Routes on a distinguishing substring of each of the module's query shapes
+    (structural query, by-id, provenance, subject-visibility lookup, the two
+    hybrid-search arms, and the scoring accessor's binding lookup) and raises on
+    anything else, so a query this module starts issuing without the test knowing
+    about it fails loudly rather than silently returning nothing.
+
+    The binding lookup answers "no active binding", which resolves the fusion
+    weights to the core values every assertion here was written against. It
+    appeared when the module stopped binding those weights at import: an
+    import-time read decides the number is the same for every tenant before any
+    tenant has asked, which is what E17-T4 removed.
     """
     executed: list[str] = []
 
@@ -162,6 +168,10 @@ def _serving_session_factory(
             return _mapping_result(all_rows=semantic_rows or [])
         if "ORDER BY lex_rank DESC" in sql:
             return _mapping_result(all_rows=lexical_rows or [])
+        if "FROM profile_bindings" in sql:
+            unbound = MagicMock()
+            unbound.one_or_none = MagicMock(return_value=None)
+            return unbound
         raise AssertionError(f"unexpected SQL in test session: {sql}")
 
     def _new_session() -> AsyncMock:
