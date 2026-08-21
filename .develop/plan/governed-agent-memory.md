@@ -552,6 +552,40 @@ them survive this long is that no test asserted the effect: not the PATCH's,
 not `validation.valid` on a relationship write, not what the ambiguity refusal
 carried. The tree agreed with the plan by not looking.
 
+**The audit, run again after E19-T7, surface by surface.** Every surface this
+body names now has both halves:
+
+| Surface | Adapter | Caller |
+|---|---|---|
+| `POST /v1/relationships` | E19-T1a | Relationship authoring dialog |
+| `PATCH /v1/relationships/{id}` | E19-T1a | Same dialog, supersede path |
+| `POST /v1/relationships:query` | E19-T1a | Entity detail, Connections panel (T7) |
+| `POST /v1/entities` | E19-T6 | Catalog create, governed route |
+| `PATCH /v1/entities/{id}` | E19-T6, removed, restored in T7 | Entity detail, governed edit |
+| `GET /v1/entities:resolve` | E19-T4 | Entity handle resolution in the shell |
+| `/v1/concepts`, `/v1/operations` | E19-T6 | Catalog create, direct route |
+
+The other body claims: the Catalog page names every entity type it lists (T2),
+the graph sits on `/relationships` beside the table rather than replacing the
+list (T3), and the Catalog/entity/type vocabulary is what the UI uses.
+
+**Still open, and this epic stays open with it.** E19-T7's audit turned up a
+defect this body does not name: the catalog write path sends no `If-Match`,
+against a contract that honours it on thirteen mutations and a convention that
+requires it. That is E19-T8. Closing here on the strength of the table above
+would repeat exactly what #34 did -- treat a finished frontier as a finished
+scope -- and #35 reverted that once already.
+
+**One more entry for the list of premises that did not survive.** E19-T7 itself
+made the epic's characteristic mistake: it substituted `POST /v1/entities` for
+the `PATCH /v1/entities/{id}` the task named, on the assumption that a subject id
+in the body would route the write. It does not -- the service reads the target
+from the path -- so the governed edit would have created a second entity on the
+approval route. Six of eight tasks now, and the one that failed was written
+*after* this paragraph was, which is the part worth sitting with: knowing the
+failure mode by name did not prevent it. What caught it was reading the handler;
+what let it ship was a test that asserted body and method and not path.
+
 ---
 
 ## Task decomposition — first wave (the unblocked frontier)
@@ -1318,7 +1352,7 @@ Acceptance:
 
 ### E19-T7 — The governed reads and edits nothing calls yet
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
 
 Found by auditing E19's body claim by claim before deciding whether the epic
 could close. Its complaint has two halves — "no adapter function, no caller" —
@@ -1345,8 +1379,88 @@ Not folded into T6. T6's question was which surface a *create* takes and it
 answered it; this is the same question for reads and edits, and answering both in
 one change would have made the create's answer hard to see.
 
+**Landed in two PRs, because the first one was wrong in the way this epic keeps
+warning about.**
+
+The read half went where the task said: the entity detail dialog's Connections
+panel, which is renamed from "Adoption & subscriptions" because it now lists
+edges too and an operator asking what a thing is connected to should not need to
+know that adoptions and relationships live under different words. The four
+governed facts -- profile revision, validation verdict, readiness, asserting
+system -- lead each row, because they are exactly what the traversal views
+cannot show. `has_more` is stated rather than paged: a second pagination model
+inside a dialog that has none would be worse than saying the list is partial.
+
+The edit half shipped against the wrong endpoint. This task says the fix is
+bringing back the generic twin removed in T6; instead the first attempt sent the
+edit to `POST /v1/entities` with `identity.subject_id` naming the row. **The
+service does not read the write target from there.** `_routed_write` takes it
+from the path, and `create_entity` calls it with `entity_id=None`, so on the
+approval route it falls through to `catalog.create_entity` -- an operator
+editing a capability would have minted a second one. `PATCH
+/v1/entities/{entity_id}` is the surface, and the contract says so: "the same
+three routes a create takes, adding nothing to it but the subject".
+
+**Why the tests did not catch it, which is the reusable part.** They asserted
+the request body and the method, and both were correct; nothing asserted the
+*path*. A call to the wrong endpoint carrying a right body was indistinguishable
+from a right call. That is the failure this epic's body already names about five
+earlier tasks -- "no test asserted the effect... the tree agreed with the plan by
+not looking" -- reproduced one task later. The guard added afterwards refuses any
+call to `/v1/entities` from the edit path, and was verified by reverting the fix.
+
+The lesson generalises past this task: **for an adapter, the endpoint is part of
+the behaviour.** A test that pins body and method and not path is checking the
+half that was never in doubt.
+
+Also found here and deliberately left: `updateCapability` sends no `If-Match`,
+though the contract honours it and this workspace's UI conventions require it
+for updates. Fixing it means the 412 flow -- retain the draft, refetch, ask the
+operator to review the newer state -- which is its own change with its own error
+handling. E19-T8.
+
 Acceptance:
     pnpm --filter admin-dashboard test -- -t "governed"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E19-T8 — The catalog write path sends no `If-Match`
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+
+Found while building E19-T7 and deliberately left out of it, because doing it
+properly is a different change with its own error handling.
+
+Thirteen mutations in the contract honour `If-Match`, and exactly one adapter
+sends it: `updateRelationship`, which E19-T1b built along with the refusal code
+a stale precondition comes back with. Every catalog write goes without --
+`updateCapability`, `setCapabilityVisibility`, `changeCapabilityLifecycle`, and
+the concept and operation patches. The contract's own wording for the capability
+patch is that an absent precondition "logs a warning and accepts the write", so
+today the dashboard is the caller generating those warnings.
+
+The workspace's UI conventions state the rule outright: preserve detail-response
+`ETag` values, send `If-Match` for updates and deletes, and on `412` retain the
+draft, refetch, and ask the user to review the newer state.
+
+**Half the work is already done and that is worth knowing before cutting this.**
+`client.ts` already returns `{ etag, value }` from a request with headers, so the
+transport can produce it; `catalog.ts` discards it. So this is not "add ETag
+support" -- it is threading a value the client already has through the catalog
+adapters and the panel that holds the draft.
+
+**The half that is not mechanical is the 412.** A refusal has to keep the
+operator's edited JSON, refetch the entity, and show what changed underneath
+them -- not silently overwrite and not discard the draft. The relationship
+authoring dialog already solved this shape once and should be read before this
+is built rather than a second answer invented.
+
+Scope is the catalog write path. The admin, subscription and external-id patches
+honour `If-Match` too and are the same defect, but they belong to whichever epic
+owns those surfaces; naming them here rather than fixing them keeps this task
+reviewable and stops the next reader believing the sweep was exhaustive.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "If-Match"
     pnpm lint && pnpm type-check && pnpm test && pnpm build
 
 ### E19-T6 — The generic entity write has no client
