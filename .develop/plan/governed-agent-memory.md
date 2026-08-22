@@ -3648,7 +3648,7 @@ The ordering of T2 and T3 is load-bearing and is the reason they are two tasks.
 
 ### E3-T1 — ADR: the four blocks are not fused, and why RRF belongs one layer down
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: an ADR recording that `/v1/context/resolve` does not fuse its blocks into
 one ranked list, that E3's "RRF merge" clause is struck, and where reciprocal
@@ -3671,13 +3671,19 @@ than a top-k; and an agent with a small context window has to decide which block
 to spend it on. The last is real and belongs to whichever task builds
 per-block budgets, not to a fusion nobody can audit.
 
-Also record the two things that *would* improve ranking and are not fusion:
-ordering within a block, and reporting how much of a block the item cap removed.
-Today a truncated block and a small block look identical.
+**One claim this entry made was false, and the ADR says so rather than
+inheriting it.** It asserted that a truncated block and a genuinely small one
+look identical. They do not: `_block_from_outcome` writes `truncated to N of M
+item(s)` into the block's `reason` and marks it `degraded`, and the receipt's arm
+row carries `truncated_by_cap` besides. The assembler had already closed that
+gap. What is genuinely open is ordering *within* a block -- the cap takes the
+arm's first N, so for an arm that does not rank, the cap removes arbitrary items
+and calls the rest the answer, and which arms rank is recorded nowhere.
 
 Acceptance:
     make doc-links
-    sh -c 'test -f .develop/adr/0011-*.md'
+    sh -c 'test -f .develop/adr/0011-blocks-are-not-fused.md'
+    make lint
 
 ### E3-T2 — The receipt says whether it is finished
 
