@@ -4424,7 +4424,7 @@ Acceptance:
 
 ### E4-T5 — ADR: materiality is not severity, and the word is already taken
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: decide what makes an incident *major*, on what evidence, and who can say
 so — before a clock depends on the answer.
@@ -4453,6 +4453,43 @@ Three things the ADR must settle:
 Acceptance:
     make doc-refs doc-links
     make all
+
+**Delivered as [ADR-0015](../adr/0015-materiality-is-not-severity.md), and there
+were two naming collisions rather than one.**
+
+`severity` was the known one. **`incident` is also taken, twice** — as a
+`LIFECYCLE_REFERENCE_KINDS` entry and as an `evidence_kind` in
+`memory_claim_provenance`'s CHECK constraint. In both it means an *external*
+operational incident that something points at or cites. So "auto-created
+incident case" would have given a word already carrying two meanings a third,
+one of which is enforced by the database. The governed object is a
+`reporting_obligation` — named for what is tracked rather than what triggered
+it, which composes with the existing meaning instead of fighting it.
+
+**On who classifies, the ADR splits the question the task posed as binary.**
+Automatic classification is refused as the *classifier* and kept as the
+*nominator*: crossing the blast-radius threshold creates the obligation in
+`open` with `materiality: unclassified` and starts a **nomination-age gauge**.
+Nominating says somebody should look; classifying starts a legal obligation, and
+a graph traversal is qualified for the first only. This also names the gap the
+task warned about — the delay between detection and classification is measured
+rather than unbounded, because that delay is itself the reportable one.
+
+`unclassified` is a state, not a null, for the reason `_declared_sensitivity`
+and migration 0069's `pending` default both exist: a missing value reads as "not
+applicable" to every filter, which is the permissive direction taken by
+omission.
+
+**The threshold placeholder is structural rather than a TODO.** Until a ratified
+set is installed, nomination runs but there is no automatic path to `major` at
+all. A TODO comment is invisible to an operator reading a dashboard that says
+`materiality: major`.
+
+The dissent is worth reading before E4-T6 starts: without thresholds there is no
+clock, and a fair reading is that E4's DORA half should be deferred wholesale
+rather than half-built against a placeholder. The counter — nomination, the
+obligation record and the gauge are useful anyway — is true, and is also exactly
+what somebody would say while building the wrong thing.
 
 ### E4-T6 — The notification clock, and why a missed deadline must be loud
 
