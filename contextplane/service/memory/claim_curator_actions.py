@@ -46,6 +46,7 @@ from contextplane.service.memory.confidence_decay import half_life_days
 from contextplane.service.memory.confidence_read import subject_change_profile
 from contextplane.service.memory.contest import detect_for_claim
 from contextplane.service.memory.predicate_churn import inspected_half_lives
+from contextplane.service.retrieval.embedding_index import project_claim
 from contextplane.types import Clock, TenantContext
 
 # Who may act on the queue's two curator decisions -- linking a subjectless
@@ -348,6 +349,22 @@ class _ClaimCuratorActionsMixin:
                 ),
                 {"cid": claim_id},
             )
+            # A discarded claim is no longer servable, so its vectors have to go
+            # -- the same call `close_superseded` and `mark_consolidated` make,
+            # for the same reason. Left behind they cannot produce a wrong
+            # answer, because every read filters on `status`; but each dead
+            # vector occupies a candidate slot in `ORDER BY vector <-> q LIMIT k`,
+            # which is a silent recall loss on the queries that do matter.
+            #
+            # A `staged` claim reaching here may well be indexed, so this is not
+            # defensive: `embedding_index.project_claim` described itself as
+            # "Called from the two places that change whether a claim is
+            # servable" while this was a third, and the vectors it left were
+            # bounded only by retention expiry.
+            #
+            # In the same transaction as the status write, so the row and the
+            # index cannot disagree if the request dies between them.
+            await project_claim(session, claim_id=claim_id, now=now)
             await self._audit(
                 session,
                 action=actions.CLAIM_DISCARDED,

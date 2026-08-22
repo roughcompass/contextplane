@@ -1067,6 +1067,39 @@ def _discard_service(
             return result
         if "status = 'rejected'" in sql:
             return result
+        # `discard` now re-projects the claim so its vectors leave the index
+        # (E3-T6). Inside the transaction the read sees the row it just wrote,
+        # so this returns the post-update shape: rejected, therefore not
+        # servable, therefore retracted. Returning the pre-update row would
+        # model a state the database never presents and would make the mock
+        # disagree with the thing it stands in for.
+        if "FROM memory_claims c WHERE c.claim_id = :claim_id" in sql:
+            mappings = MagicMock()
+            mappings.first = MagicMock(
+                return_value=None
+                if claim_row is None
+                else {
+                    "claim_id": (params or {}).get("claim_id"),
+                    # Derived from `claim_row` rather than restated, so the two
+                    # reads cannot describe different claims. The unlinked case
+                    # has no owning tenant, and `project_claim` skips the
+                    # retract for exactly that reason -- a detail this mock
+                    # would lose if the owner were hardcoded.
+                    "owning_tenant_id": claim_row.owning_tenant_id,
+                    "predicate": "observed_behavior",
+                    "value": "v",
+                    "status": "rejected",
+                    "consolidated_at": _NOW,
+                    "t_invalidated_at": None,
+                    "created_at": _NOW,
+                }
+            )
+            result.mappings = MagicMock(return_value=mappings)
+            return result
+        # The two deletes `retract` issues once the claim reads as unservable.
+        if "DELETE FROM embeddings" in sql or "DELETE FROM embedding_outbox" in sql:
+            result.fetchall = MagicMock(return_value=[])
+            return result
         if "INSERT INTO audit_log" in sql:
             return result
         raise AssertionError(f"unexpected SQL in test session: {sql}")
