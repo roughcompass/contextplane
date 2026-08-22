@@ -16,7 +16,7 @@ the reviewer can see both halves.
 
 ### E1 — Autonomy Envelope authority object
 
-**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane
+**Kind:** epic · **Status:** done · **Blocked by:** none · **Repo:** contextplane
 
 One authority object: an ARC artifact of kind `policy` whose applicability
 rules carry the delegated-authority matrix. Not `capability_contract` — that
@@ -81,6 +81,39 @@ and worth naming precisely: **replayed external content has no declared
 sensitivity at all**, and the envelope decision on that path therefore selects on
 `intent_kind` alone. A replay from a chat export and a replay from a payroll
 system are not the same handling risk, and today neither says which it is.
+
+**Closed by E1-T11.** Every clause of the body above is accounted for, walked one
+at a time rather than counted:
+
+- *One authority object, a `policy` artifact whose applicability rules carry the
+  matrix, and not `capability_contract`.* T6a and T6c, with the kind decision
+  recorded rather than assumed.
+- *A session `ProvenanceGrant` is a runtime projection, never a peer object.*
+  Holds by absence: no such object exists, which is the right way for that clause
+  to be true.
+- *Instant suspend — status flip, push-invalidated, sub-second SLO.* **Amended,
+  not built.** ADR-0007 struck the wall-clock number and replaced it with a bound
+  on operations: a suspended envelope authorises nothing that begins after the
+  flip commits, visible to the next decision on any replica because no replica
+  holds a copy. A sub-second figure would have been unobservable on the shipped
+  histogram, whose buckets stop at ten seconds.
+- *Governed widen — full ARC pipeline.* True by construction. There is no widen
+  operation; widening means binding to a different revision, and
+  `_assert_envelope_revision` requires that revision to be `active`, which only
+  ARC's authoring pipeline produces.
+- *Identities bind to IAM workload identities.* T6a, via
+  `WorkloadIdentity(issuer, subject)`.
+- *Stream-scoped declarations at source-namespace registration.* T11, and
+  narrower than it read — see above.
+- *Owned cold start: a template envelope approved by a named authority, posture
+  auto-accept-with-maximum-sampling.* T10.
+
+One stale sentence found while auditing and deliberately not edited, because
+amending an accepted decision is its own act: ADR-0007 says "the one published
+numeric SLO in the repository is webhook fan-out at p95 < 30s". That was already
+wrong when written — `tests/perf/test_arc_latency.py` publishes two more — and
+E2-T6 added a fourth. The claim it supports, that a wall-clock revocation SLO
+would be untested and unbucketed, is unaffected; the count is not.
 
 ### E2 — Hot observation write path
 
@@ -3362,7 +3395,7 @@ Acceptance:
 
 ### E1-T11 — A replayed stream declares its handling tier once, not per event
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: an operator registers a source namespace with a data-sensitivity tier and
 an action class, and the session-event write path puts them in the
@@ -3439,7 +3472,39 @@ handling tier. Build the sensitivity half first, then decide whether a
 per-stream action class is a real declaration or a field an operator would have
 to guess at. Recording a guess is worse than recording nothing.
 
+**Built as cut, with one addition the task did not anticipate and one premise it
+got wrong.**
+
+The addition: `arc_envelope_advisory_records` gains a nullable
+`data_sensitivity`. Without it the declaration was **unobservable** -- a record
+said a principal was refused and not what tier the matrix judged it at, so "was
+this act judged restricted because the stream said so, or because nobody had
+declared it" had no answer. Those are the same verdict and different facts, and
+only the second is somebody's omission to fix. It is also what let the wiring be
+proved end to end rather than asserted: the route test registers a stream and
+reads the tier back off the record, and fails when the lookup is stubbed out.
+Null means absent, never `restricted`, because storing the strict reading would
+erase exactly the distinction the column is for.
+
+The premise it got wrong: this entry said `arc_source_connectors` was the wrong
+home and stopped there. The closer call is `memory_source_governance`, which
+already registers *sources* and already declares a *tier* for them. It is still
+wrong, twice over. It keys on `sync_sources.source_id`, and a sync source is a
+connector we run -- it has a `schedule`, a `credentials_ref` and `sync_runs`
+recording us going to fetch. A replay exporter is not scheduled by us and holds
+no credential of ours; it authenticates and pushes. **Every registration surface
+in the tree describes something we fetch from, and this is the first that
+describes something that pushes to us**, which is why none of them fit. And its
+`authority_tier` is a different axis: how much a claim from a source is *worth*,
+against how carefully its content must be *treated*. A payroll export is highly
+sensitive and a weak authority; an owner's OpenAPI sync is the strongest
+authority and entirely public.
+
+The action-class half was dropped, as the entry allowed. A stream has one
+handling tier and does not have one action class, and a column an operator has to
+guess at records a guess.
+
 Acceptance:
     .venv/bin/python -m alembic upgrade head
     .venv/bin/python -m pytest tests/integration -q -k "source_namespace or envelope"
-    make all
+    make all && make test-integration

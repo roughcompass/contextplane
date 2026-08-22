@@ -39,6 +39,7 @@ from contextplane.service.memory.promotion_guardrails import GuardrailService
 from contextplane.service.memory.session_events import MemoryService
 from contextplane.service.memory.source_governance import SourceGovernanceService
 from contextplane.service.memory.source_ingest import SourceIngestService
+from contextplane.service.memory.source_namespaces import SourceNamespaceService
 from contextplane.types import Clock
 
 
@@ -59,6 +60,10 @@ class MemoryServices:
     capability_requests: CapabilityRequestService
     source_governance: SourceGovernanceService
     source_ingest: SourceIngestService
+    #: What a replayed stream's content is, in handling terms. Read on the
+    #: session-event write path so the envelope decision selects on a tier an
+    #: operator declared rather than on nothing.
+    source_namespaces: SourceNamespaceService
 
 
 def build_memory_services(
@@ -107,6 +112,7 @@ def build_memory_services(
         # owns the capability. One place the lifecycle rules live.
         capability_requests=CapabilityRequestService(session_factory, clock=clock),
         source_governance=source_governance,
+        source_namespaces=SourceNamespaceService(session_factory, clock=clock),
         # The connector run loop's one write path (see contextplane/ingest/runner.py):
         # governance admits the batch, claims stages it, and catalog provisions an
         # entity for an unresolved subject only when the source's own policy opted

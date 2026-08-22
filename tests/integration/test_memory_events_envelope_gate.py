@@ -199,3 +199,125 @@ async def test_the_envelope_gate_runs_before_the_pii_scan(
 
     assert response.status_code == 403, response.text
     assert response.json()["errors"][0]["code"] == "envelope_absent"
+
+
+# --- E1-T11: the stream's declared tier reaches the decision -------------------
+
+
+async def _register_stream(
+    factory: async_sessionmaker[AsyncSession],
+    tenant_id: uuid.UUID,
+    *,
+    system: str,
+    namespace: str,
+    tier: str,
+) -> None:
+    """Declare a stream's handling tier, the way an operator would."""
+    async with factory() as session, session.begin():
+        actor = (
+            await session.execute(text("SELECT actor_id FROM actors WHERE tenant_id = :t LIMIT 1"), {"t": tenant_id})
+        ).scalar_one()
+        await session.execute(
+            text(
+                "INSERT INTO memory_source_namespaces "
+                "(tenant_id, source_system, source_namespace, data_sensitivity, registered_by, reason) "
+                "VALUES (:t, :sys, :ns, :tier, :actor, :reason)"
+            ),
+            {
+                "t": tenant_id,
+                "sys": system,
+                "ns": namespace,
+                "tier": tier,
+                "actor": actor,
+                "reason": "declared by the operator for this test, at least five words long",
+            },
+        )
+
+
+async def _replay(client: AsyncClient, persona: TenantPersona, *, system: str, namespace: str) -> Response:
+    """One event declaring the stream it was replayed from."""
+    with patch_validator_for_actor(persona):
+        return await client.post(
+            f"/v1/memory/sessions/{uuid.uuid4()}/events",
+            json={
+                **_EVENT,
+                "external": {
+                    "source_system": system,
+                    "source_namespace": namespace,
+                    "external_record_id": f"msg-{uuid.uuid4()}",
+                    "observed_at": "2026-08-01T10:00:00Z",
+                },
+            },
+            headers=bearer_headers(tenant_slug=persona.slug),
+        )
+
+
+async def _recorded_tiers(factory: async_sessionmaker[AsyncSession], tenant_id: uuid.UUID) -> list[str | None]:
+    async with factory() as session:
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT data_sensitivity FROM arc_envelope_advisory_records "
+                    "WHERE tenant_id = :t ORDER BY decided_at"
+                ),
+                {"t": tenant_id},
+            )
+        ).all()
+    return [r[0] for r in rows]
+
+
+@pytest.mark.asyncio
+async def test_a_registered_stream_is_judged_at_the_tier_its_operator_declared(
+    gate: _Gate, factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """The whole point of the registration: the tier is looked up, not accepted.
+
+    The exporter says which stream an event came from; an operator says, once,
+    what that stream's content is. Taking the tier from the request instead would
+    make a payroll replay exactly as sensitive as its exporter felt like claiming.
+    """
+    client, persona, tenant_id = gate
+    await _register_stream(factory, tenant_id, system="chat", namespace="slack", tier="internal")
+
+    response = await _replay(client, persona, system="chat", namespace="slack")
+
+    assert response.status_code == 201, response.text
+    assert "internal" in await _recorded_tiers(factory, tenant_id)
+
+
+@pytest.mark.asyncio
+async def test_an_undeclared_stream_records_no_tier_rather_than_a_safe_looking_one(
+    gate: _Gate, factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """Null, not `restricted`, and the distinction is the point.
+
+    An absent tier is already read as most restrictive by the selection engine,
+    so the *decision* is the strict one either way. Writing `restricted` into the
+    record would make an operator's omission indistinguishable from a stream
+    somebody looked at and classified, and only one of those is a thing to fix.
+    """
+    client, persona, tenant_id = gate
+
+    response = await _replay(client, persona, system="chat", namespace="unregistered")
+
+    assert response.status_code == 201, response.text
+    assert await _recorded_tiers(factory, tenant_id) == [None]
+
+
+@pytest.mark.asyncio
+async def test_a_local_event_carries_no_stream_and_so_no_tier(
+    gate: _Gate, factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """The common case stays untouched.
+
+    An agent writing its own reasoning has no upstream stream to look up, so the
+    route performs no registry read and the manifest carries no tier -- which is
+    the same strict reading an unregistered stream gets, arrived at without a
+    query.
+    """
+    client, persona, tenant_id = gate
+
+    response = await _write(client, persona)
+
+    assert response.status_code == 201, response.text
+    assert await _recorded_tiers(factory, tenant_id) == [None]

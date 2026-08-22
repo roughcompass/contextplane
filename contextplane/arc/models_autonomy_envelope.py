@@ -115,6 +115,13 @@ class ArcEnvelopeAdvisoryRecord(Base):
     intent_kind: Mapped[str] = mapped_column(Text, nullable=False)
     session_id: Mapped[str] = mapped_column(Text, nullable=False)
 
+    #: The handling tier the matrix judged this act at. Nullable, and null means
+    #: the manifest carried none -- which the selection engine reads as the most
+    #: restrictive. Stored as null rather than as `restricted` so a reader can
+    #: tell a stream somebody classified from one nobody has: the same verdict,
+    #: and only one of them is an omission to fix.
+    data_sensitivity: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     decided_at: Mapped[datetime.datetime] = mapped_column(_TS, nullable=False)
 
 

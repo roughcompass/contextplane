@@ -81,11 +81,13 @@ _RECORD = text(
     """
     INSERT INTO arc_envelope_advisory_records (
         record_id, tenant_id, principal_issuer, principal_subject, verdict,
-        binding_id, revision_id, intent_kind, session_id, decided_at
+        binding_id, revision_id, intent_kind, session_id, decided_at,
+        data_sensitivity
     )
     VALUES (
         :record_id, :tenant_id, :issuer, :subject, :verdict,
-        :binding_id, :revision_id, :intent_kind, :session_id, :decided_at
+        :binding_id, :revision_id, :intent_kind, :session_id, :decided_at,
+        :data_sensitivity
     )
     """
 )
@@ -207,6 +209,13 @@ class AutonomyEnforcementService:
                             "intent_kind": str(manifest.intent_kind),
                             "session_id": manifest.session_id,
                             "decided_at": decision.decided_at,
+                            # Null when the manifest carried none, which the
+                            # selection engine reads as most restrictive.
+                            # Recorded as null rather than as `restricted` so a
+                            # reader can tell a declared tier from an absent one
+                            # -- the same verdict, and a different fact about
+                            # whose omission it was.
+                            "data_sensitivity": manifest.data_sensitivity,
                         },
                     )
                 await audit_outbox.emit(
