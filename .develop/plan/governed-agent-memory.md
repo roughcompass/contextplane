@@ -4290,7 +4290,7 @@ reviewer's policy ends up keyed on the wrong one.
 
 ### E5-T1 — ADR: which of E5's numbers can be governed, and which cannot yet
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: decide, before any of them is written, which E5 magnitudes enter the
 registry validated, which enter grandfathered, and which do not enter because
@@ -4310,6 +4310,40 @@ Acceptance:
     make doc-refs doc-links
     make all
 
+**Delivered as [ADR-0014](../adr/0014-derived-magnitudes-are-a-third-status.md),
+and the finding is sharper than this entry predicted.** The registry's status
+vocabulary has exactly two values, and **E5's sampling parameters fit neither**.
+
+`validated` demands four evidence fields because "a status without its evidence
+is a word, and the word is what a later reader would trust". `grandfathered`
+demands a reason because "an exemption nobody has to justify is one nobody will
+revisit". An acceptance-sampling parameter follows by arithmetic from a stated
+defect rate and consumer's risk: there is no held-out result, because it is not
+a prediction. Recording it `validated` would mean inventing a method and a
+result for a check nobody ran; recording it `grandfathered` would assert nobody
+checked, which is false in the other direction — the derivation *is* the check,
+and unlike every other entry it is reproducible by anybody with a calculator.
+
+So the ADR adds a third status, `derived`, with `derived_from` and `derivation`
+as its evidence fields, and generalises `requires_validated` to be satisfied by
+`validated` **or** `derived`, never by `grandfathered`.
+
+Two consequences for the tasks below. **Expected loss does not enter the
+registry at all** until a loss model exists — not even as `grandfathered`, which
+would make it look like the seven numbers that ship and order things while
+awaiting evidence. This one does not ship, so E5-T3 and E5-T6 rank on leverage
+and sampling and say so on the surface. And **E5-T3's anti-starvation magnitude
+is likely `grandfathered`**: an age weighting is a reasoned position, neither a
+derivation nor a measurement. This ADR does not make the registry mostly
+`derived`.
+
+The dissent is what to carry into E5-T2 and E5-T4: `derived` may launder an
+empirical assumption as arithmetic. The OC curve is exact only for a
+representative draw, and E5's queue is *ranked* and partly disposed of by
+policy — so the derivation risks being arithmetic about a lot that does not
+exist. The representativeness assumption belongs in `derived_from`, but an
+assumption in a field is weaker than one in a gate.
+
 ### E4-T2 — The quarantine state, and the revert that makes it usable
 
 **Kind:** task · **Status:** pending · **Blocked by:** E4-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
@@ -4322,17 +4356,41 @@ one. An operator who cannot undo a quarantine will not run it on a real
 incident, so the mechanism that has no revert is a mechanism nobody uses under
 the conditions it was built for.
 
-Bitemporal is the shipped idiom: `t_invalidated_at` closes a row without
-destroying it, which is what makes revert expressible at all. Reuse it rather
-than adding a `quarantined` boolean — a boolean records that something is
-quarantined and forgets when, by whom, and under which predicate, and all three
-are what an incident review asks for first.
+**Amended by [ADR-0016](../adr/0016-quarantine-is-a-materialised-state-on-its-own-column.md);
+this paragraph's original recommendation was a bypass and is struck.**
 
-Reuse the erasure/derivative propagation path for reaching embeddings. That path
-already exists, already reaches the index, and already has a story for what
-happens when propagation is late (`pending_overdue`, and the arms refuse to
-serve rather than serving stale). A second propagation path for quarantine would
-have to relearn all of it.
+It said: reuse `t_invalidated_at` rather than adding a flag. That is defeated by
+a query parameter. `_SERVABLE_AS_OF`'s `status` term is unconditional, but its
+`t_invalidated_at` term is **`as_of`-relative** — deliberately, since "a claim
+closed after the instant asked about was still believed then, which is the whole
+point of asking". And `as_of` is caller-supplied on both transports: a query
+parameter on `GET /v1/memory/claims`, an argument on the `query_claims` MCP
+tool. Quarantine a bad connector run at 14:00, and `query_claims(as_of="13:00")`
+serves every quarantined claim.
+
+**Follow `discard`'s shape instead.** It writes `status='rejected'` and "it never
+serves again" — unservable at every `as_of`, because that term is unconditional.
+Quarantine gets a dedicated `quarantined_at`, joined into `_SERVABLE_AS_OF` as
+an unconditional `AND c.quarantined_at IS NULL`, with the matching term in
+`_SERVABLE_STATUSES` so `project_claim` retracts the vector too. The
+rule-to-row ledger — which predicate closed which rows, when, by whom — is a
+side table read at apply, revert and audit, **never at read**. That answers what
+the struck paragraph was right to worry about: a bare boolean forgetting the
+provenance of the decision.
+
+Reuse the derivative propagation path for reaching embeddings —
+`enqueue_for_sources(..., operation=OPERATION_REBUILD,
+trigger=TRIGGER_POLICY_CHANGE)`, which needs no new vocabulary and no tombstone,
+and whose revert is the identical call.
+
+**A second claim struck.** This entry said that path "already has a story for
+what happens when propagation is late (`pending_overdue`, and the arms refuse to
+serve rather than serving stale)". It does not cover this:
+`register_derivative` defaults `blocking=False`, `register_claim_artefact` never
+passes it, and `arms.py` already records that a `blocking_only` guard over
+`vector` "would never fire". This does not damage the design — correctness
+commits synchronously and only recall is async — but a reviewer who accepts that
+sentence will believe a guard is protecting something it cannot reach.
 
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "quarantine"
@@ -4390,7 +4448,7 @@ Acceptance:
 
 ### E4-T5 — ADR: materiality is not severity, and the word is already taken
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: decide what makes an incident *major*, on what evidence, and who can say
 so — before a clock depends on the answer.
@@ -4419,6 +4477,43 @@ Three things the ADR must settle:
 Acceptance:
     make doc-refs doc-links
     make all
+
+**Delivered as [ADR-0015](../adr/0015-materiality-is-not-severity.md), and there
+were two naming collisions rather than one.**
+
+`severity` was the known one. **`incident` is also taken, twice** — as a
+`LIFECYCLE_REFERENCE_KINDS` entry and as an `evidence_kind` in
+`memory_claim_provenance`'s CHECK constraint. In both it means an *external*
+operational incident that something points at or cites. So "auto-created
+incident case" would have given a word already carrying two meanings a third,
+one of which is enforced by the database. The governed object is a
+`reporting_obligation` — named for what is tracked rather than what triggered
+it, which composes with the existing meaning instead of fighting it.
+
+**On who classifies, the ADR splits the question the task posed as binary.**
+Automatic classification is refused as the *classifier* and kept as the
+*nominator*: crossing the blast-radius threshold creates the obligation in
+`open` with `materiality: unclassified` and starts a **nomination-age gauge**.
+Nominating says somebody should look; classifying starts a legal obligation, and
+a graph traversal is qualified for the first only. This also names the gap the
+task warned about — the delay between detection and classification is measured
+rather than unbounded, because that delay is itself the reportable one.
+
+`unclassified` is a state, not a null, for the reason `_declared_sensitivity`
+and migration 0069's `pending` default both exist: a missing value reads as "not
+applicable" to every filter, which is the permissive direction taken by
+omission.
+
+**The threshold placeholder is structural rather than a TODO.** Until a ratified
+set is installed, nomination runs but there is no automatic path to `major` at
+all. A TODO comment is invisible to an operator reading a dashboard that says
+`materiality: major`.
+
+The dissent is worth reading before E4-T6 starts: without thresholds there is no
+clock, and a fair reading is that E4's DORA half should be deferred wholesale
+rather than half-built against a placeholder. The counter — nomination, the
+obligation record and the gauge are useful anyway — is true, and is also exactly
+what somebody would say while building the wrong thing.
 
 ### E4-T6 — The notification clock, and why a missed deadline must be loud
 
@@ -5044,3 +5139,95 @@ author is the person most likely to reach for the stronger word.
 
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+## Task decomposition — thirteenth wave (three defects found while judging E4-T1)
+
+None of these is E4. All three were found by reading the servability and
+propagation machinery closely enough to decide ADR-0016, and all three are
+pre-existing. Filed separately so a quarantine PR does not quietly carry three
+unrelated fixes.
+
+### E3-T6 — `discard` leaves the claim's vectors in the index
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a discarded claim's vectors leave the index, as a superseded or
+unconsolidated claim's already do.
+
+`ClaimService.discard` sets `status='rejected'` on a claim that may be `staged`
+and consolidated — that is, currently indexed — and never calls `project_claim`.
+The module does not import it. `close_superseded` and `mark_consolidated` both
+do.
+
+`embedding_index.py` says `project_claim` is *"Called from the two places that
+change whether a claim is servable"*. `discard` is a third, and the docstring
+has been counting wrong.
+
+**Not a correctness leak** — every read filters on `status`, so a rejected claim
+cannot be served. It is exactly the recall loss retraction exists to prevent:
+*"every dead vector in the index occupies a candidate slot that a live one could
+have used"*, bounded only by retention expiry. One call to fix, and the
+docstring's count to correct with it.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "discard or embedding"
+    make all
+
+### E3-T7 — The conformance test that holds the servability rules together does not exist
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the several spellings of "this claim is servable" are held to agreeing by
+a test rather than by a sentence claiming a test exists.
+
+`embedding_index.py` states: *"A conformance test holds them to agreeing rather
+than a shared string pretending they are one rule."* **No such test exists.**
+Nothing under `tests/` references `_SERVABLE_STATUSES` or `_SERVABLE_AS_OF`, or
+asserts the two agree.
+
+A docstring asserting a guarantee nobody built is worse than silence, because
+the next author reads it and stops looking — which is how this was found, by
+someone checking whether a third term could safely be added.
+
+There are three spellings today: `_SERVABLE_STATUSES` in `embedding_index.py`,
+`_SERVABLE_AS_OF` in `claim_serving.py`, and an inline variant in
+`curation_queue.py`. **The third one should differ and the test must say so**, in
+the entry rather than as a discovered surprise: an operator must still see a
+discarded or quarantined claim in the curation queue, so the queue's predicate is
+deliberately not the serving predicate. A test that forced all three to match
+would be wrong, and a test that ignored the third would be checking two things
+that are already in one file.
+
+Worth doing before E4-T2, which adds a fourth term to a rule currently
+synchronised by prose.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/conformance -q -k "servable"
+    make all
+
+### E3-T8 — A third receipt read nobody has listed, in the list's own docstring
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the overdue-propagation guard covers the receipt reads it is supposed to,
+and the set is derived rather than hand-maintained.
+
+`arms.py` names `ContextReceiptService.get` and `.exclusions_for` as unguarded by
+`pending_overdue`. `.arms_for` is the same shape, joins the same receipt, and is
+on neither the list nor the guard.
+
+The docstring beside that list already makes this task's argument: *"Twice now
+this check was wired on the one path in front of somebody -- documented as
+covering 'the serving paths', plural, and covering one -- and both times the miss
+was found by a reader who went looking for the set."* This is the third time,
+found the same way, on the list that records the first two.
+
+So the fix is not only to add `.arms_for`. **A hand-maintained list of read
+paths has now been wrong three times**, and the entry should decide whether the
+set can be derived — every public read on the service, or every method touching
+a receipt table — rather than curated. If it cannot, say why, because the next
+occurrence is otherwise already scheduled.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "overdue or receipt"
+    make all
