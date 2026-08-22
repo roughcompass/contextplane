@@ -4656,7 +4656,7 @@ assumption in a field is weaker than one in a gate.
 
 ### E4-T2 — The quarantine state, and the revert that makes it usable
 
-**Kind:** task · **Status:** pending · **Blocked by:** E4-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E4-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: a provenance predicate quarantines the claims it matches, and one
 statement puts them back.
@@ -4705,6 +4705,39 @@ sentence will believe a guard is protecting something it cannot reach.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "quarantine"
     make all
+
+**Delivered.** Migration 0071 adds `quarantined_at` to `memory_claims`, read
+**unconditionally** in `_SERVABLE_AS_OF` and in `project_claim`, plus a
+`claim_quarantines` ledger and a `claim_quarantine_members` join table.
+`QuarantineService` applies, previews and reverts.
+
+Four decisions worth carrying forward, each with the test that pins it:
+
+- **Revert restores the recorded membership, never a re-run of the predicate.**
+  The graph moves, so a claim written after the quarantine and matching the same
+  predicate was never withheld — and revert must not claim to restore it.
+- **A claim held by a second, unreverted quarantine stays withheld.** Otherwise
+  reverting yesterday's incident republishes what today's is withholding.
+- **A predicate matching nothing is refused rather than recorded.** A quarantine
+  that withheld nothing reads later as one that was tried and worked.
+- **`apply` does not overwrite an existing `quarantined_at`.** Relabelling
+  content as withheld later than it was would make the earlier quarantine's
+  revert restore something the later one still means to withhold.
+
+The selector vocabulary is **closed** — connector run, extractor version,
+namespace prefix — and each maps to an index that already exists. Left open, an
+operator could withhold by confidence or by author, which are not provenance
+statements and are ways to make content disappear for a reason nobody wrote
+down.
+
+**E4-T3 is not done by this.** `preview` returns the *match set*, which is what
+the predicate reaches directly. The blast radius — what depends on those claims
+— is `get_blast_radius`, and wiring it is still that task.
+
+Not asserted here, deliberately: that the vectors leave the index. Correctness
+commits with the column write in the same transaction; the propagation enqueue
+is a recall concern and is asynchronous by design, so asserting index state here
+would either test the drain or encode a race.
 
 ### E4-T3 — The preview is `get_blast_radius`, not a second traversal
 

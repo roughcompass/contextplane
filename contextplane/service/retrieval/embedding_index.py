@@ -63,6 +63,7 @@ SELECT c.claim_id,
        c.value_jsonb AS value,
        c.status,
        c.consolidated_at,
+       c.quarantined_at,
        c.t_invalidated_at,
        c.created_at
   FROM memory_claims c
@@ -341,6 +342,7 @@ async def project_claim(session: AsyncSession, *, claim_id: uuid.UUID, now: date
         row["owning_tenant_id"] is not None
         and row["consolidated_at"] is not None
         and row["status"] in _SERVABLE_STATUSES
+        and row["quarantined_at"] is None
         and row["t_invalidated_at"] is None
     )
 
