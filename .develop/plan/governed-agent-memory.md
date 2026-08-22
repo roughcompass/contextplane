@@ -4290,7 +4290,7 @@ reviewer's policy ends up keyed on the wrong one.
 
 ### E5-T1 — ADR: which of E5's numbers can be governed, and which cannot yet
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: decide, before any of them is written, which E5 magnitudes enter the
 registry validated, which enter grandfathered, and which do not enter because
@@ -4309,6 +4309,40 @@ true one.
 Acceptance:
     make doc-refs doc-links
     make all
+
+**Delivered as [ADR-0014](../adr/0014-derived-magnitudes-are-a-third-status.md),
+and the finding is sharper than this entry predicted.** The registry's status
+vocabulary has exactly two values, and **E5's sampling parameters fit neither**.
+
+`validated` demands four evidence fields because "a status without its evidence
+is a word, and the word is what a later reader would trust". `grandfathered`
+demands a reason because "an exemption nobody has to justify is one nobody will
+revisit". An acceptance-sampling parameter follows by arithmetic from a stated
+defect rate and consumer's risk: there is no held-out result, because it is not
+a prediction. Recording it `validated` would mean inventing a method and a
+result for a check nobody ran; recording it `grandfathered` would assert nobody
+checked, which is false in the other direction — the derivation *is* the check,
+and unlike every other entry it is reproducible by anybody with a calculator.
+
+So the ADR adds a third status, `derived`, with `derived_from` and `derivation`
+as its evidence fields, and generalises `requires_validated` to be satisfied by
+`validated` **or** `derived`, never by `grandfathered`.
+
+Two consequences for the tasks below. **Expected loss does not enter the
+registry at all** until a loss model exists — not even as `grandfathered`, which
+would make it look like the seven numbers that ship and order things while
+awaiting evidence. This one does not ship, so E5-T3 and E5-T6 rank on leverage
+and sampling and say so on the surface. And **E5-T3's anti-starvation magnitude
+is likely `grandfathered`**: an age weighting is a reasoned position, neither a
+derivation nor a measurement. This ADR does not make the registry mostly
+`derived`.
+
+The dissent is what to carry into E5-T2 and E5-T4: `derived` may launder an
+empirical assumption as arithmetic. The OC curve is exact only for a
+representative draw, and E5's queue is *ranked* and partly disposed of by
+policy — so the derivation risks being arithmetic about a lot that does not
+exist. The representativeness assumption belongs in `derived_from`, but an
+assumption in a field is weaker than one in a gate.
 
 ### E4-T2 — The quarantine state, and the revert that makes it usable
 
@@ -4390,7 +4424,7 @@ Acceptance:
 
 ### E4-T5 — ADR: materiality is not severity, and the word is already taken
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: decide what makes an incident *major*, on what evidence, and who can say
 so — before a clock depends on the answer.
@@ -4419,6 +4453,43 @@ Three things the ADR must settle:
 Acceptance:
     make doc-refs doc-links
     make all
+
+**Delivered as [ADR-0015](../adr/0015-materiality-is-not-severity.md), and there
+were two naming collisions rather than one.**
+
+`severity` was the known one. **`incident` is also taken, twice** — as a
+`LIFECYCLE_REFERENCE_KINDS` entry and as an `evidence_kind` in
+`memory_claim_provenance`'s CHECK constraint. In both it means an *external*
+operational incident that something points at or cites. So "auto-created
+incident case" would have given a word already carrying two meanings a third,
+one of which is enforced by the database. The governed object is a
+`reporting_obligation` — named for what is tracked rather than what triggered
+it, which composes with the existing meaning instead of fighting it.
+
+**On who classifies, the ADR splits the question the task posed as binary.**
+Automatic classification is refused as the *classifier* and kept as the
+*nominator*: crossing the blast-radius threshold creates the obligation in
+`open` with `materiality: unclassified` and starts a **nomination-age gauge**.
+Nominating says somebody should look; classifying starts a legal obligation, and
+a graph traversal is qualified for the first only. This also names the gap the
+task warned about — the delay between detection and classification is measured
+rather than unbounded, because that delay is itself the reportable one.
+
+`unclassified` is a state, not a null, for the reason `_declared_sensitivity`
+and migration 0069's `pending` default both exist: a missing value reads as "not
+applicable" to every filter, which is the permissive direction taken by
+omission.
+
+**The threshold placeholder is structural rather than a TODO.** Until a ratified
+set is installed, nomination runs but there is no automatic path to `major` at
+all. A TODO comment is invisible to an operator reading a dashboard that says
+`materiality: major`.
+
+The dissent is worth reading before E4-T6 starts: without thresholds there is no
+clock, and a fair reading is that E4's DORA half should be deferred wholesale
+rather than half-built against a placeholder. The counter — nomination, the
+obligation record and the gauge are useful anyway — is true, and is also exactly
+what somebody would say while building the wrong thing.
 
 ### E4-T6 — The notification clock, and why a missed deadline must be loud
 
@@ -4780,7 +4851,7 @@ for, and in two cases makes it smaller.
 
 ### E11-T1 — ADR: an explorer that recomputes is the differencing attack
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: decide whether E11's aggregates read a stored series or compute live —
 before any screen is built, because the two have different disclosure
@@ -4818,6 +4889,28 @@ particular reads cannot participate in a difference. Prefer the first.
 Acceptance:
     make doc-refs doc-links
     make all
+
+**Delivered as [ADR-0013](../adr/0013-an-explorer-that-recomputes-is-the-attack.md).**
+The aggregates read the stored series; they do not compute live.
+
+Two refinements the writing produced. **The receipts half is unaffected and
+stays live** — a receipt records one resolution rather than an aggregate over a
+population, so reading it twice discloses nothing that reading it once did not.
+Folding it into this decision would have made E11-T2 harder for no gain.
+
+And **a metric E11 wants that is not in `AGGREGATE_METRICS` is a writer change,
+not a reader change.** That set is closed so a metric cannot be computed by one
+pass and forgotten by the next, and adding a live computation beside the stored
+series to cover a gap would reintroduce the recompute while looking like a small
+convenience. It also inherits a retention question, since `_SOURCE_CLASS_FOR`
+makes an aggregate carry its source's record class — friction in the right
+place, because an aggregate outliving its sources is a breach no floor detects.
+
+The dissent is worth reading before E11-T2 starts: this generalises from one
+writer to a whole epic, and a metric with no per-actor contribution arguably
+cannot leak by subtraction at all. The honest fix is a per-metric analysis
+nobody has done; the ADR takes the conservative line because being wrong in the
+permissive direction is silent.
 
 ### E11-T2 — The receipts explorer, over endpoints that already exist
 
