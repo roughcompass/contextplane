@@ -52,7 +52,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 
-from contextplane.api.mcp.server import create_contextplane_mcp_server, create_mcp_app
+from contextplane.api.mcp.server import SURFACE_CORE, create_contextplane_mcp_server, create_mcp_app
 from contextplane.api.routers import (
     admin_audit,
     admin_operational_health,
@@ -447,6 +447,16 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
         notifications=app.state.notifications,
         includes=app.state.includes,
         workspace_service=workspace_svc,
+        # The default connection exposes the core verbs. This is the one place a
+        # deployment decides that, and it is here rather than defaulted in the
+        # factory because the factory is also what a test constructs directly to
+        # exercise one extended tool -- a test asking for a server is not a
+        # deployment serving agents, and conflating them would make every such
+        # test pass `surface="full"` to say something it does not mean.
+        #
+        # E7-T3 makes this per principal, from the autonomy envelope. Until then
+        # a deployment gets the core set and nothing widens it.
+        surface=SURFACE_CORE,
     )
     mcp_router = create_mcp_app(server=contextplane_mcp_server, parent_app=app)
     app.mount("/mcp", mcp_router)
