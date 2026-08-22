@@ -9,22 +9,28 @@ whole design assumes service-global plumbing counters.
 
 **On the gate.** `admin`, which in this API means *tenant* administrator; there is
 no service-operator identity in the REST surface, so the authorized-consumer set
-resolves to the one identity that exists here. That is safe in a way it would not
-be for a raw read: the floors are enforced where the aggregate is constructed, so
-an admin reading their own tenant's figures gets the same suppression everybody
-else does. No cross-tenant aggregate exists to be reached from here at all.
+resolves to the one identity that exists here. No cross-tenant aggregate exists
+to be reached from here at all.
+
+That gate used to rest on something stronger: the floors were enforced where the
+aggregate was constructed, so an admin reading their own tenant's figures got the
+same suppression everybody else did. that decision removed the floors, and the
+authorization is now the whole of the protection rather than its outer layer.
 
 **Every response carries what is needed to read it correctly.** The window, the
-denominator, the classification, and the floors in force are required fields, not
-annotations. A rate served without its denominator is read as a count; a partial
-total served without its label is read as the truth; and a suppressed cell served
-without the floors looks like a gap in the data rather than a rule being applied.
+denominator and the classification are required fields, not annotations — a rate
+served without its denominator is read as a count. `floors`, `suppressed`,
+`partial` and `withheld` are gone from the response with the mechanism they
+described.
 
-**What this surface deliberately cannot serve.** There is no per-actor path, no
-ranking, no ordering by value, and no cohort finer than the tenant. Those are not
-missing features — individual surveillance and team-performance evaluation are
-forbidden uses, so the absence is the design, and a conformance gate asserts it
-rather than trusting this docstring.
+**What this surface does not serve, which is now a property of these three
+routes rather than a policy.** There is no per-actor path, no ranking, and no
+ordering by value. That used to be a rule the whole module enforced —
+"individual surveillance and team-performance evaluation are forbidden uses" —
+and that decision rescinded it. What remains is that these routes do not offer those
+shapes; nothing structural prevents a future one from doing so, and the
+conformance gate that asserts today's absence is a pin on this surface, not a
+guarantee about the system.
 """
 
 from __future__ import annotations
@@ -61,34 +67,19 @@ DEFAULT_WINDOW_DAYS = 30
 SERVED_METRICS: tuple[str, ...] = feedback_reads.FEEDBACK_METRICS + learning_reads.LEARNING_METRICS
 
 
-class FloorsOut(BaseModel):
-    """The thresholds in force, served so a suppressed cell is legible."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    min_actors: int = Field(description="Minimum distinct contributors before a cell may carry a value.")
-    min_events: int = Field(description="Minimum events before a cell may carry a value.")
-
-
 class CellOut(BaseModel):
-    """One reported figure, or the record that one was withheld.
+    """One reported figure.
 
-    The counts behind a suppressed cell are deliberately absent from this model.
-    Serving them would defeat the suppression: an actor count of two is the
-    disclosure the floor exists to prevent.
+    `FloorsOut` and `suppressed` are gone with the floors they described
+    `value` is no longer nullable: there is no state in which a cell
+    exists without its figure, so a null here would have no meaning left to
+    carry.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     label: str
-    value: int | None = Field(
-        description=(
-            "Null exactly when the cell was suppressed for falling below a floor. "
-            "Not zero: a withheld cell is not an empty one, and reporting it as zero "
-            "would understate every total computed from this breakdown."
-        )
-    )
-    suppressed: bool
+    value: int = Field(description="The measured figure for this cell.")
 
 
 class BreakdownOut(BaseModel):
@@ -106,25 +97,17 @@ class BreakdownOut(BaseModel):
     window_start: datetime.datetime
     window_end: datetime.datetime
     classification: str
-    floors: FloorsOut
     cells: list[CellOut]
-    total: int | None = Field(
+    total: int = Field(
         description=(
-            "Recomputed over reported cells only, never the true population. With a "
-            "cell withheld, serving the real total would let a reader recover the "
-            "withheld figure by subtraction."
+            "The total over every cell. It used to be recomputed over reported cells "
+            "only, because serving the real population beside a withheld cell lets a "
+            "reader recover the withheld figure by subtraction; with nothing withheld "
+            "there is nothing to subtract toward."
         )
     )
-    denominator: int | None = Field(
+    denominator: int = Field(
         description="The population the total is over, named for a reader who would otherwise infer a rate."
-    )
-    partial: bool = Field(description="True when at least one cell was suppressed, so the total is over a subset.")
-    withheld: bool = Field(
-        description=(
-            "True when the whole breakdown was withheld because its remainder could "
-            "not be combined into a bucket clearing the floors. Distinct from every "
-            "cell being suppressed: not even the shape of the distribution is served."
-        )
     )
 
 
@@ -134,11 +117,13 @@ def _window(days: int, now: datetime.datetime) -> tuple[datetime.datetime, datet
     return now - datetime.timedelta(days=span), now
 
 
-def _as_out(breakdown: learning_reads.Breakdown, floors: learning_reads.Floors) -> BreakdownOut:
-    """Project a floored breakdown onto the response model.
+def _as_out(breakdown: learning_reads.Breakdown) -> BreakdownOut:
+    """Project a breakdown onto the response model.
 
-    The projection is where the counts stop travelling: `Cell` keeps them so a
-    recompute can re-test the floors, and `CellOut` has nowhere to put them.
+    The projection is still where the counts stop travelling. `Cell` keeps
+    `actor_count` and `event_count` because a reader of the service layer may
+    want to know how much a figure rests on; `CellOut` does not serve them, and
+    widening it is a decision rather than a tidy-up.
     """
     return BreakdownOut(
         metric=breakdown.metric,
@@ -146,12 +131,9 @@ def _as_out(breakdown: learning_reads.Breakdown, floors: learning_reads.Floors) 
         window_start=breakdown.window_start,
         window_end=breakdown.window_end,
         classification=AGGREGATE_CLASSIFICATION,
-        floors=FloorsOut(min_actors=floors.min_actors, min_events=floors.min_events),
-        cells=[CellOut(label=cell.label, value=cell.value, suppressed=cell.suppressed) for cell in breakdown.cells],
+        cells=[CellOut(label=cell.label, value=cell.value) for cell in breakdown.cells],
         total=breakdown.total,
         denominator=breakdown.denominator,
-        partial=breakdown.partial,
-        withheld=breakdown.withheld,
     )
 
 
@@ -187,31 +169,17 @@ async def read_aggregates(
     now = container.clock.now()
     window_start, window_end = _window(window_days, now)
 
-    floors = learning_reads.Floors()
-    feedback = feedback_reads.FeedbackReadService(container.session_factory, floors=floors)
-    learning = learning_reads.LearningReadService(container.session_factory, floors=floors)
+    feedback = feedback_reads.FeedbackReadService(container.session_factory)
+    learning = learning_reads.LearningReadService(container.session_factory)
 
     out: list[BreakdownOut] = []
     for metric in feedback_reads.FEEDBACK_METRICS:
         breakdown = await feedback.breakdown(ctx, metric, window_start=window_start, window_end=window_end)
-        out.append(_as_out(breakdown, floors))
+        out.append(_as_out(breakdown))
 
+    out.append(_as_out(await learning.claim_aging(ctx, now=now, window_start=window_start, window_end=window_end)))
     out.append(
-        _as_out(
-            await learning.claim_aging(ctx, now=now, window_start=window_start, window_end=window_end),
-            floors,
-        )
+        _as_out(await learning.contradiction_backlog(ctx, now=now, window_start=window_start, window_end=window_end))
     )
-    out.append(
-        _as_out(
-            await learning.contradiction_backlog(ctx, now=now, window_start=window_start, window_end=window_end),
-            floors,
-        )
-    )
-    out.append(
-        _as_out(
-            await learning.promotion_yield(ctx, window_start=window_start, window_end=window_end),
-            floors,
-        )
-    )
+    out.append(_as_out(await learning.promotion_yield(ctx, window_start=window_start, window_end=window_end)))
     return out

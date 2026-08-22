@@ -5699,6 +5699,7 @@ Acceptance:
 
 ### E20-T2 — Remove the floor: `learning_reads.py` and every consumer
 
+**Kind:** task · **Status:** done · **Blocked by:** E20-T1 · **Hotspot:** yes — service/memory/ · **Repo:** contextplane
 **Kind:** task · **Status:** pending · **Blocked by:** E20-T1 · **Hotspot:** yes — service/memory/ · **Repo:** contextplane
 
 Goal: `contextplane/service/memory/learning_reads.py` loses `Floors`, `FloorsTooLoose`, `MIN_COHORT_ACTORS`, `MIN_CELL_EVENTS`, `Cell.suppressed`/`Cell.value`'s null-on-suppress behavior, and `build_breakdown`'s remainder-combination/withholding logic — replaced by a `Breakdown` that always carries every cell's true value, no `partial`/`withheld` states (a breakdown is either built or the query returned no rows), and `LearningReadService`'s three methods (`claim_aging`, `contradiction_backlog`, `promotion_yield`) construct cells directly from query rows with no floor test. The module docstring is rewritten to state the module's new, narrower claim: these are tenant-scope learning aggregates with no suppression, and the sentence "individual surveillance and team-performance evaluation are both forbidden" is deleted, not softened, per ADR-0017.
@@ -5716,6 +5717,72 @@ Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "learning_reads or aggregates"
     make test-unit && make lint && make typecheck
 
+**Delivered. Three things the entry's consumer list did not name, and all three
+were load-bearing.**
+
+**The floor was also a database CHECK, and removing only the code half would
+have broken the writer on real data.** Migration 0043 created
+`privacy_aggregates` with `CONSTRAINT ck_aggregate_meets_the_floor CHECK
+(suppressed OR actor_count >= 5)` — the same rule, written where no application
+change can reach it. With the writer no longer suppressing and no longer zeroing
+`actor_count`, a window covering four contributors offers `suppressed = false`
+with `actor_count = 4` and the insert is refused. **The unit tests could not see
+it** — they drive a fake session — so this would have surfaced as an aggregate
+worker failing in production. Migration 0072 drops it. Found by taking this
+entry's own acceptance grep literally rather than treating it as a formality.
+
+`ck_aggregate_suppressed_carries_no_value` is deliberately kept: `suppressed`
+did not disappear with the floor, it changed cause, and a cell withheld by the
+differencing rule must still carry no value or that defence leaks through the
+column it withheld.
+
+**The OpenAPI contract changes.** `BreakdownOut` loses `floors`, `partial` and
+`withheld`; `CellOut` loses `suppressed` and its `value` stops being nullable;
+`FloorsOut` is deleted outright. `openapi.json` is regenerated, and
+`test_openapi_drift` is what caught it. Checked before assuming: the dashboard
+does **not** consume these schemas — its `withheld` references are receipt
+exclusions, a different concept — so nothing in `contextplane-ui` breaks.
+
+**Fifty tests across three files covered the floors**, and separating them was
+most of the work rather than a tidy-up. Thirteen died with the mechanism; the
+rest survive, including every structural absence check (no route names an actor,
+none takes a cohort parameter, the response model carries no contributor counts).
+
+Those survivors now assert something weaker, and the files say so: they are
+properties of *these three routes*, not a policy the system enforces. A failure
+means somebody widened this surface, not that they breached a rule — and nothing
+outside those files prevents a new surface from doing what these do not.
+
+**The differencing defence survived intact, which was the thing most at risk.**
+`signals/aggregates.py` still withholds a cell whose recompute disagrees with a
+published figure; what changed is that `suppressed` now enters the upsert as
+`False` always and is driven purely by that statement, rather than being seeded
+by a floor verdict from the writer. The relevant unit test —
+"the database can withhold a cell this side considers reportable" — passes
+unchanged.
+
+**One behaviour changed shape rather than disappearing.** An empty window used
+to be stored as a *withheld* cell with a null value, because an empty breakdown
+failed the floors. It is now stored as a breakdown with no cells and a total of
+zero. The property the test exists for — "computed, nothing to report" is
+distinguishable from "never computed" — is unchanged.
+
+**The dissent's warning is now the live state.** ADR-0017 offered
+authorization-plus-justification as the replacement for suppression, and nothing
+in this task built it. Per-actor aggregation is constructible and the substitute
+is named but absent. E20's later tasks should not treat that as settled.
+
+### E20-T3 — Migration: accuracy index and three new tables
+
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+
+Goal: one Alembic revision, `contextplane/storage/migrations/versions/0073_agent_accuracy_and_instructions.py` (`down_revision = "0072_drop_the_aggregate_actor_floor"`), that:
+
+*Renumbered from the 0071/0070 this entry was written against.* Both were taken
+while E20 was being decomposed — 0071 by E4-T2's quarantine column and ledger,
+0072 by E20-T2's drop of the aggregate actor floor, which turned out to be a
+database CHECK as well as application code. The head moves; the entry's content
+does not.
 ### E20-T3 — Migration: accuracy index and three new tables
 
 **Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
@@ -5736,6 +5803,7 @@ Acceptance:
 
 ### E20-T4 — `AgentAccuracyService`: per-author accuracy, on read
 
+**Kind:** task · **Status:** done · **Blocked by:** E20-T2, E20-T3 · **Hotspot:** no · **Repo:** contextplane
 **Kind:** task · **Status:** pending · **Blocked by:** E20-T2, E20-T3 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `contextplane/service/memory/agent_accuracy.py`, structurally parallel to `calibration.py` (frozen dataclasses + pure aggregation + a thin service over `session_factory`), not to `learning_reads.py` (no `Floors` — none apply after E20-T1/T2).
@@ -5746,6 +5814,37 @@ Acceptance:
     .venv/bin/python -m pytest tests/unit -q -k "agent_accuracy"
     .venv/bin/python -m pytest tests/integration -q -k "agent_accuracy"
     make test-unit && make lint && make typecheck
+
+**Delivered.** One statement, grouped or not, with the `undecidable` split done
+in `AccuracyGroup` rather than in SQL — one pass, and the arithmetic where a
+reader can see it.
+
+**The scoping decision is proved by exactly one test, deliberately.**
+`test_accuracy_is_scoped_to_the_tenant_that_ran_the_agent` seeds two claims by
+the same agent in the same window, one about this tenant's subject and one about
+another tenant's. Both were written by this tenant's agent, so both belong in
+its figure. Mutation-checked: swapping to `owning_tenant_id` fails that test and
+**passes the other seven** — including the cross-tenant isolation test, which is
+why "another tenant's agent does not appear" is not sufficient evidence that the
+scoping is right.
+
+Two shapes worth carrying into E20-T5 and T6:
+
+- **`rate` is `None`, never `0.0`, when nothing was decided.** A window whose
+  every verdict was undecidable has an *unknown* accuracy, and zero is a
+  specific and wrong claim a caller would act on. Being wrong every time is
+  `0.0`; the two are different facts.
+- **`overall` is summed from the groups, not queried separately.** Two
+  statements over one window would eventually differ by a filter added to one of
+  them, so disagreement is made unrepresentable rather than tested for.
+
+**No confidence interval, deliberately.** Four of five is 80% and so is eight
+hundred of a thousand. `n_decided` travels with every rate so the difference is
+visible — weaker than an interval, and what can be justified without deciding
+what a "reliable" rate means, which this module has no basis to answer.
+
+E20-T3's migration is 0073 rather than the 0071 the entry named; both earlier
+numbers were taken while E20 was being decomposed.
 
 ### E20-T5 — `AgentAutonomyService`: intervention-rate from session events
 

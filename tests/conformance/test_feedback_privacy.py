@@ -1,22 +1,27 @@
-"""What the aggregate surface may serve, and what must not be constructible.
+"""What this aggregate surface serves, and what it still does not.
 
-These aggregates are computed over people's reports, so the interesting assertions
-are the negative ones. A floor that is enforced in one of two modules, a total
-published beside a suppressed cell, or one per-actor endpoint added later, each
-defeats the whole design while every positive test keeps passing.
+**Most of this file used to be about floors, and eight of its tests went with
+them.** The floor decision removed `MIN_COHORT_ACTORS`, `MIN_CELL_EVENTS`, suppression,
+remainder-combination and partial totals, uniformly and for every actor kind.
+Every assertion about those is gone rather than softened.
 
-So this gate is mostly about absence, and absence has to be checked structurally.
-A test that exercised the paths somebody wrote would say nothing about the path
-somebody adds next month, which is exactly when a leaderboard appears. The route
-table and the response models are therefore read directly, and the floor rules are
-tested at the one place both surfaces import them from.
+What remains is worth keeping and is a smaller claim than it was. These are
+still structural absence checks -- no route names an actor, none takes a cohort
+parameter, the response model carries no contributor counts, the cohort is the
+tenant -- and absence still has to be checked structurally, because a test that
+exercised the paths somebody wrote would say nothing about the path somebody adds
+next month, which is exactly when a leaderboard appears.
+
+**But they are now properties of these three routes, not a policy the system
+enforces.** The module they guard used to make a per-actor cell unconstructible;
+it does not any more. So a failure here means somebody widened *this* surface,
+not that they breached a rule -- and nothing outside this file prevents a new
+surface from doing what these routes do not.
 """
 
 from __future__ import annotations
 
 import datetime
-
-import pytest
 
 from contextplane.api.routers import learning_reads as router_module
 from contextplane.service.memory import learning_reads
@@ -49,130 +54,8 @@ def _routes() -> list[str]:
     return [route.path for route in router_module.router.routes]  # type: ignore[attr-defined]
 
 
-def _cell(label: str, *, actors: int, events: int, floors: learning_reads.Floors) -> learning_reads.Cell:
-    return learning_reads.Cell.measured(label, actor_count=actors, event_count=events, value=events, floors=floors)
-
-
-# --- The floors themselves ------------------------------------------------------
-
-
-def test_the_approved_floors_are_five_actors_and_five_events() -> None:
-    """Pinned as values, because these are the numbers that were approved. A
-    change to either is a policy change and has to be argued, not merged."""
-    assert learning_reads.MIN_COHORT_ACTORS == 5
-    assert learning_reads.MIN_CELL_EVENTS == 5
-
-    default = learning_reads.Floors()
-    assert (default.min_actors, default.min_events) == (5, 5)
-
-
-def test_a_stricter_floor_is_accepted_and_a_looser_one_is_refused() -> None:
-    """Stricter is a deployment's business; looser is not available at any layer.
-    Refused rather than clamped, so a deployment that asked for three does not go
-    on believing it configured three."""
-    stricter = learning_reads.Floors(min_actors=10, min_events=25)
-    assert (stricter.min_actors, stricter.min_events) == (10, 25)
-
-    with pytest.raises(learning_reads.FloorsTooLoose, match="below the approved minimum"):
-        learning_reads.Floors(min_actors=4)
-    with pytest.raises(learning_reads.FloorsTooLoose, match="below the approved minimum"):
-        learning_reads.Floors(min_events=4)
-
-
-def test_both_aggregate_surfaces_enforce_the_same_floors_from_one_definition() -> None:
-    """Not "the two agree": the two are the same object. Two definitions that agree
-    today is the shape that drifts, and a drifted floor is a leak in whichever
-    surface kept the looser one."""
-    assert feedback_reads.Floors is learning_reads.Floors
-    assert feedback_reads.build_breakdown is learning_reads.build_breakdown
-    assert feedback_reads.Cell is learning_reads.Cell
-
-
-def test_a_cell_below_either_floor_carries_no_value() -> None:
-    """Both floors, independently. A cell with hundreds of events from two people
-    is as identifying as one with two events."""
-    floors = learning_reads.Floors()
-
-    assert _cell("ok", actors=5, events=5, floors=floors).value == 5
-    assert _cell("thin_actors", actors=4, events=500, floors=floors).value is None
-    assert _cell("thin_events", actors=500, events=4, floors=floors).value is None
-    assert _cell("thin_actors", actors=4, events=500, floors=floors).suppressed is True
-
-
-# --- Suppression, combination, and the subtraction attack -----------------------
-
-
-def test_a_total_beside_a_suppressed_cell_is_recomputed_and_labelled_partial() -> None:
-    """The rule a floor alone does not give you. If the true total were served
-    beside the survivors, the withheld cell is the difference and the floor bought
-    nothing."""
-    floors = learning_reads.Floors()
-    cells = [
-        _cell("reported_a", actors=10, events=40, floors=floors),
-        _cell("reported_b", actors=10, events=30, floors=floors),
-        # Thin on both counts, and thin enough that the remainder stays thin.
-        _cell("thin", actors=2, events=3, floors=floors),
-    ]
-    breakdown = learning_reads.build_breakdown(
-        "context_quality", window_start=_WINDOW[0], window_end=_WINDOW[1], cells=cells, floors=floors
-    )
-
-    # The remainder could not clear the floors, so nothing is served at all --
-    # not the survivors, not the shape.
-    assert breakdown.withheld is True
-    assert breakdown.cells == ()
-    assert breakdown.total is None
-
-
-def test_a_remainder_that_clears_the_floors_is_combined_rather_than_dropped() -> None:
-    """The "other" bucket exists so a distribution with thin tails is still
-    reportable — but only when the bucket itself clears both floors."""
-    floors = learning_reads.Floors()
-    cells = [
-        _cell("reported", actors=20, events=100, floors=floors),
-        _cell("thin_one", actors=3, events=4, floors=floors),
-        _cell("thin_two", actors=4, events=4, floors=floors),
-    ]
-    breakdown = learning_reads.build_breakdown(
-        "reuse", window_start=_WINDOW[0], window_end=_WINDOW[1], cells=cells, floors=floors
-    )
-
-    assert breakdown.withheld is False
-    labels = [cell.label for cell in breakdown.cells]
-    assert labels == ["reported", learning_reads.BUCKET_OTHER]
-    # 7 actors and 8 events across the two thin cells clears both floors.
-    other = breakdown.cells[-1]
-    assert (other.value, other.suppressed) == (8, False)
-    # Partial, because cells were suppressed before being combined; and the total
-    # is over what is reported, which is the combined figure.
-    assert (breakdown.partial, breakdown.total) == (True, 108)
-
-
-def test_a_whole_breakdown_with_nothing_reportable_is_withheld_not_zeroed() -> None:
-    """Serving zeros would assert that nothing happened, when what happened is
-    that everything was below a floor."""
-    floors = learning_reads.Floors()
-    breakdown = learning_reads.build_breakdown(
-        "adequacy", window_start=_WINDOW[0], window_end=_WINDOW[1], cells=[], floors=floors
-    )
-    assert (breakdown.withheld, breakdown.total, breakdown.cells) == (True, None, ())
-
-
-def test_an_unsuppressed_breakdown_is_not_labelled_partial() -> None:
-    """The label has to mean something: if every cell is reported, `partial` is
-    false and the total is the real one."""
-    floors = learning_reads.Floors()
-    cells = [
-        _cell("a", actors=10, events=10, floors=floors),
-        _cell("b", actors=10, events=20, floors=floors),
-    ]
-    breakdown = learning_reads.build_breakdown(
-        "handoff_success", window_start=_WINDOW[0], window_end=_WINDOW[1], cells=cells, floors=floors
-    )
-    assert (breakdown.partial, breakdown.withheld, breakdown.total) == (False, False, 30)
-
-
-# --- No individual or team view exists -----------------------------------------
+def _cell(label: str, *, actors: int, events: int) -> learning_reads.Cell:
+    return learning_reads.Cell.measured(label, actor_count=actors, event_count=events, value=events)
 
 
 def test_no_route_on_this_surface_names_an_actor_or_a_ranking() -> None:
@@ -202,12 +85,20 @@ def test_no_route_takes_an_actor_or_cohort_parameter() -> None:
         )
 
 
-def test_the_response_model_cannot_carry_a_count_behind_a_suppressed_cell() -> None:
-    """The service keeps the counts so a recompute can re-test the floors. The
-    response model has nowhere to put them, and that asymmetry is deliberate: an
-    actor count of two is the disclosure the floor prevents."""
+def test_the_response_model_carries_no_contributor_counts() -> None:
+    """The service keeps the counts; the response model has nowhere to put them.
+
+    That asymmetry outlives the floors it was built for. `Cell` keeps
+    `actor_count` and `event_count` because a reader of the service layer may
+    want to know how much a figure rests on -- but an actor count of two, served
+    to an API caller, is a disclosure whether or not a floor would have hidden
+    the figure beside it. Widening `CellOut` is a decision somebody should have
+    to make deliberately, so this fails if it happens by tidy-up.
+
+    `suppressed` is gone from the model with the mechanism it reported.
+    """
     fields = set(router_module.CellOut.model_fields)
-    assert fields == {"label", "value", "suppressed"}
+    assert fields == {"label", "value"}
     assert "actor_count" not in fields
     assert "event_count" not in fields
 
@@ -221,13 +112,11 @@ def test_the_only_cohort_is_the_tenant() -> None:
     team-performance surface. So the cohort is a constant, and it is asserted here
     rather than left to whatever a future query passes."""
     assert learning_reads.COHORT_TENANT == "tenant"
-    floors = learning_reads.Floors()
     breakdown = learning_reads.build_breakdown(
         "reuse",
         window_start=_WINDOW[0],
         window_end=_WINDOW[1],
-        cells=[_cell("a", actors=10, events=10, floors=floors)],
-        floors=floors,
+        cells=[_cell("a", actors=10, events=10)],
     )
     assert breakdown.cohort_key == learning_reads.COHORT_TENANT
 
@@ -235,14 +124,22 @@ def test_the_only_cohort_is_the_tenant() -> None:
 # --- What every response must carry --------------------------------------------
 
 
-def test_every_response_carries_its_window_denominator_classification_and_floors() -> None:
+def test_every_response_carries_its_window_denominator_and_classification() -> None:
     """Required fields, not annotations. A rate without its denominator is read as
-    a count; a partial total without its label is read as the truth; a suppressed
-    cell without the floors looks like missing data rather than a rule."""
-    required = {"metric", "cohort_key", "window_start", "window_end", "classification", "floors", "cells"}
+    a count.
+
+    `floors`, `partial` and `withheld` were required here too, and are gone with
+    the mechanism they described. Asserted as *absent* rather than simply
+    dropped, because a response that still advertised floors while enforcing
+    none would be the worst of the three states.
+    """
+    required = {"metric", "cohort_key", "window_start", "window_end", "classification", "cells"}
     fields = set(router_module.BreakdownOut.model_fields)
     assert required <= fields
-    assert {"total", "denominator", "partial", "withheld"} <= fields
+    assert {"total", "denominator"} <= fields
+    assert not (
+        {"floors", "partial", "withheld"} & fields
+    ), "the response still advertises a suppression mechanism this surface no longer has"
 
     for name in required:
         assert router_module.BreakdownOut.model_fields[name].is_required(), (
@@ -252,15 +149,20 @@ def test_every_response_carries_its_window_denominator_classification_and_floors
 
 
 def test_the_denominator_is_the_total_the_reader_was_given() -> None:
-    """Not the true population. Naming it separately is for legibility, and if it
-    diverged from the served total it would reintroduce the subtraction channel."""
-    floors = learning_reads.Floors()
+    """Naming it separately is for legibility, and the two must not diverge.
+
+    That mattered more when the total was recomputed over surviving cells: a
+    denominator that reported the *true* population beside a suppressed cell was
+    the subtraction channel. With nothing suppressed the total is the true
+    population, so this now pins the weaker property that the two names mean the
+    same number -- still worth having, because a reader who sees both assumes
+    they can differ.
+    """
     breakdown = learning_reads.build_breakdown(
         "context_quality",
         window_start=_WINDOW[0],
         window_end=_WINDOW[1],
-        cells=[_cell("a", actors=10, events=10, floors=floors)],
-        floors=floors,
+        cells=[_cell("a", actors=10, events=10)],
     )
     assert breakdown.denominator == breakdown.total
 

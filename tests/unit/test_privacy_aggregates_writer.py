@@ -27,7 +27,7 @@ from typing import Any
 import pytest
 
 from contextplane.retention import policies
-from contextplane.service.memory.learning_reads import BUCKET_OTHER, COHORT_TENANT, Floors
+from contextplane.service.memory.learning_reads import COHORT_TENANT
 from contextplane.signals import aggregates
 from contextplane.signals.feedback import KIND_DIAGNOSTIC
 
@@ -179,25 +179,6 @@ async def test_the_actor_count_is_the_windows_own_and_not_the_sum_of_its_labels(
     assert write["actor_count"] == 5
 
 
-@pytest.mark.asyncio
-async def test_a_thin_label_is_folded_into_a_remainder_and_the_total_says_it_is_partial() -> None:
-    """Suppression alone discloses the thin cell when a true total is published beside it.
-
-    So the withheld label is combined into a remainder that clears the floors itself,
-    and the total is recomputed over what is actually shown.
-    """
-    session = _FakeSession(feedback=_mix({"selected": (20, 9), "ignored": (3, 2), "stale": (4, 4)}, actors=11))
-
-    await _writer(session).run_once()
-
-    write = _yesterdays(session.writes(aggregates.METRIC_FEEDBACK_RATING_MIX))
-    stored = json.loads(write["value"])
-    assert stored["cells"] == {"selected": 20, BUCKET_OTHER: 7}
-    assert stored["total"] == 27
-    assert write["partial"] is True
-
-
-@pytest.mark.asyncio
 async def test_both_metrics_are_written_for_every_window_in_the_pass() -> None:
     """A metric computed by one pass and forgotten by the next is a hole in the series."""
     session = _FakeSession(
@@ -276,61 +257,29 @@ async def test_diagnostics_are_excluded_from_the_feedback_mix() -> None:
     assert all(params["diagnostic_kind"] == KIND_DIAGNOSTIC for params in asked)
 
 
-# ---------------------------------------------------------------------------
-# What gets withheld
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
-async def test_a_window_below_the_actor_floor_carries_no_figures_at_all() -> None:
-    """Not just no value: no actor count either.
-
-    A cell that withheld its value while reporting that it covers four actors has
-    disclosed a figure two versions of the cell can be subtracted from, which is the
-    disclosure the withholding was for.
-    """
-    session = _FakeSession(feedback=_mix({"selected": (20, 4)}, actors=4))
-
-    report = await _writer(session).run_once()
-
-    write = _yesterdays(session.writes(aggregates.METRIC_FEEDBACK_RATING_MIX))
-    assert write["suppressed"] is True
-    assert write["value"] is None
-    assert write["actor_count"] == 0
-    assert write["partial"] is False
-    assert report.withheld >= 1
-
-
-@pytest.mark.asyncio
-async def test_a_breakdown_whose_remainder_cannot_clear_the_floors_is_withheld_entire() -> None:
-    """Survivors plus a known population is the subtraction attack in a different shape.
-
-    So when the combined remainder is itself too thin, not even the shape of the
-    distribution is stored.
-    """
-    session = _FakeSession(feedback=_mix({"selected": (30, 12), "ignored": (2, 1)}, actors=13))
-
-    await _writer(session).run_once()
-
-    write = _yesterdays(session.writes(aggregates.METRIC_FEEDBACK_RATING_MIX))
-    assert write["suppressed"] is True
-    assert write["value"] is None
-
-
-@pytest.mark.asyncio
-async def test_an_empty_window_is_stored_as_a_withheld_cell_rather_than_skipped() -> None:
+async def test_an_empty_window_is_stored_as_an_empty_breakdown_rather_than_skipped() -> None:
     """ "Computed, nothing to report" and "never computed" are different facts.
 
     Without the row they are indistinguishable, and a window whose every row was
-    erased would read as one the writer simply had not reached.
+    erased would read as one the writer simply had not reached. That premise is
+    unchanged by the floor decision; only the shape of the stored row is.
+
+    It used to be stored as a *withheld* cell with a null value, because an empty
+    breakdown failed the floors. With no floors it is stored as what it is: a
+    breakdown with no cells and a total of zero. The distinction the test exists
+    for -- a row present versus absent -- is still the one being made.
     """
     session = _FakeSession()
 
     await _writer(session).run_once()
 
     write = _yesterdays(session.writes(aggregates.METRIC_FEEDBACK_RATING_MIX))
-    assert write["suppressed"] is True
-    assert write["value"] is None
+    assert write["suppressed"] is False
+    assert write["value"] is not None
+    stored = json.loads(write["value"])
+    assert stored["cells"] == {}
+    assert stored["total"] == 0
 
 
 @pytest.mark.asyncio
@@ -351,30 +300,6 @@ async def test_the_database_can_withhold_a_cell_this_side_considers_reportable()
     assert report.withheld == len(aggregates.AGGREGATE_METRICS)
 
 
-@pytest.mark.asyncio
-async def test_a_floor_below_the_approved_minimum_is_refused_at_construction() -> None:
-    """A deployment that configured three actors and got five would keep believing it had three."""
-    with pytest.raises(Exception, match="below the approved minimum"):
-        aggregates.PrivacyAggregateWriter(lambda: _AsyncCM(_FakeSession()), floors=Floors(min_actors=3))
-
-
-@pytest.mark.asyncio
-async def test_a_stricter_floor_is_honoured() -> None:
-    """Code may be stricter than the schema CHECK; the CHECK is the looser bound."""
-    session = _FakeSession(feedback=_mix({"selected": (20, 7)}, actors=7))
-
-    await _writer(session, floors=Floors(min_actors=9, min_events=5)).run_once()
-
-    write = _yesterdays(session.writes(aggregates.METRIC_FEEDBACK_RATING_MIX))
-    assert write["suppressed"] is True
-
-
-# ---------------------------------------------------------------------------
-# What an erasure makes the writer re-examine
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
 async def test_a_tenant_with_no_tombstone_re_examines_nothing() -> None:
     """The recompute is erasure-triggered. With no erasure there is nothing to retract."""
     session = _FakeSession(feedback=_mix({"selected": (9, 7)}, actors=7))
