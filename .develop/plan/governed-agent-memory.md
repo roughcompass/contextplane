@@ -3858,7 +3858,7 @@ Acceptance:
 
 ### E6-T1 — ADR: what an external anchor buys, and what it must never be called
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: decide where a periodic digest is published, how often, and what the
 resulting claim is -- before any of it is built, because the claim is the part
@@ -3881,9 +3881,22 @@ assumptions -- a public transparency log, a second party's store, a notary -- an
 "cheapest" is not the criterion); and what an operator does when verification
 fails, which is the question nobody asks until it does.
 
+**Grounding sharpened the clause and turned up a third chain nobody had
+counted.** Two ship -- `arc_receipt_event_heads` and
+`arc_operational_event_heads` -- so the anchor publishes both heads. `audit_log`
+is **not** chained at all, which this task did not know; the ADR records that as
+an open scoping question rather than anchoring two things and implying three.
+
+The decision that took the most argument was rejecting a signature. Signing the
+head with a deployment key looks stronger and defends against everyone except the
+party the anchor exists to constrain -- and it invites exactly the
+non-repudiation language the clause forbids, because a signature implies a
+signer.
+
 Acceptance:
     make doc-links
-    sh -c 'test -f .develop/adr/0012-*.md'
+    sh -c 'test -f .develop/adr/0012-external-anchor-for-the-digest-chains.md'
+    make lint
 
 ### E6-T2 — Retention classes, declared per stream rather than per deployment
 
