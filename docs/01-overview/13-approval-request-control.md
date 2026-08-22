@@ -67,15 +67,23 @@ System generates: Approval challenge + bytes to sign
 
 ### 3. Approvers Sign Off
 
-The system sends the challenge to approvers (via email, Slack, approval portal, etc.):
+The integration layer sends the challenge to approvers (the integration decides the channel: email, Slack, approval portal, etc.):
 ```
-Approver receives: "Approve deployment to production"
+External integration:
+1. Receives the challenge from ARC API
+2. Delivers it to the approver (through their preferred channel)
+3. Collects the signature from the approver
+4. Submits the signed proof back to ARC
+
+Approver sees: "Approve deployment to production"
   - Policy: Payment service deployment
   - Requested by: engineering@acme.com
   - Changes: [diff shown]
   - Expires: 1 hour
 
 Approver signs: (with their private key, hardware key, or attestation)
+    ↓
+Integration submits signature to ARC
     ↓
 System records: Evidence (permanent, cryptographically verified)
 ```
