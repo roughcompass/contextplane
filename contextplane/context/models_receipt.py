@@ -39,6 +39,25 @@ class ContextReceipt(Base):
     state: Mapped[str] = mapped_column(Text, nullable=False)
     cacheable: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
+    #: Whether this receipt is finished being written -- distinct from `state`,
+    #: which is the *envelope's* quality. A receipt can describe a complete
+    #: envelope and still be half-recorded, and those read identically without
+    #: this: zero exclusions because nothing was withheld, or zero because what
+    #: was withheld has not been stored yet.
+    #:
+    #: `complete` for every row today, because `ContextReceiptService.record`
+    #: writes the receipt and all of its children in one transaction. The column
+    #: exists ahead of the change that makes hydration asynchronous, so that
+    #: change is reviewable as the relaxation of a guarantee rather than as a
+    #: schema addition.
+    hydration_state: Mapped[str] = mapped_column(Text, nullable=False)
+
+    #: What hydration is expected to have written, known at intent time. A
+    #: `complete` receipt whose stored rows do not match these finished wrongly,
+    #: and nothing else would notice.
+    item_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    exclusion_count: Mapped[int] = mapped_column(Integer, nullable=False)
+
     resolved_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     requested_by: Mapped[str] = mapped_column(Text, nullable=False)
 
