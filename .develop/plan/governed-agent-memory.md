@@ -4415,4 +4415,167 @@ says why, and says it expecting this task to be where somebody is tempted.
 
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "evidence_bundle"
+## Task decomposition — eleventh wave (E13, whose headline target E7 already met)
+
+E13 is measured against three tracked metrics, and grounding them first changes
+what the epic is for. Two are now measurable exactly, because E7-T1 committed
+the registry that measures them.
+
+**Default-profile tool count, target ≤ 8: already met, at exactly 8.**
+`tool_registry.json` records `core_count: 8` against `tool_count: 67`, and
+`install_surface_filter` makes a default connection expose only the core tier.
+E13 does not have to shrink this. It has to keep it shrunk, which is a gate
+rather than a project — and the gate exists, since the registry is checked
+against the code in both directions by `make lint`.
+
+**REST endpoints an agent integration must know, target ≤ 6: currently 8.** The
+eight core tools map to eight distinct operations, one each. Two over, and the
+pairs worth examining are visible: `search_capabilities` (`GET /v1/search`)
+beside `get_capability` (`GET /v1/capabilities/{id}`), and `resume_context`
+beside `registry_resolve_context`. Each pair is a search-and-read or a
+resolve-and-resume over one subject. Whether either collapses is a real
+question; the point is that the gap is two and both candidates are nameable, so
+this is a decision rather than a search.
+
+For scale: the full REST surface is **191 paths, 243 operations**. The target
+was never about that number — it is about how much an *agent integration* must
+learn, and the core tier is what defines that.
+
+**Deprecated-surface count trending to zero: this metric cannot start.** Two
+findings, and both are amendments rather than work.
+
+*First, the dual-alias window contradicts a standing project constraint.* This
+is a greenfield repository with no released version and no external consumers.
+A dual-alias window exists to protect integrations that already exist, and there
+are none. Building one would be building a compatibility mechanism for a
+compatibility problem the project has decided it does not have. **The clause is
+struck**: surfaces that consolidate are replaced, not aliased. If that ever
+becomes wrong, it becomes wrong on the day something ships, and that is when the
+window gets designed against real consumers.
+
+*Second, "retire MCP tools that the registry shows unused" has no data source.*
+The registry's tool records carry `name`, `module`, `tier`, `rest` — and no
+usage field. `install_tool_metrics` does instrument every tool, by rebinding the
+decorator factory so that instrumentation cannot be forgotten per tool, but that
+is a Prometheus counter: ephemeral, scraped, and explicitly not something a
+browser may read. More fundamentally, E7-T1 already recorded why this corpus
+does not exist — *"this service has never been released, and the receipts in a
+development tree are the test suite's."* Retiring tools on usage evidence is
+blocked on the same missing corpus that made E7-T1 derive its core set from a
+stated rule instead of a measurement.
+
+### E13-T1 — The two REST operations over budget, decided rather than searched
+
+**Kind:** task · **Status:** pending · **Blocked by:** E7-T2 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: get the agent-facing REST surface from eight operations to six, or record
+why one of the pairs must stay two.
+
+Both candidates are already named above. Take each on its merits:
+
+`search_capabilities` and `get_capability` are a search and a read over the same
+subject. Collapsing them means a search that can return one fully-hydrated
+result, which is a real API design and also a way to make the common read pay
+for the search path.
+
+`registry_resolve_context` and `resume_context` are closer to genuinely
+different: one assembles context for a new question, the other continues an
+established one. If they stay two, the entry says so and the target moves to
+seven with a reason, rather than the target quietly not being met.
+
+**Do not collapse by adding a mode parameter.** Two operations behind one path
+with a discriminator is the same two operations plus a branch, and it makes the
+count look met while the thing an integrator must learn is unchanged — which is
+what the metric was measuring.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/conformance -q -k "parity"
+    make all
+
+### E13-T2 — The five observational write verbs, and what they actually share
+
+**Kind:** task · **Status:** pending · **Blocked by:** E13-T1 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: decide which of the five write verbs overlap enough to consolidate, on
+evidence rather than on the fact that they are all writes.
+
+They are `assert_claim` (memory_curation), `record_session_event` (memory),
+`add_workspace_entry` (workspace), `append_intent_checkpoint` (intent_memory),
+`ingest_signal` (signals) — five verbs in five modules, which is itself a
+signal that they were built as five domains rather than one path with five
+shapes.
+
+**The rule from ADR-0011 applies here almost verbatim, and it is the reason this
+task is not obviously a good idea.** That decision refused to fuse the context
+envelope's blocks because they are four *authority classes*, and the rule it
+left was: *fuse within an authority class, never across one*. A session event, a
+staged claim, and a workspace note are not the same authority class either — one
+is an observation, one is an assertion entering a governed lifecycle, one is
+somebody's note. A single write verb over all three either loses that
+distinction or carries a discriminator that reintroduces it, and the second is
+five verbs wearing one name.
+
+So the honest output may be that two of the five consolidate and three do not.
+The epic's own rule — *no consolidation may drop a governance property* — is the
+test, and provenance completeness is the property most at risk: `assert_claim`
+enters the derivation and confidence machinery, `record_session_event` does not.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/conformance -q
+    make all
+
+### E13-T3 — A usage signal that could justify retiring anything
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: decide what evidence would justify retiring a tool, and either build the
+thing that produces it or record that retirement waits for a release.
+
+This is the task the epic assumed away. `install_tool_metrics` gives a per-tool
+Prometheus counter, which answers "was this called in the current scrape window"
+and not "has any agent ever needed this". The registry carries no usage field.
+And E7-T1 already established that the corpus does not exist because nothing has
+shipped.
+
+Three options, and picking one is the deliverable:
+
+- **Wait for a release.** Honest, and it makes E13's third metric explicitly
+  blocked rather than quietly unmeasured. Cheapest, and probably right.
+- **Persist per-tool call counts** beyond the scrape window, tenant-scoped.
+  Real data, but it is a new retention question about a new record class —
+  E6-T2 established that retention is keyed on record class with a legal basis,
+  so this is not a free table.
+- **Derive from receipts.** Receipts record what a resolution served, not which
+  tool the caller invoked, so this measures something adjacent and would need to
+  say so.
+
+Whichever is chosen, the anti-pattern to refuse is retiring on *absence of
+evidence* — a tool nobody called during a development tree's test runs is not a
+tool nobody needs, and the registry comment already says why.
+
+Acceptance:
+    make all
+
+### E13-T4 — The consolidation gate, so the counts cannot drift back
+
+**Kind:** task · **Status:** pending · **Blocked by:** E13-T1 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the two metrics that are now measurable become gates, at the numbers
+actually achieved.
+
+E7-T1's registry gate already holds the tool list against the code in both
+directions. This adds the budgets: core tier at most 8, and the distinct REST
+operations the core tier maps to at most whatever T1 lands on.
+
+Ratchet, not a fixed target — the same shape as the undocumented-extended-tools
+ratchet E7-T2 landed. A number that can only go down is a gate somebody has to
+argue with to weaken; a target in a document is a number that drifts and is
+noticed a year later.
+
+The value of this task is entirely in it existing before the counts are hit,
+rather than after. E13's stated purpose is that *simplicity is subtraction*, and
+subtraction without a ratchet is a one-time cleanup that grows back.
+
+Acceptance:
+    make lint
     make all
