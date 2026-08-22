@@ -62,6 +62,22 @@ def request_digest(request: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+#: What a receipt says about its own completeness.
+#:
+#: `failed` is a resting state rather than a transient. Hydration that gave up
+#: has to leave evidence it gave up: a row stuck at `pending` forever is
+#: indistinguishable from one still in flight, and a reader owes those two
+#: different answers -- "wait" against "this will never be evidence".
+HYDRATION_PENDING = "pending"
+HYDRATION_COMPLETE = "complete"
+HYDRATION_FAILED = "failed"
+
+#: The states in which a receipt may be shown as evidence of what was served.
+#: Exactly one, and named rather than written as `== "complete"` at each read,
+#: so a fourth state cannot be added without every reader being revisited.
+HYDRATION_SERVABLE: frozenset[str] = frozenset({HYDRATION_COMPLETE})
+
+
 class ContextReceiptService:
     """Writes receipts, and reads them back by their own id."""
 
@@ -115,6 +131,14 @@ class ContextReceiptService:
                     intent_id=intent_id,
                     state=result.envelope.state,
                     cacheable=result.envelope.quality.cacheable,
+                    # Written whole in this transaction, so it is complete when
+                    # it is committed. Stated rather than defaulted: the value
+                    # is a claim about this write path, and when hydration
+                    # becomes asynchronous the claim changes here rather than
+                    # somewhere a reader has to go looking for.
+                    hydration_state=HYDRATION_COMPLETE,
+                    item_count=sum(len(block.items) for block in result.envelope.blocks),
+                    exclusion_count=sum(len(arm.exclusions) for arm in result.evidence),
                     resolved_at=now,
                     requested_by=str(ctx.actor_id),
                     request_digest=request_digest(request) if request is not None else None,

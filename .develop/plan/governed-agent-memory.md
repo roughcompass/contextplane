@@ -3765,7 +3765,7 @@ Acceptance:
 
 ### E3-T2 — The receipt says whether it is finished
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: `context_receipts` gains `hydration_state` (`pending` | `complete` |
 `failed`) plus the item and exclusion counts known at write time, the read
@@ -3788,6 +3788,28 @@ module's own standard is that a receipt which reads as complete while withholdin
 something is worse than no receipt.
 
 Every existing row is `complete`, backfilled, because it was.
+
+**The default is the refusing one, and the fixtures are what settled it.**
+Nineteen tests insert receipts as raw SQL, so NOT NULL with no default meant
+editing all nineteen -- and two attempts at scripting that produced malformed
+literals, which was the signal to stop and ask what a receipt inserted *without*
+a hydration claim actually means. It means no claim was made, and the honest
+reading of no claim is "not yet evidence". The column defaults to `pending`, and
+exactly one fixture needed changing: the one whose test reads exclusions and
+therefore does need its receipt to be evidence.
+
+Defaulting to `complete` would have been the permissive direction taken by
+omission, which is the shape of a validation status defaulting to validated.
+
+**The summary read surfaces the state; the evidence reads refuse it.** That is
+the clause "surface that state and never present a `pending` receipt as
+evidence" taken literally and split where it actually divides. `GET
+/receipts/{id}` returns 200 with the state and counts, because a caller polling
+for a resolution it triggered must be able to learn "not yet". `/exclusions` and
+`/references` return 409: both are consumed as complete answers, and an empty
+list from a half-written receipt is indistinguishable from one from a finished
+receipt. 404 still comes first, so a caller cannot learn an id exists by getting
+a different refusal.
 
 Acceptance:
     .venv/bin/python -m alembic upgrade head
