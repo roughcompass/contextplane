@@ -618,9 +618,16 @@ class ClaimServingService:
 # Filters are applied here, in the query, rather than after ranking or at pagination.
 # `as_of` reads transaction time: a claim closed after the instant asked about was
 # still believed then, which is the whole point of asking.
+#
+# `quarantined_at` is deliberately **not** `as_of`-relative, and that asymmetry is
+# the whole reason quarantine has a column of its own rather than reusing
+# `t_invalidated_at`. `as_of` is caller-supplied on both transports, so an
+# `as_of`-relative quarantine is defeated by asking for an earlier instant. A
+# withheld claim is withheld at every instant, the way a rejected one is.
 _SERVABLE_AS_OF = """
     c.status IN ('staged', 'superseded')
 AND c.consolidated_at IS NOT NULL
+AND c.quarantined_at IS NULL
 AND c.created_at <= :as_of
 AND (c.t_invalidated_at IS NULL OR c.t_invalidated_at > :as_of)
 """

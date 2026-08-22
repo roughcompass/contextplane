@@ -4656,7 +4656,7 @@ assumption in a field is weaker than one in a gate.
 
 ### E4-T2 — The quarantine state, and the revert that makes it usable
 
-**Kind:** task · **Status:** pending · **Blocked by:** E4-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E4-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: a provenance predicate quarantines the claims it matches, and one
 statement puts them back.
@@ -4705,6 +4705,39 @@ sentence will believe a guard is protecting something it cannot reach.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "quarantine"
     make all
+
+**Delivered.** Migration 0071 adds `quarantined_at` to `memory_claims`, read
+**unconditionally** in `_SERVABLE_AS_OF` and in `project_claim`, plus a
+`claim_quarantines` ledger and a `claim_quarantine_members` join table.
+`QuarantineService` applies, previews and reverts.
+
+Four decisions worth carrying forward, each with the test that pins it:
+
+- **Revert restores the recorded membership, never a re-run of the predicate.**
+  The graph moves, so a claim written after the quarantine and matching the same
+  predicate was never withheld — and revert must not claim to restore it.
+- **A claim held by a second, unreverted quarantine stays withheld.** Otherwise
+  reverting yesterday's incident republishes what today's is withholding.
+- **A predicate matching nothing is refused rather than recorded.** A quarantine
+  that withheld nothing reads later as one that was tried and worked.
+- **`apply` does not overwrite an existing `quarantined_at`.** Relabelling
+  content as withheld later than it was would make the earlier quarantine's
+  revert restore something the later one still means to withhold.
+
+The selector vocabulary is **closed** — connector run, extractor version,
+namespace prefix — and each maps to an index that already exists. Left open, an
+operator could withhold by confidence or by author, which are not provenance
+statements and are ways to make content disappear for a reason nobody wrote
+down.
+
+**E4-T3 is not done by this.** `preview` returns the *match set*, which is what
+the predicate reaches directly. The blast radius — what depends on those claims
+— is `get_blast_radius`, and wiring it is still that task.
+
+Not asserted here, deliberately: that the vectors leave the index. Correctness
+commits with the column write in the same transaction; the propagation enqueue
+is a recall concern and is asynchronous by design, so asserting index state here
+would either test the drain or encode a race.
 
 ### E4-T3 — The preview is `get_blast_radius`, not a second traversal
 
@@ -5625,3 +5658,189 @@ occurrence is otherwise already scheduled.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "overdue or receipt"
     make all
+
+---
+
+## Task decomposition — Sixteenth wave (agent authorship and retraining feedback loop)
+
+### E20 — Agent authorship, outcome grading, and prompt-retraining feedback loop
+
+**Kind:** epic · **Status:** open · **Blocked by:** none · **Repo:** contextplane
+
+`contextplane` today improves the *content* of the memory store (consolidation, promotion, calibration of extraction-provider confidence) but has no mechanism for tracking whether a specific agent's own contributions are accurate, or for feeding that back into anything the agent does differently next time. The request driving this epic: track which agent authored each claim, grade claim outcomes, aggregate per-agent accuracy, support a "prompt retraining" loop that turns failure patterns into improved agent instructions, and measure whether accuracy improves after a new instruction version activates.
+
+Two decisions were made explicitly by the user before this plan was finalized, both overriding this repo's existing conventions, and both are recorded here so the reasoning survives the PR:
+
+**Decision 1: the per-actor privacy floor in `learning_reads.py` is removed, uniformly, for every actor kind (human and agent alike) — no carve-out.** That module's docstring currently states individual/per-actor aggregates are forbidden by design ("a surface that must not exist"), enforced by `MIN_COHORT_ACTORS=5`/`MIN_CELL_EVENTS=5` floors. The user decided this enterprise deployment requires per-actor monitoring to be possible for any actor, full stop. This is a genuine privacy-policy reversal, not a narrow technical exception, and ships with an ADR recording it (E20-T1) precisely because it is the kind of decision this repo's own convention says must outlive its PR.
+
+**Decision 2: `actor_kind` classification (human vs. agent vs. degree of autonomy) has no reliable source signal today, and inventing one is out of scope for this epic.** Investigation (not the initial design) found that `upsert_entitlement_actor` — the one function both the REST and MCP auth paths actually call — takes only `(session, tenant_id, oidc_subject, display_name)`. There is no machine-identity signal anywhere in `contextplane/auth/entitlements/resolver.py` to source a kind from, and the `WorkloadIdentity` concept that looks like a fit lives entirely inside ARC's autonomy-envelope subsystem with no connection to this code path. Worse, a human driving Claude Code or VSCode Copilot connects through the *identical* MCP transport an unattended agent would use, so even a transport-based classification would misclassify human-in-the-loop coding sessions as autonomous. This epic does **not** attempt to fix `actor_kind`. Per-agent tracking is built entirely on `author_actor_id`, which is already populated correctly on every claim regardless of what `actor_kind` says about the row it points to.
+
+A related, more valuable insight surfaced during design and is now a first-class part of this epic: **a human's mid-session correction of an agent that was expected to complete autonomously is itself a strong, real-time failure signal** — arguably better than a reviewer's after-the-fact `correct`/`incorrect` verdict, because it pinpoints exactly where the agent needed steering. This is not a new concept to invent: `memory_session_events.kind` already distinguishes `user_message` (human) from `agent_action` (agent-initiated) from `tool_invocation`, ordered by `(tenant_id, actor_id, session_id, seq)`. A mid-session intervention is simply a `user_message` event with a `seq` between two `agent_action` events instead of only at the session's start. Nothing today computes anything from that pattern. This epic adds an **autonomy-rate** metric derived from it, as a second, independent dimension alongside adjudicated correctness — an agent can be accurate-but-needy (lots of hand-holding) or fast-but-wrong, and those are different problems requiring different prompt fixes.
+
+### E20-T1 — ADR 0017: the per-actor privacy floor is removed, for every actor kind
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: `.develop/adr/0017-per-actor-aggregates-are-no-longer-floored.md`, recording that `learning_reads.py`'s `MIN_COHORT_ACTORS`/`MIN_CELL_EVENTS` floors and the "no per-actor cell, ever" policy they enforced are rescinded, for humans and agents alike, with no `actor_kind`-conditioned exception.
+
+This ADR is written before the code change (E20-T2) that executes it, matching this plan's own convention (e.g. E4-T1, E5-T1, E18-T1 all precede their execution tasks) that a decision outliving its PR gets recorded before the PR that enacts it, not folded into the PR's description where the next reader has to reconstruct why. Sections follow `.develop/adr/README.md`'s required shape:
+
+- **Context**: quotes `learning_reads.py`'s own docstring verbatim (the "individual surveillance and team-performance evaluation are both forbidden" sentence) and states plainly that this epic needs exactly the surface that sentence forbids — a per-`author_actor_id` accuracy read.
+- **Decision**: the floor is removed uniformly; there is no `actor_kind` branch anywhere in the replacement code, and the ADR says so explicitly so a future reader does not go looking for one.
+- **Assumptions**: numbered, at minimum — (1) an agent's accuracy is an operational fact about a service principal a tenant runs and is entitled to see broken down as finely as it likes; (2) a human author's accuracy, once the floor is gone, is visible at the same granularity, and that is the actual scope of the reversal — it is not agent-specific; (3) `ROLE_AUDITOR`-style access control (E11-T3's precedent: authorization plus a recorded justification) is the correct place to put any residual access restriction on a per-human accuracy read, not a floor on the aggregate itself, since a floor and an authorization check answer different questions ("can this exist" vs. "can this reader see it") and this repo's own E11 already chose authorization over suppression for the audit drill-down.
+- **Alternatives rejected**: keeping the floor for humans and exempting only agents (rejected: the user's decision is uniform removal, and a carve-out would be an undocumented two-tier policy of exactly the kind ADR-0016 exists to avoid leaving implicit); keeping the floor and adding an `agent`-only bypass flag (rejected for the same reason, plus it leaves the removed policy half-alive, which the plan's own supersession rule forbids).
+- **Consequences**: every consumer of `Floors`/`MIN_COHORT_ACTORS`/`MIN_CELL_EVENTS` is enumerated and dispositioned in E20-T2, not here — this ADR is the "why," T2 is the "where."
+- **Dissent**: written honestly per this repo's convention (ADR-0013's own Dissent section is the model) — the counterargument that removing an actor-level floor makes a per-human accuracy figure a performance-management surface indistinguishable from what the original module's docstring called "forbidden," and that "the user decided" is a process answer to a design question, recorded fairly even though the decision stands.
+
+Acceptance:
+    test -f .develop/adr/0017-per-actor-aggregates-are-no-longer-floored.md
+    grep -q "^## Dissent" .develop/adr/0017-per-actor-aggregates-are-no-longer-floored.md
+    grep -q "^## Assumptions" .develop/adr/0017-per-actor-aggregates-are-no-longer-floored.md
+
+### E20-T2 — Remove the floor: `learning_reads.py` and every consumer
+
+**Kind:** task · **Status:** pending · **Blocked by:** E20-T1 · **Hotspot:** yes — service/memory/ · **Repo:** contextplane
+
+Goal: `contextplane/service/memory/learning_reads.py` loses `Floors`, `FloorsTooLoose`, `MIN_COHORT_ACTORS`, `MIN_CELL_EVENTS`, `Cell.suppressed`/`Cell.value`'s null-on-suppress behavior, and `build_breakdown`'s remainder-combination/withholding logic — replaced by a `Breakdown` that always carries every cell's true value, no `partial`/`withheld` states (a breakdown is either built or the query returned no rows), and `LearningReadService`'s three methods (`claim_aging`, `contradiction_backlog`, `promotion_yield`) construct cells directly from query rows with no floor test. The module docstring is rewritten to state the module's new, narrower claim: these are tenant-scope learning aggregates with no suppression, and the sentence "individual surveillance and team-performance evaluation are both forbidden" is deleted, not softened, per ADR-0017.
+
+Every consumer of the removed names is found and updated in the same change, so this is not a half-removal the supersession rule forbids:
+
+- `contextplane/signals/aggregates.py` imports `COHORT_TENANT`, `Breakdown`, `Cell`, `Floors`, `build_breakdown` from `learning_reads.py` (module docstring's own "Three mechanisms... none of them is a step somebody remembers" section is about a *different* concern — erasure-differencing on `privacy_aggregates`, orthogonal to the actor floor) — this module keeps importing `COHORT_TENANT`, `Breakdown`, `build_breakdown` (their shapes still apply to `privacy_aggregates`' feedback/signal-mix metrics, which are not per-actor and are not in scope of ADR-0017), and stops importing `Floors`; its own writer logic already does its own withholding via the erasure-differencing mechanism (mechanisms 1-3 in its docstring), which is untouched.
+- Any admin/API route or MCP tool reading `LearningReadService.floors` or serializing a `Breakdown.partial`/`withheld` field is updated to the new shape.
+- Test fixtures asserting `FloorsTooLoose` or a suppressed cell are removed or rewritten to assert the new unsuppressed behavior.
+
+Acceptance:
+    sh -c '! grep -rn "MIN_COHORT_ACTORS\|MIN_CELL_EVENTS\|FloorsTooLoose\|class Floors" contextplane/ --include="*.py" --exclude-dir=__pycache__'
+    sh -c '! grep -rn "individual surveillance and team-performance evaluation" contextplane/'
+    .venv/bin/python -m pytest tests/unit -q -k "learning_reads or privacy_aggregates"
+    .venv/bin/python -m pytest tests/integration -q -k "learning_reads or aggregates"
+    make test-unit && make lint && make typecheck
+
+### E20-T3 — Migration: accuracy index and three new tables
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+
+Goal: one Alembic revision, `contextplane/storage/migrations/versions/0071_agent_accuracy_and_instructions.py` (`down_revision = "0070_grant_temporal_exclusion"`), that:
+
+1. Adds `CREATE INDEX ix_memory_claims_author_created ON memory_claims (author_actor_id, created_at) WHERE author_actor_id IS NOT NULL` — lets `AgentAccuracyService`'s join drive from `memory_claims` on actor+window and complete via the existing `ix_memory_adjudication_claim`, instead of scanning `memory_claim_adjudication` per candidate row. The existing lone `ix_memory_claims_author` stays (other readers key on author without a time bound).
+2. Creates `agent_failure_pattern_report` table with columns: `report_id UUID PK, tenant_id, author_actor_id, window_start, window_end, n_adjudicated, n_incorrect, n_intervention_sessions, n_sessions, groups JSONB, generated_at, generated_by`. `groups` is a JSONB snapshot storing `[{claim_category, predicate, incorrect_count, total_count, rate, example_claim_ids}]`, matching `memory_calibration_mapping.bins`' precedent of storing a fitted aggregate as an inspectable blob rather than a normalized child table. `CHECK (window_end > window_start)`, `CHECK (n_incorrect <= n_adjudicated)`.
+3. Creates `agent_instruction` table with columns: `instruction_id UUID PK, tenant_id, author_actor_id, version, content, motivated_by_report_id UUID FK, status, activated_at, superseded_at, created_at, created_by`. `UNIQUE (author_actor_id, version)`, `CHECK status IN ('active','superseded','rejected')`, `CHECK (status <> 'active' OR motivated_by_report_id IS NOT NULL)` — the literal enforcement that an instruction cannot activate without citing the report that motivated it, as a database CHECK (mirrors `ck_memory_calibration_error`'s precedent of putting the activation gate in the schema, not only the service). `CHECK ((status = 'active') = (activated_at IS NOT NULL AND superseded_at IS NULL))`. Partial unique index `uq_agent_instruction_active ON agent_instruction (author_actor_id) WHERE status = 'active'` — `memory_calibration_mapping`'s own `uq_memory_calibration_active` pattern.
+
+No change to `actors.actor_kind` — deliberately, per this epic's scope decision above.
+
+Acceptance:
+    alembic upgrade head
+    alembic downgrade -1 && alembic upgrade head
+    .venv/bin/python -m pytest tests/integration/test_migrations.py -q
+    make test-unit && make lint && make typecheck
+
+### E20-T4 — `AgentAccuracyService`: per-author accuracy, on read
+
+**Kind:** task · **Status:** pending · **Blocked by:** E20-T2, E20-T3 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: `contextplane/service/memory/agent_accuracy.py`, structurally parallel to `calibration.py` (frozen dataclasses + pure aggregation + a thin service over `session_factory`), not to `learning_reads.py` (no `Floors` — none apply after E20-T1/T2).
+
+`accuracy_for(ctx, *, author_actor_id, window_start, window_end, breakdown="overall")` joins `memory_claim_adjudication a` to `memory_claims c` on `c.claim_id = a.claim_id`, filters `c.author_actor_id = :actor AND c.author_tenant_id = :tenant AND a.verdict IN ('correct','incorrect') AND a.adjudicated_at >= :start AND a.adjudicated_at < :end`, grouped by `claim_category`/`predicate` or ungrouped for `"overall"`. `undecidable` verdicts count toward the header total but are excluded from `rate`'s denominator — same justification `calibration.py` already gives for the identical exclusion. **`author_tenant_id`, not `owning_tenant_id`, is the scoping column** — stated in the query's own comment (mirroring `learning_reads.py`'s existing comment distinguishing the two columns for a different query), because getting this backwards would scope an agent's accuracy to claims about a different tenant's subjects rather than to the tenant that ran the agent.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit -q -k "agent_accuracy"
+    .venv/bin/python -m pytest tests/integration -q -k "agent_accuracy"
+    make test-unit && make lint && make typecheck
+
+### E20-T5 — `AgentAutonomyService`: intervention-rate from session events
+
+**Kind:** task · **Status:** pending · **Blocked by:** E20-T3 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: `contextplane/service/memory/agent_autonomy.py`. Reads `memory_session_events` ordered by `(tenant_id, actor_id, session_id, seq)` (the existing `ix_mse_replay` index) for a given `author_actor_id` over a window. For each distinct `session_id`, finds every `agent_action` row and asks whether a `user_message` row occurs at a later `seq` within the same session *after* the first `agent_action` — that is an intervention, distinct from the session's initiating `user_message` (the human's original kickoff, which is not a correction). A session with zero such later `user_message` rows completed autonomously; one or more marks it intervened.
+
+`autonomy_for(ctx, *, author_actor_id, window_start, window_end) -> AutonomyBreakdown`. This is one query per call (grouped by `session_id`, a boolean `bool_or(kind='user_message' AND seq > first_agent_action_seq)` via a window function), not materialized, matching E20-T4's on-read rationale. Explicitly out of scope: distinguishing a *correction* `user_message` from an unrelated follow-up question in the same session — this epic treats any post-kickoff `user_message` as an intervention, a coarser signal than "was this specifically a correction," and states that simplification here rather than silently assuming it away; refining it is a natural follow-on once real data shows whether the coarse signal is too noisy.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit -q -k "agent_autonomy"
+    .venv/bin/python -m pytest tests/integration -q -k "agent_autonomy"
+    make test-unit && make lint && make typecheck
+
+### E20-T6 — `AgentFailurePatternService`: mechanical failure-cluster aggregation
+
+**Kind:** task · **Status:** pending · **Blocked by:** E20-T4, E20-T5 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: `contextplane/service/memory/agent_failure_patterns.py`. `build_report(ctx, *, author_actor_id, window_start, window_end, examples_per_group=5) -> FailurePatternReport` reuses `AgentAccuracyService`'s exact window/scoping parameters (not a parallel redefinition of "the window"). Groups `incorrect`-verdict claims by `(claim_category, predicate)`, each group carrying `incorrect_count`, `total_count` for that group (so the report states both "how often does this group appear among failures" and "how often does this group fail when it appears" — the first alone conflates a predicate the agent uses constantly-and-mostly-rights with one rarely touched and always wrong), and up to `examples_per_group` example `claim_id`s with `value_jsonb` and the adjudicator's `note`, resolved via a lateral join — matching `calibration.py`'s "a bin's value is a sentence anybody can check" standard.
+
+Also calls `AgentAutonomyService.autonomy_for` for the same window and includes `n_intervention_sessions`/`n_sessions` on the report, so a failure-pattern report answers both "what did the agent get wrong" and "how often did it need help," per this epic's two-dimension design.
+
+`build_report` persists its result to `agent_failure_pattern_report` (E20-T3) and returns the `report_id` alongside the dataclass — stated plainly as a write despite the "build" framing, because E20-T3's `ck_agent_instruction_activation_cited`-equivalent CHECK requires citing a stored `report_id`, not a report a human read once with nothing to point back to.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit -q -k "agent_failure_pattern"
+    .venv/bin/python -m pytest tests/integration -q -k "agent_failure_pattern"
+    make test-unit && make lint && make typecheck
+
+### E20-T7 — `AgentInstructionService`: versioned activation, gated and reversible
+
+**Kind:** task · **Status:** pending · **Blocked by:** E20-T3, E20-T6 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: `contextplane/service/memory/agent_instructions.py`, mirroring `CalibrationService`'s `publish`/`active_mappings`/`load_active` shape:
+
+- `propose(ctx, *, author_actor_id, version, content, motivated_by_report_id) -> uuid.UUID` — inserts with no path to `status='active'` directly; validates `motivated_by_report_id` resolves to a real `agent_failure_pattern_report` row scoped to the same `author_actor_id`, raising `ValidationError` naming the report id (backs up E20-T3's DB CHECK with an actionable message before an opaque constraint violation would surface).
+- `activate(ctx, *, instruction_id, now)` — within one transaction, demotes the current active row for that `author_actor_id` to `superseded` (`superseded_at=now`), then activates the target — the `publish()` pattern exactly. Refuses if `motivated_by_report_id IS NULL` (redundant with the DB CHECK, better error message).
+- `rollback(ctx, *, author_actor_id, now) -> uuid.UUID | None` — supersedes the current active row, reactivates the immediately-prior superseded row (`activated_at DESC`) if one exists, else returns `None` (an agent's first version has no predecessor) — built from the same status-transition primitive `activate` already has.
+- `active_instruction(ctx, *, author_actor_id)` and `history(ctx, *, author_actor_id)` — read methods mirroring `active_mappings`/`load_active`.
+
+`content` is untouched, unvalidated free text — this service's only job is version lineage, activation gating, and rollback; the content itself is entirely a human/external-process decision, per this epic's design boundary.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit -q -k "agent_instructions"
+    .venv/bin/python -m pytest tests/unit -q -k "agent_instructions and rollback"
+    .venv/bin/python -m pytest tests/integration -q -k "agent_instructions"
+    make test-unit && make lint && make typecheck
+
+### E20-T8 — MCP tools: an agent may read its own accuracy/autonomy/patterns, never another's
+
+**Kind:** task · **Status:** pending · **Blocked by:** E20-T4, E20-T5, E20-T6, E20-T7 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: three read-only tools added to `contextplane/api/mcp/tools/memory_curation.py`, following `adjudicate_claim`'s exact shape (`ctx = await context._resolve_tenant(...)` first line, manual UUID parsing raising `ToolError`, typed-exception mapping via `_map_error`, `json.dumps(context._serialize(...))` return, Google-style docstring, added to `__all__` and `register()`):
+
+- `get_my_accuracy(window_start, window_end, breakdown="overall") -> str` — **no `author_actor_id` parameter**; always `ctx.actor_id`. Asking about another actor is structurally impossible, not merely gated.
+- `get_my_autonomy(window_start, window_end) -> str` — same self-only shape.
+- `get_my_failure_patterns(window_start, window_end) -> str` — same self-only shape.
+
+**No MCP tool for `propose`/`activate`/`rollback`.** Those change what an agent does next and belong on an admin surface with a human in the loop (E20-T9/T10) — an agent that could activate its own instruction could self-author its own behavior change with no human involved, a materially different trust boundary than adjudicating a claim (already unrestricted today).
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit -q -k "mcp and (get_my_accuracy or get_my_autonomy or get_my_failure_patterns)"
+    sh -c '! grep -n "async def propose\|async def activate\|async def rollback" contextplane/api/mcp/tools/*.py'
+    make test-unit && make lint && make typecheck
+
+### E20-T9 — Admin REST surface: accuracy, autonomy, failure patterns, instruction lifecycle
+
+**Kind:** task · **Status:** pending · **Blocked by:** E20-T7 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: routes `GET /v1/agents/{actor_id}/accuracy`, `GET /v1/agents/{actor_id}/autonomy`, `GET /v1/agents/{actor_id}/failure-patterns`, `POST /v1/agents/{actor_id}/instructions` (propose), `POST /v1/agents/{actor_id}/instructions/{instruction_id}:activate`, `POST /v1/agents/{actor_id}/instructions:rollback`, `GET /v1/agents/{actor_id}/instructions`. Gated by the same tenant-scoped mutation role this codebase's admin routes already require; mutating routes carry `Idempotency-Key` handling per existing convention (reuse whatever the calibration/promotion-proposal admin routes already use — not reinvented here).
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "agent_instructions_route or agent_accuracy_route or agent_autonomy_route"
+    make test-unit && make lint && make typecheck
+
+### E20-T10 — Admin dashboard: agent performance and instruction lifecycle screens
+
+**Kind:** task · **Status:** pending · **Blocked by:** E20-T9 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: new feature `apps/admin-dashboard/src/features/agents/` (a distinct top-level feature — it answers "how is this agent principal doing," a different question from `memory`'s claim-curation surfaces or `analytics`'s usage-volume surfaces, per this repo's business-vocabulary-over-generic-buckets convention). Reuses existing composition primitives (`PageContainer`/`PageHeader`/`SummaryStrip`/`TableSection`/`EmptyState` — the same pieces `AnalyticsPage.tsx` and `SettingsPage.tsx` already use):
+
+- Accuracy view: overall rate in a `SummaryStrip`, `claim_category`/`predicate` breakdown in a `TableSection`.
+- Autonomy view: autonomy rate alongside accuracy — presented together, not on separate screens, since this epic's design treats them as two dimensions of one question.
+- Failure-pattern view: table of `(claim_category, predicate, rate, example count)`, expandable to example claims; `EmptyState` when a window has no failures.
+- Instruction lifecycle view: current active instruction's content and `activated_at`; a form (React Hook Form, one `useForm` at this feature's boundary per CLAUDE.md) to propose a version citing a `report_id` selected from a `<select>` populated from the agent's own failure-pattern reports (not free-text UUID entry — enforces the "must cite a report" discipline as a usability layer on top of the DB CHECK); an activate action; a rollback action behind a confirmation step (state-changing, hard-to-undo-again, on live agent behavior).
+- Generated OpenAPI client types for the new routes — never hand-written DTOs, per CLAUDE.md.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "agents"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+## Out of scope for E20
+
+- **`PERSONA_AGENT` configurability.** `claim_serving.py`'s `PERSONA_AGENT` governs claim-serving depth/category filtering — an orthogonal concern to this epic's authorship/grading/retraining loop. Dropped rather than silently omitted.
+- **`actor_kind` classification of humans vs. agents.** See Context above — no reliable signal exists today.
+- **LLM-generated instruction content.** This epic builds the versioning/gating/measurement scaffold; content is authored externally.
+- **A scheduled worker for accuracy/autonomy materialization.** Computed on read; see ADR-0013 rationale above.
+

@@ -69,6 +69,20 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         "service/memory/claim_curator_actions.py",
         "service/memory/claim_authority.py",
         "service/memory/claim_erasure_writes.py",
+        # Provenance-scoped quarantine. Reads both tables to decide which
+        # claims a predicate reaches -- `memory_claim_provenance` is where a
+        # connector run is recorded, so selecting by provenance is not possible
+        # without it -- and writes `quarantined_at` on the rows it withholds.
+        #
+        # On this list for the narrowest possible reason: it can only ever make
+        # *fewer* claims servable. It has no route to a response that carries
+        # claim content; `preview` returns bare ids, `apply` returns the ids it
+        # withheld, and neither exposes a value, a predicate, a subject or a
+        # confidence. The risk this whole gate exists for -- a staged claim
+        # acquiring canonical authority by leaking through a capability read --
+        # is not reachable from a surface whose entire output is "these stopped
+        # being served".
+        "service/memory/quarantine.py",
         # Erasure must select the claims to delete — its two selection queries
         # read the tables to decide what dies, and every row it touches stops
         # existing. Serves nothing: its only output is per-table delete counts.

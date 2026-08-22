@@ -147,6 +147,22 @@ RULES: tuple[Rule, ...] = (
                 # discard. Composed into ClaimService as a mixin, but its
                 # writes live in its own file.
                 "contextplane/service/memory/claim_curator_actions.py",
+                # Provenance-scoped quarantine: `quarantined_at` on and off,
+                # and nothing else on this table.
+                #
+                # A fifth writer rather than a method on ClaimService because
+                # what it writes is not a claim invariant. `quarantined_at` says
+                # nothing about the ontology, the value, the subject, the
+                # provenance or the visibility -- it says an operator withheld
+                # this row pending an incident, and setting it cannot make an
+                # invalid claim look valid. It can only ever *reduce* what is
+                # served, which is the safe direction for an unaudited mistake.
+                #
+                # It is nonetheless a servability write, so it belongs on this
+                # list rather than outside it: the reason this rule exists is
+                # that a reader should be able to enumerate everything that can
+                # stop a claim being served, and quarantine is now one of those.
+                "contextplane/service/memory/quarantine.py",
                 # The actor-erasure participant's claims-table writer
                 # (erase_claims_for_actor) -- not a ClaimService method, but
                 # still the one writer this table has for that operation.
