@@ -42,7 +42,7 @@ from contextplane.api.schemas.intent_memory import (
     GrantResponse,
 )
 from contextplane.auth.roles import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER
-from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.types import TenantContext
 from contextplane.workspaces.audience import AudienceDenied
 from contextplane.workspaces.schemas.intent_memory import PARTICIPANT_ROLES
@@ -99,6 +99,12 @@ async def add_participant(
         )
     except AudienceDenied:
         return _denied()
+    except ConflictError as exc:
+        # An actor who already participates over an overlapping window. Caught
+        # here as well as denial because the two are different answers: denial
+        # says "not yours to change", this says "already true". Before E7-T5 it
+        # was neither -- the constraint violation reached the caller as a 500.
+        raise map_catalog_error(exc) from exc
     return GrantResponse.of(grant)
 
 

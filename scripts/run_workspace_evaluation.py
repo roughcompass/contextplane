@@ -329,7 +329,17 @@ async def materialise_world(
                                  expires_at, resolver_version)
                             VALUES (:tid, :task, :actor, 'contributor', 'evaluation-harness',
                                     :granted, NULL, 'explicit/v1')
-                            ON CONFLICT (tenant_id, intent_id, actor_id) DO NOTHING
+                            -- No conflict target, and that is required rather than
+                            -- tidier. Migration 0070 replaced the unique index on
+                            -- (tenant_id, intent_id, actor_id) with a temporal
+                            -- exclusion, and Postgres cannot use an exclusion
+                            -- constraint as an arbiter: naming those columns raises
+                            -- "there is no unique or exclusion constraint matching
+                            -- the ON CONFLICT specification". Omitting the target is
+                            -- the one form that handles an exclusion violation, and
+                            -- it says what this line always meant -- if this actor
+                            -- already participates in this task, leave it alone.
+                            ON CONFLICT DO NOTHING
                             """
                         ),
                         {
