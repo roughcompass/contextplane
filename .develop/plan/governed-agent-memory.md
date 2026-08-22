@@ -5503,7 +5503,7 @@ unrelated fixes.
 
 ### E3-T6 — `discard` leaves the claim's vectors in the index
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a discarded claim's vectors leave the index, as a superseded or
 unconsolidated claim's already do.
@@ -5526,6 +5526,22 @@ docstring's count to correct with it.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "discard or embedding"
     make all
+
+**Delivered.** One `project_claim` call in `discard`, in the same transaction as
+the status write so the row and the index cannot disagree if the request dies
+between them, and the docstring's "two places" count corrected to three.
+
+The regression test asserts against `embeddings` rather than through a search,
+because **a search returns the same answer either way** — every read filters on
+`status`, so the defect is invisible from the result set. That is why it
+survived, and it is why the test has to look at the index directly.
+
+It also asserts the `embedding_outbox` row is gone. A queued request left behind
+would be re-embedded by the next drain, putting the vector back and making the
+retraction look intermittent rather than absent — which is a worse bug to
+diagnose than the one being fixed.
+
+Mutation-checked: removing the call makes the test fail with `assert 1 == 0`.
 
 ### E3-T7 — The conformance test that holds the servability rules together does not exist
 
