@@ -355,6 +355,37 @@ non-repudiation); retention classes; schedule-driven disposal via
 crypto-shredding recorded as auditable deletion events; PII block tier for
 undeclared streams.
 
+**Grounded before decomposition. Two of these four are further along than the
+body implies and one has just acquired its missing half.**
+
+*A digest chain over receipt events ships.* `arc_receipt_events` chains and
+`tests/integration/test_arc_digest_chain.py` verifies it; `audit/actions.py`
+already carries a terminal action for a receipt whose chain no longer verifies.
+So the internal half of tamper-evidence exists. **What does not exist is the
+"externally anchored" half** -- nothing publishes a periodic digest anywhere
+outside this database, so a party who can rewrite the database can rewrite the
+chain and its verifier together. That is the whole content of the clause and it
+is E6-T1.
+
+*The naming constraint is load-bearing and belongs in the ADR, not a comment.*
+"Bounded exposure window, never called non-repudiation" is a claim about what the
+mechanism buys: anchoring every N minutes means tampering is detectable except
+within the last N, and it identifies no signer. A deployment that markets this as
+non-repudiation has mis-sold it.
+
+*Crypto-shredding is named in the tree and does not exist.* Migration 0066 cites
+crypto-shredding as the reason `memory_session_events` needs no time partitions
+-- "disposal by destroying the key, recorded as an auditable deletion event" --
+and there is no key, no destruction and no such event. A design decision has
+already been taken *on the strength of* a mechanism nobody built. That is worse
+than an unbuilt feature and it is E6-T3's first paragraph.
+
+*"PII block tier for undeclared streams" now has a stream to be undeclared.*
+E1-T11 built `memory_source_namespaces`, so "undeclared" is checkable:
+`sensitivity_of` returns `None`. The clause becomes a policy over that lookup
+rather than a concept without a subject, which is what it was when this body was
+written.
+
 ### E7 — MCP surface contract + two-call memory loop
 
 **Kind:** epic · **Status:** pending · **Blocked by:** E1, E2 · **Repo:** contextplane
@@ -364,6 +395,36 @@ envelope-derived core verbs; full surface opt-in per envelope; registry↔OpenAP
 parity gate and registry↔docs conformance gate. Two-call remember/recall with
 safe defaults routing through the PII-scanned hot tier; time-to-first-memory
 quickstart.
+
+**Grounded before decomposition, and the gap is much larger than "add a
+registry".**
+
+*There is no registry, and the default surface is everything.* Tools live as
+module-level functions across fifteen modules, each exposing a `register()` that
+decorates its functions onto the FastMCP server, and `server.py` calls all
+fifteen unconditionally. Counting the tool functions in those modules gives
+roughly **120**, against the six to eight this body wants a default connection to
+show. An agent connecting today is handed the entire surface, and the largest
+single module is memory curation at thirty-eight.
+
+*"Envelope-derived" is now buildable and was not when this was written.* E1
+shipped the autonomy envelope, the applicability matrix, and
+`enforce_envelope`; a principal's envelope can therefore decide which verbs it
+sees. That makes the clause concrete: the default is the core verbs, and the rest
+is opt-in by an envelope that names them.
+
+*Half a parity gate ships.* `tests/conformance/test_memory_rest_mcp_parity.py`
+asserts every memory operation exists over both surfaces and that no memory tool
+takes an actor identifier. It covers memory only, and it compares operations
+rather than a registry -- because there is no registry to compare against. So
+E7's parity gate is an extension of something real rather than a new idea, and
+it should say so rather than duplicating that file.
+
+*The two-call loop mostly ships.* The MCP memory tools route writes through
+admission -- `tools/memory.py` records that this path once called `record_event`
+directly and scanned nothing, which is the defect it was fixed for. What is
+missing is the *defaults*: nothing makes the safe path the one an agent gets
+without asking.
 
 ### E8 — Memory-quality eval harness
 
@@ -3793,4 +3854,213 @@ discipline, and reports before it gates.
 
 Acceptance:
     make eval
+## Task decomposition — eighth wave (E6 and E7, both unblocked by E1 and E2 closing)
+
+### E6-T1 — ADR: what an external anchor buys, and what it must never be called
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: decide where a periodic digest is published, how often, and what the
+resulting claim is -- before any of it is built, because the claim is the part
+that gets overstated.
+
+The internal chain ships and is verified. Its limit is precise: a party who can
+rewrite the database can rewrite the chain and the verifier together, so the
+chain proves nothing against the operator. An external anchor closes exactly that
+and nothing else.
+
+**The naming constraint is the ADR's main output.** E6's body says "never called
+non-repudiation", and the reason must be written where a marketing page's author
+will read it: anchoring every N minutes makes tampering detectable *except within
+the last N*, and it identifies no signer. The exposure window is a number a
+deployment must state, not a detail.
+
+Decide and record: the cadence and therefore the window; what is anchored (a
+digest of the chain head, not content); where (the options differ in trust
+assumptions -- a public transparency log, a second party's store, a notary -- and
+"cheapest" is not the criterion); and what an operator does when verification
+fails, which is the question nobody asks until it does.
+
+Acceptance:
+    make doc-links
+    sh -c 'test -f .develop/adr/0012-*.md'
+
+### E6-T2 — Retention classes, declared per stream rather than per deployment
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+
+Goal: a retention class is a named policy -- how long, and what disposal means --
+that a stream or a claim category is assigned to, instead of the single
+per-tenant `memory_retention_days` that decides everything today.
+
+Check the shape E1-T11 just built before inventing another. That task registered
+`(tenant_id, source_system, source_namespace)` with a handling tier and found
+that no existing registration surface fitted because they all describe things the
+service fetches. A retention class attaches to the same key for the same reason,
+and if it does, this is a column and a vocabulary rather than a table.
+
+The vocabulary is the decision: a class that says only "90 days" is a number with
+a name. It has to carry what happens at the end -- delete, shred, anonymise --
+because those differ in what survives and an operator choosing between them is
+choosing what an auditor will still be able to see.
+
+Acceptance:
+    .venv/bin/python -m alembic upgrade head
+    .venv/bin/python -m pytest tests/integration -q -k "retention"
+    make all
+
+### E6-T3 — Crypto-shredding, which a shipped decision already assumes exists
+
+**Kind:** task · **Status:** pending · **Blocked by:** E6-T2 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+
+Goal: per-scope content keys, disposal by destroying the key, and an auditable
+deletion event recording that it happened.
+
+**Start by reading migration 0066, because this task is repairing a claim already
+in the tree.** That migration chose hash partitioning over range partitioning for
+`memory_session_events` and justified it partly by saying disposal is
+crypto-shredding, "which operates on content, not on physical layout". There is
+no key and no shredding. The partitioning decision is still right on its other
+grounds -- the unique key argument is independent and sufficient -- but a design
+decision resting partly on an unbuilt mechanism is the thing to fix first, either
+by building it or by striking the clause.
+
+The deletion event is not a log line. It is the evidence that disposal happened
+on schedule, so it belongs in the audited stream with the scope, the schedule
+that triggered it, and what became unreadable -- and it must survive the data it
+describes, which is the one property a naive implementation loses.
+
+Note what crypto-shredding cannot do: it makes content unreadable, not absent.
+Row counts, timestamps and graph shape survive. If a retention class promises
+erasure rather than unreadability, it needs a different disposal and E6-T2's
+vocabulary is where that distinction lives.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "shred or disposal"
+    make all && make test-integration
+
+### E6-T4 — An undeclared stream is blocked, not merely handled carefully
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a PII block tier that applies to content arriving from a stream nobody
+registered.
+
+E1-T11 made "undeclared" checkable: `sensitivity_of` returns `None`. Today that
+absence already produces the strictest *envelope* answer, because
+`_declared_sensitivity` reads an absent tier as most restrictive. This clause is
+about the *admission* path instead, which is a different decision made by a
+different module -- `pii_guard` scans against a tenant policy and knows nothing
+about streams.
+
+The question this task must answer rather than assume: is blocking right? An
+undeclared stream that fails admission cannot be replayed at all, which turns an
+operator's omission into an outage for a tenant's import. The alternative --
+scan-and-quarantine -- keeps the data and marks it. Whichever is chosen, the
+argument belongs in the code, and it should be checked against how the envelope
+path resolved the same tension, which was to be strict without refusing the
+write.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "undeclared or pii"
+    make all
+
+### E7-T1 — The tool registry, and what a default connection sees
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: one machine-readable registry naming every MCP tool, its surface tier, and
+the REST operation it corresponds to -- and a default connection that exposes the
+core verbs rather than all of them.
+
+Roughly 120 tool functions register unconditionally today across fifteen modules.
+An agent connecting is handed all of them, which is the problem this epic opens
+with, and the fix is not a smaller server but a declared core.
+
+**Choosing the six to eight is the task, and it should be derived rather than
+argued.** The two-call loop names its own: remember and recall. The rest should
+come from what an agent actually calls to complete a task, which the receipts
+already record -- so read them rather than picking. A core verb set chosen by
+taste will be defended by taste.
+
+The registry is a committed artifact, not a computed one, for the reason the
+governed-magnitude registry is: a generated list agrees with the code by
+construction and therefore cannot catch the code being wrong. Its parity with
+the code is a gate, which is E7-T2.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/conformance -q -k "tool_registry"
+    make all
+
+### E7-T2 — Parity, extending the gate that already half-exists
+
+**Kind:** task · **Status:** pending · **Blocked by:** E7-T1 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: every registry entry names a tool that exists and a REST operation that
+exists, in both directions, plus the docs conformance half.
+
+`tests/conformance/test_memory_rest_mcp_parity.py` already asserts every memory
+operation exists over both surfaces and that no memory tool takes an actor
+identifier. **Extend it rather than writing a second one.** Two parity gates
+disagreeing about what parity means is worse than one covering less, and that
+file's actor-identifier rule is a property the wider gate should inherit rather
+than restate.
+
+The docs half is the one that rots: a tool documented and removed, or added and
+undocumented, are both surfaces where an agent's expectation and the server
+disagree. Prefer deriving the docs from the registry to checking two hand-written
+lists agree.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/conformance -q -k "parity"
+    make all
+
+### E7-T3 — The full surface is opt-in, per envelope
+
+**Kind:** task · **Status:** pending · **Blocked by:** E7-T1 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a principal sees the core verbs by default and the wider surface only where
+its autonomy envelope says so.
+
+This clause was unbuildable when the epic was written and is buildable now: E1
+shipped the envelope, the applicability matrix and `enforce_envelope`, so "which
+verbs may this principal see" is the same question the matrix already answers
+about acts.
+
+**Listing and calling are two decisions and both must be made.** Hiding a tool
+from the list while still executing it when called is security by obscurity;
+refusing at call time while listing it invites an agent to plan around a verb it
+cannot use. Do both, and make the refusal say which it was -- the envelope guard's
+existing refusal codes already distinguish "no envelope" from "outside envelope",
+and an agent's remedy differs.
+
+Check first whether the MCP layer can reach an envelope decision at connect time.
+Tools authenticate per call rather than at SSE handshake, which may mean the
+listing is per call too, and that changes the shape of this task.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "mcp and envelope"
+    make all
+
+### E7-T4 — Safe defaults on the two-call loop, and a quickstart that proves them
+
+**Kind:** task · **Status:** pending · **Blocked by:** E7-T1 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the remember/recall pair an agent reaches first is the safe one, and a
+quickstart measures how long it takes to get there.
+
+The routing mostly ships -- the MCP memory tools go through admission, and
+`tools/memory.py` records that this path once called `record_event` directly and
+scanned nothing, which is what it was fixed for. What is missing is that nothing
+makes the safe path the default an agent gets without asking for it.
+
+"Time to first memory" is a number, so it needs a definition before it can be
+quoted: from what, to what, measured how. Undefined it becomes a marketing figure.
+Define it as a scripted path a test executes, so the claim and its evidence are
+the same artifact -- the shape `make eval` already uses for every other published
+figure here.
+
+Acceptance:
+    make eval
+    .venv/bin/python -m pytest tests/integration -q -k "two_call or quickstart"
     make all
