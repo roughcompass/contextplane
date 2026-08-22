@@ -5989,7 +5989,7 @@ A related, more valuable insight surfaced during design and is now a first-class
 
 ### E20-T1 — ADR 0017: the per-actor privacy floor is removed, for every actor kind
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `.develop/adr/0017-per-actor-aggregates-are-no-longer-floored.md`, recording that `learning_reads.py`'s `MIN_COHORT_ACTORS`/`MIN_CELL_EVENTS` floors and the "no per-actor cell, ever" policy they enforced are rescinded, for humans and agents alike, with no `actor_kind`-conditioned exception.
 
@@ -6006,6 +6006,37 @@ Acceptance:
     test -f .develop/adr/0017-per-actor-aggregates-are-no-longer-floored.md
     grep -q "^## Dissent" .develop/adr/0017-per-actor-aggregates-are-no-longer-floored.md
     grep -q "^## Assumptions" .develop/adr/0017-per-actor-aggregates-are-no-longer-floored.md
+
+**Delivered.** Two things the writing added to what the entry specified.
+
+**The no-carve-out decision has a second, stronger reason than uniformity.**
+The entry gives one — a carve-out would be an undocumented two-tier policy. The
+ADR adds the one that makes it not a choice: **there is no `actor_kind` signal
+to branch on**, so an agent-only exemption would be keyed on a field nobody can
+populate correctly, which is not a narrower policy but an arbitrary one. A
+reader looking for the missing branch is told explicitly that it does not exist
+and why.
+
+**The dissent found a sharper objection than the entry anticipated.** The entry
+framed it as "a per-human accuracy figure is a performance-management surface".
+The sharper form is that **assumption 3 substitutes authorization for
+suppression, and the two answer different questions** — a floor constrains what
+*exists*, authorization constrains who *reads*. A surface that cannot be
+constructed cannot be leaked by a misconfigured role, an over-broad audit grant,
+a log line, a cached response, or a future endpoint that forgets to ask. The
+module's own docstring makes precisely that argument, and this decision
+overrides it **without refuting it**.
+
+And the substitute is not built. Nothing in E20 requires the
+authorization-plus-justification read assumption 3 offers in exchange, so the
+honest description of the state after E20-T2 is that the protection was removed
+and the replacement was named. E20-T2 should not close without either building
+it or recording that it is owed.
+
+Also recorded, so E20-T2 does not sweep it up: `signals/aggregates.py`'s
+erasure-differencing withholding is **untouched**. That is ADR-0013's concern
+about `privacy_aggregates`, orthogonal to actor cardinality, and removing it
+would reintroduce a disclosure this decision says nothing about.
 
 ### E20-T2 — Remove the floor: `learning_reads.py` and every consumer
 
