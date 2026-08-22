@@ -150,8 +150,8 @@ async def _seed(
                 text(
                     "INSERT INTO context_receipts "
                     "(receipt_id, tenant_id, intent_id, state, cacheable, resolved_at, requested_by, "
-                    " request_digest) "
-                    "VALUES (:rid, :t, :task, 'complete', TRUE, :now, 'agent-a', 'sha256:abc')"
+                    " request_digest, hydration_state) "
+                    "VALUES (:rid, :t, :task, 'complete', TRUE, :now, 'agent-a', 'sha256:abc', 'complete')"
                 ),
                 {"rid": receipt_id, "t": tenant_id, "task": intent_id, "now": _NOW},
             )
@@ -218,6 +218,10 @@ async def surface(pg_container: str) -> AsyncIterator[_Surface]:
                 "tenant_id": tenant_id,
                 "owner_actor": str(owner_actor),
                 "intent_id": intent_id,
+                # Published so a test can write a fixture row the surfaces have
+                # no way to create -- an unhydrated receipt is a state only the
+                # asynchronous writer E3-T3 adds will produce.
+                "pg_url": pg_container,
                 **seeded,
             }
 
@@ -355,6 +359,97 @@ async def test_a_receipts_exclusions_are_published(surface: _Surface) -> None:
     exclusions = resp.json()["exclusions"]
     assert len(exclusions) == 1
     assert exclusions[0] == {"block": "workspace", "item_key": "task-9", "reason": "no active grant"}
+
+
+# --- E3-T2: a receipt says whether it is finished being written -----------------
+
+
+async def _unhydrated_receipt(surface: _Surface, state: str) -> uuid.UUID:
+    """A receipt whose children have not been written, as hydration will leave one."""
+    receipt_id = uuid.uuid4()
+    engine = create_async_engine(surface["pg_url"], connect_args={"prepared_statement_cache_size": 0})
+    try:
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "INSERT INTO context_receipts "
+                    "(receipt_id, tenant_id, intent_id, state, cacheable, resolved_at, requested_by, "
+                    " hydration_state, item_count, exclusion_count) "
+                    "VALUES (:rid, :t, NULL, 'complete', TRUE, :now, 'agent-a', :hyd, 3, 2)"
+                ),
+                {"rid": receipt_id, "t": surface["tenant_id"], "now": _NOW, "hyd": state},
+            )
+    finally:
+        await engine.dispose()
+    return receipt_id
+
+
+@pytest.mark.asyncio
+async def test_a_receipt_publishes_whether_it_is_finished(surface: _Surface) -> None:
+    """The summary read surfaces the state rather than refusing.
+
+    A caller polling for a resolution it triggered has to be able to learn "not
+    yet", and the counts tell it what to expect when hydration lands. Refusing
+    here would leave no way to observe the state the column exists to publish.
+    """
+    receipt_id = await _unhydrated_receipt(surface, "pending")
+
+    with _as(surface, surface["owner"]):
+        resp = await surface["client"].get(
+            f"/v1/receipts/{receipt_id}",
+            headers=bearer_headers(tenant_slug=surface["slug"]),
+        )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["hydration_state"] == "pending"
+    assert (body["item_count"], body["exclusion_count"]) == (3, 2)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["pending", "failed"])
+@pytest.mark.parametrize("path", ["exclusions", "references"])
+async def test_an_unfinished_receipt_is_not_served_as_evidence(surface: _Surface, state: str, path: str) -> None:
+    """The refusal this column exists for.
+
+    Both of these reads are consumed as complete answers -- "was there more than
+    this" and "what was this about" -- and both would return an empty list for a
+    receipt still being written. An empty list is a fact about a finished
+    receipt and a race about an unfinished one, and they are indistinguishable
+    at the point somebody acts on them.
+
+    `failed` refuses for the same reason and a different remedy: that receipt
+    will never be evidence, where a `pending` one may be shortly.
+    """
+    receipt_id = await _unhydrated_receipt(surface, state)
+
+    with _as(surface, surface["owner"]):
+        resp = await surface["client"].get(
+            f"/v1/receipts/{receipt_id}/{path}",
+            headers=bearer_headers(tenant_slug=surface["slug"]),
+        )
+
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["errors"][0]["code"] == "receipt_not_hydrated"
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_receipt_is_still_not_found_rather_than_unhydrated(
+    surface: _Surface,
+) -> None:
+    """404 comes before the hydration refusal.
+
+    Otherwise a caller learns that an id exists by getting 409 instead of 404,
+    which is the confirmation the tenant-scoped read is careful not to give.
+    """
+    with _as(surface, surface["owner"]):
+        resp = await surface["client"].get(
+            f"/v1/receipts/{uuid.uuid4()}/exclusions",
+            headers=bearer_headers(tenant_slug=surface["slug"]),
+        )
+
+    assert resp.status_code == 404, resp.text
 
 
 @pytest.mark.asyncio

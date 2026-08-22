@@ -161,9 +161,15 @@ def test_an_unknown_role_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -
         )
 
 
-def test_one_actor_holds_one_grant_per_task(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
-    """Two rows would make "what may this actor do" ambiguous exactly when it is
-    being asked."""
+def test_one_actor_holds_one_grant_in_force_per_task(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Two grants *in force at once* would make "what may this actor do"
+    ambiguous exactly when it is being asked.
+
+    The constraint that says so used to be a unique index on
+    `(tenant_id, intent_id, actor_id)`, which said something stronger and wrong:
+    one grant *ever*. Migration 0070 narrowed it to an overlap check, so this
+    now asserts against the exclusion by name.
+    """
     task = uuid.uuid4()
     statement = text(
         """
@@ -174,8 +180,51 @@ def test_one_actor_holds_one_grant_per_task(sync_engine: Engine, tenant_id: uuid
     )
     with sync_engine.begin() as conn:
         conn.execute(statement, {"t": tenant_id, "task": task, "role": "reader"})
-    with pytest.raises(Exception, match="uq_task_participant_grant"), sync_engine.begin() as conn:
+    with pytest.raises(Exception, match="ex_intent_participant_grants_no_overlap"), sync_engine.begin() as conn:
         conn.execute(statement, {"t": tenant_id, "task": task, "role": "owner"})
+
+
+def test_a_closed_grant_does_not_block_a_new_one(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The half the old unique index got wrong, at the schema level.
+
+    Revoke is a soft delete -- the row stays and `expires_at` is set -- so a
+    re-grant used to collide with the retained row and surface as a 500. With
+    the window in the key the two sit side by side, and both remain readable,
+    which is what an audit of a read taken before the revoke needs.
+    """
+    task = uuid.uuid4()
+    with sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO intent_participant_grants
+                    (tenant_id, intent_id, actor_id, role, granted_by, granted_at, expires_at, resolver_version)
+                VALUES (:t, :task, 'alice', 'reader', 'bob',
+                        now() - interval '2 hours', now() - interval '1 hour', 'v1')
+                """
+            ),
+            {"t": tenant_id, "task": task},
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO intent_participant_grants
+                    (tenant_id, intent_id, actor_id, role, granted_by, granted_at, resolver_version)
+                VALUES (:t, :task, 'alice', 'owner', 'bob', now(), 'v1')
+                """
+            ),
+            {"t": tenant_id, "task": task},
+        )
+        rows = (
+            conn.execute(
+                text("SELECT role FROM intent_participant_grants WHERE intent_id = :task ORDER BY granted_at"),
+                {"task": task},
+            )
+            .scalars()
+            .all()
+        )
+
+    assert rows == ["reader", "owner"], "the closed grant must survive beside the new one, not be replaced by it"
 
 
 # --- checkpoints: append-only, and the chain has no holes ---------------------

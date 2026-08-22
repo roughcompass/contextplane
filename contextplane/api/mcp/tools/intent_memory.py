@@ -21,7 +21,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.api.mcp import context
-from contextplane.exceptions import NotFoundError
+from contextplane.exceptions import ConflictError, NotFoundError
 from contextplane.types import Clock
 from contextplane.workspaces.audience import AudienceDenied
 from contextplane.workspaces.schemas.intent_memory import (
@@ -149,6 +149,11 @@ async def grant_intent_participation(
         )
     except AudienceDenied:
         return json.dumps({"error": _DENIED})
+    except ConflictError as exc:
+        # Kept in step with the REST adapter deliberately: this module's whole
+        # premise is transport parity, and an error one surface reports and the
+        # other crashes on is the least parity there is.
+        return json.dumps({"error": str(exc)})
     return json.dumps(_grant_json(grant))
 
 

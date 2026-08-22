@@ -27,6 +27,19 @@ class ReceiptResponse(BaseModel):
     requested_by: str
     request_digest: str | None
 
+    #: Whether this receipt is finished being written. Distinct from `state`,
+    #: which describes the *envelope* that was served: a receipt can record a
+    #: complete envelope and still be half-stored.
+    #:
+    #: Surfaced rather than hidden, because a caller polling for a resolution it
+    #: triggered needs to tell "not yet" from "nothing was withheld". The
+    #: exclusions and references reads refuse a receipt that is not `complete`
+    #: for the same reason -- an empty list from a half-written receipt is
+    #: indistinguishable from an empty list from a complete one.
+    hydration_state: str
+    item_count: int
+    exclusion_count: int
+
 
 class ReceiptListResponse(BaseModel):
     """Receipts citing one piece of external work, newest first."""
