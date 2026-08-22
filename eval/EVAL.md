@@ -5,6 +5,12 @@ One row per phase × metric. Phase rows are filled at phase exit.
 ## Fixtures (locked at CAP-P2-T01)
 
 * `fixtures/search_questions.json` — 50 retrieval questions, deterministic UUIDs (seeded random) for an eval-only tenant. Pre-authored before retrieval code so questions can't be reverse-engineered to match what retrieval returns. Loaded by `tests/integration/test_retrieval_embedding.py::test_recall_at_10`, which asserts the file holds exactly 50 questions before computing recall@10 over them.
+* `fixtures/multi_session_recall.json` — 12 scenarios, each staging claims whose evidence names an event in an *earlier* session and then asking a question in a *later* one. Loaded by `tests/integration/test_multi_session_recall.py`, which asserts the file holds exactly 12 before measuring. Claim serving is tenant- and actor-scoped rather than session-scoped, so the earlier claim is reachable by construction; what is measured is whether it is actually **retrieved**, against the competition of every other scenario's claims in the same tenant.
+
+  First measurement: **10/12 = 0.833** at recall@10, stub embedder (zero vectors, lexical-dominant). No threshold — report first, following the extraction ground truth's discipline. The two misses are `ms-009` and `ms-012`, both queries whose wording shares little with the claim text, which is what a lexical-dominant regime is expected to miss.
+
+  Two harness facts the first run surfaced, recorded so they are not rediscovered: a staged claim is **not** retrievable until it is consolidated (`project_claim` refuses to queue until `consolidated_at` is set) and until the drain has run. A fixture that staged and queried reported 0/12 — a harness failure wearing the shape of a recall result, caught by the test's anti-vacuity assertion.
+
 * `fixtures/time_travel_scenarios.json` — 20 bi-temporal scenarios (write-update-query against an `as_of` between the writes). Validates that the time-travel filter returns the original body, not the latest one. Loaded by `tests/integration/test_retrieval_embedding.py::test_20_time_travel_scenarios`, which asserts the file holds exactly 20 scenarios before replaying each one.
 
 After the first recall@10 measurement these files are **frozen**. Subsequent work extends with new files rather than editing these in place — `fixtures/arc_selection_cases.json` (see the "ARC Context Selection" section near the end of this file) is the worked example: it is loaded, sized, and evaluated by its own gate without ever touching the two files above.

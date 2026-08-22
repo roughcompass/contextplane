@@ -361,6 +361,8 @@ eval: ## Measure memory quality: retrieval recall, time-travel correctness, ARC 
 	  -k "recall_at_10 or time_travel_scenarios"; \
 	echo "eval: retrieval precision, joined through receipts (needs a DB)"; \
 	$(PYTEST) $(TEST_ROOT)/integration/test_retrieval_relevance.py -q --timeout=600; \
+	echo "eval: multi-session recall — is one session's claim retrievable in the next (needs a DB)"; \
+	$(PYTEST) $(TEST_ROOT)/integration/test_multi_session_recall.py -q --timeout=600 -s; \
 	echo "eval: salience reliability — retrieval rate per salience bucket (needs a DB)"; \
 	$(PYTEST) $(TEST_ROOT)/integration/test_salience_reliability_report.py -q --timeout=600 -s; \
 	echo ""; \
