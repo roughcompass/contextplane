@@ -132,6 +132,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # ... import ...` would bind once, at this module's own first import, and
     # never see a later `importlib.reload`. See this module's own docstring.
     from contextplane.api.routers import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
+        admin_agents,
         admin_extraction,
         admin_lifecycle,
         admin_memory_curation,
@@ -211,6 +212,10 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(admin_pii.router)
     app.include_router(admin_extraction.router)
     app.include_router(admin_memory_curation.router)
+    # E20's agent-performance reads and instruction lifecycle. Admin-gated:
+    # a per-actor figure is authorized here rather than made unconstructible,
+    # which is what replaced the aggregate floor.
+    app.include_router(admin_agents.router)
 
     # Mutation routers — PATCH/DELETE registered via HttpMethodRouter so
     # CONTEXTPLANE_HTTP_METHODS_MODE controls the exposed surface.

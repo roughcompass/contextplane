@@ -26,6 +26,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.security.pii_scanner import PiiScanner
 from contextplane.service.catalog.core import CatalogService
+from contextplane.service.memory.agent_accuracy import AgentAccuracyService
+from contextplane.service.memory.agent_autonomy import AgentAutonomyService
+from contextplane.service.memory.agent_failure_patterns import AgentFailurePatternService
+from contextplane.service.memory.agent_instructions import AgentInstructionService
 from contextplane.service.memory.calibration import CalibrationService
 from contextplane.service.memory.capability_requests import CapabilityRequestService
 from contextplane.service.memory.claim_history import ClaimHistoryService
@@ -53,6 +57,14 @@ class MemoryServices:
     calibration: CalibrationService
     consolidation: ConsolidationService
     claim_history: ClaimHistoryService
+    # E20's read surface: how accurate this agent is, how autonomous, and what
+    # it keeps getting wrong. Three services rather than one because each answers
+    # a question the others cannot, and the failure-pattern report composes the
+    # first two rather than re-deriving them.
+    agent_accuracy: AgentAccuracyService
+    agent_autonomy: AgentAutonomyService
+    agent_failure_patterns: AgentFailurePatternService
+    agent_instructions: AgentInstructionService
     claim_serving: ClaimServingService
     promotion: PromotionService
     promotion_guardrails: GuardrailService
@@ -94,6 +106,10 @@ def build_memory_services(
         calibration=CalibrationService(session_factory, clock=clock),
         consolidation=ConsolidationService(session_factory, clock=clock),
         claim_history=ClaimHistoryService(session_factory),
+        agent_accuracy=AgentAccuracyService(session_factory),
+        agent_autonomy=AgentAutonomyService(session_factory),
+        agent_failure_patterns=AgentFailurePatternService(session_factory, clock=clock),
+        agent_instructions=AgentInstructionService(session_factory),
         # The governed read surface. Everything it returns carries citations and
         # an untrusted-recall label, so no other module needs a claim-reading
         # path of its own -- and a second one would be a second place those

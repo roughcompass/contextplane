@@ -5848,7 +5848,7 @@ numbers were taken while E20 was being decomposed.
 
 ### E20-T5 — `AgentAutonomyService`: intervention-rate from session events
 
-**Kind:** task · **Status:** pending · **Blocked by:** E20-T3 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E20-T3 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `contextplane/service/memory/agent_autonomy.py`. Reads `memory_session_events` ordered by `(tenant_id, actor_id, session_id, seq)` (the existing `ix_mse_replay` index) for a given `author_actor_id` over a window. For each distinct `session_id`, finds every `agent_action` row and asks whether a `user_message` row occurs at a later `seq` within the same session *after* the first `agent_action` — that is an intervention, distinct from the session's initiating `user_message` (the human's original kickoff, which is not a correction). A session with zero such later `user_message` rows completed autonomously; one or more marks it intervened.
 
@@ -5859,9 +5859,38 @@ Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "agent_autonomy"
     make test-unit && make lint && make typecheck
 
+**Delivered.** One statement, one window function: `min(seq) FILTER (WHERE kind
+= 'agent_action') OVER (PARTITION BY session_id)` is each session's own boundary
+between brief and correction, so no session can be classified against another's
+first action.
+
+**The boundary is the whole module, and one test carries it.**
+`test_the_opening_message_is_the_brief_and_not_an_intervention`. Mutation-checked
+by replacing `seq > first_agent_action` with `seq >= 1`: four tests fail,
+including that one. Without the boundary every session is intervened and the
+metric reports a constant nobody can act on.
+
+Two decisions the entry did not have to name, both about what *not* to count:
+
+- **A session with no `agent_action` is excluded entirely.** Nothing ran
+  autonomously and nothing was corrected, so it is not evidence either way.
+  Counting it as autonomous would reward an agent for sessions it never started.
+- **The rate is over sessions, not events.** One session steered three times is
+  one intervened session. A per-event rate would make a single messy session
+  look systemic, and would move when an agent happened to emit more actions.
+
+`intervention_rate` is `None` rather than `0.0` when there were no sessions,
+matching E20-T4's `rate` and for the same reason: zero is the specific and
+flattering claim that the agent never needed help.
+
+The coarseness the entry flagged is preserved and stated in the module rather
+than assumed away: a correction and an unrelated follow-up question are both
+post-kickoff `user_message` rows, and both count. That is the honest signal
+available without classifying free text.
+
 ### E20-T6 — `AgentFailurePatternService`: mechanical failure-cluster aggregation
 
-**Kind:** task · **Status:** pending · **Blocked by:** E20-T4, E20-T5 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E20-T4, E20-T5 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `contextplane/service/memory/agent_failure_patterns.py`. `build_report(ctx, *, author_actor_id, window_start, window_end, examples_per_group=5) -> FailurePatternReport` reuses `AgentAccuracyService`'s exact window/scoping parameters (not a parallel redefinition of "the window"). Groups `incorrect`-verdict claims by `(claim_category, predicate)`, each group carrying `incorrect_count`, `total_count` for that group (so the report states both "how often does this group appear among failures" and "how often does this group fail when it appears" — the first alone conflates a predicate the agent uses constantly-and-mostly-rights with one rarely touched and always wrong), and up to `examples_per_group` example `claim_id`s with `value_jsonb` and the adjudicator's `note`, resolved via a lateral join — matching `calibration.py`'s "a bin's value is a sentence anybody can check" standard.
 
@@ -5871,12 +5900,37 @@ Also calls `AgentAutonomyService.autonomy_for` for the same window and includes 
 
 Acceptance:
     .venv/bin/python -m pytest tests/unit -q -k "agent_failure_pattern"
+
+**Delivered.** Groups by `(claim_category, predicate)`, examples through a
+lateral join so the cap applies per group rather than to the report, and both
+counts on every group.
+
+**The two-count design is the whole value and one test proves it.**
+`owned_by_team` failing 2 of 12 and `depends_on` failing 2 of 2 are identical by
+raw failure count — and `owned_by_team` sorts *first*. Only the denominator
+separates a predicate the agent uses constantly and mostly gets right from one
+it touches rarely and always gets wrong, and only the second is worth an
+instruction change.
+
+**A clean window still writes a report**, which the entry did not specify and
+which E20's premise requires: "nothing went wrong" is the baseline a later
+report is compared against, and measuring whether accuracy moved after an
+instruction change needs a before.
+
+`total_count` counts decided verdicts, not claims. An unreviewed claim says
+nothing about whether the agent got it right, so including it would make a
+well-reviewed predicate look worse than an ignored one.
+
+`FailureGroup.rate` has no `None` case, and that is a property of the query
+rather than of the class: `_PATTERN_SQL` only emits a group with at least one
+incorrect verdict, so the denominator is never zero. Stated rather than
+defended with a guard that could not fire.
     .venv/bin/python -m pytest tests/integration -q -k "agent_failure_pattern"
     make test-unit && make lint && make typecheck
 
 ### E20-T7 — `AgentInstructionService`: versioned activation, gated and reversible
 
-**Kind:** task · **Status:** pending · **Blocked by:** E20-T3, E20-T6 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E20-T3, E20-T6 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `contextplane/service/memory/agent_instructions.py`, mirroring `CalibrationService`'s `publish`/`active_mappings`/`load_active` shape:
 
@@ -5887,6 +5941,35 @@ Goal: `contextplane/service/memory/agent_instructions.py`, mirroring `Calibratio
 
 `content` is untouched, unvalidated free text — this service's only job is version lineage, activation gating, and rollback; the content itself is entirely a human/external-process decision, per this epic's design boundary.
 
+**Delivered, with one refinement the entry did not specify and one it did not
+anticipate.**
+
+*Specified but worth stating as built:* the activation gate is checked in the
+service **and** in the database, and both are kept. The DB CHECK makes the rule
+true for every writer; the service check makes the failure legible instead of an
+opaque constraint violation. `test_the_database_refuses_an_active_version_with_no_evidence`
+drives raw SQL deliberately — the service cannot produce that state, so going
+around it is the only way to test the constraint, and going around it is exactly
+the writer the constraint exists for.
+
+*The refinement:* `propose` also validates that the cited report is **about the
+same agent**. A version citing another agent's report satisfies the foreign key
+*and* the activation CHECK — it is the one way to build a fully-constrained row
+that means nothing, and only the service can see it.
+
+*The thing the entry's wording would have got wrong:* it specifies rollback
+reactivates "the immediately-prior superseded row (`activated_at DESC`)", and
+that is right — but the reason matters, because "previous version" reads as
+version *number*. After a rollback and a re-activation the two differ:
+v1 → v2 → rollback to v1 → activate v3 leaves v2 numerically before v3 while v1
+is what was actually in force.
+`test_rollback_returns_to_what_was_in_force_not_to_the_previous_number` pins the
+temporal reading.
+
+Rollback with no predecessor returns `None` **and leaves the incumbent active** —
+asserted, because the obvious implementation demotes first and would strand the
+agent with no instruction at all.
+
 Acceptance:
     .venv/bin/python -m pytest tests/unit -q -k "agent_instructions"
     .venv/bin/python -m pytest tests/unit -q -k "agent_instructions and rollback"
@@ -5895,7 +5978,7 @@ Acceptance:
 
 ### E20-T8 — MCP tools: an agent may read its own accuracy/autonomy/patterns, never another's
 
-**Kind:** task · **Status:** pending · **Blocked by:** E20-T4, E20-T5, E20-T6, E20-T7 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E20-T4, E20-T5, E20-T6, E20-T7 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: three read-only tools added to `contextplane/api/mcp/tools/memory_curation.py`, following `adjudicate_claim`'s exact shape (`ctx = await context._resolve_tenant(...)` first line, manual UUID parsing raising `ToolError`, typed-exception mapping via `_map_error`, `json.dumps(context._serialize(...))` return, Google-style docstring, added to `__all__` and `register()`):
 
@@ -5910,9 +5993,33 @@ Acceptance:
     sh -c '! grep -n "async def propose\|async def activate\|async def rollback" contextplane/api/mcp/tools/*.py'
     make test-unit && make lint && make typecheck
 
+**Delivered, and two existing gates did real work rather than waving it
+through.**
+
+`make lint`'s **registry gate** (E7-T1) refused the build until all three tools
+were listed with a tier — "an unlisted tool reaches a default connection with
+nobody having decided its tier". Listed as `extended`, so a default connection
+still sees eight verbs.
+
+The **parity ratchet** (E7-T2) then refused them as undocumented, holding the
+undocumented extended surface at 20. Documented rather than ratcheted up, which
+is what the ratchet is for. `docs/05-reference/02-mcp-tools.md` gains a section
+that states the self-only property as a *control* rather than an omission, and
+explains the two readings most likely to be got wrong: `rate: null` means
+unknown and not zero, and a group's `incorrect_count` without its `total_count`
+ranks the predicate you use most rather than the one you fail at.
+
+Their `rest` mappings are **null**, not the routes E20-T9 will build. Listing a
+path that does not exist yet would fail the parity gate that checks every
+registry mapping names a real operation — T9 fills them in when the operations
+are there.
+
+The three services are wired into `MemoryServices` and the API container, so the
+tools reach them the same way every other tool on this surface reaches its
+service.
 ### E20-T9 — Admin REST surface: accuracy, autonomy, failure patterns, instruction lifecycle
 
-**Kind:** task · **Status:** pending · **Blocked by:** E20-T7 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E20-T7 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: routes `GET /v1/agents/{actor_id}/accuracy`, `GET /v1/agents/{actor_id}/autonomy`, `GET /v1/agents/{actor_id}/failure-patterns`, `POST /v1/agents/{actor_id}/instructions` (propose), `POST /v1/agents/{actor_id}/instructions/{instruction_id}:activate`, `POST /v1/agents/{actor_id}/instructions:rollback`, `GET /v1/agents/{actor_id}/instructions`. Gated by the same tenant-scoped mutation role this codebase's admin routes already require; mutating routes carry `Idempotency-Key` handling per existing convention (reuse whatever the calibration/promotion-proposal admin routes already use — not reinvented here).
 
@@ -5920,6 +6027,32 @@ Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "agent_instructions_route or agent_accuracy_route or agent_autonomy_route"
     make test-unit && make lint && make typecheck
 
+**Delivered, and the entry's suggestion to reuse `HttpMethodRouter` is
+withdrawn — it produces a route that cannot work.**
+
+That helper gives a PATCH/PUT/DELETE route a POST-tunnelled twin. These three
+are POST-only *actions*, not verbs on a resource. Registering `activate` through
+it puts a plain `POST /{actor_id}/instructions/{instruction_id}` beside the
+aliased `...:activate`, **and the plain route matches first** with
+`instruction_id` bound to `"<uuid>:activate"` — the request 422s on UUID parsing
+rather than activating anything. Caught by the integration test, not by review.
+
+They are plain `@router.post` routes with the action in the path, which is the
+shape this codebase already uses for `POST /claims/{claim_id}:link`.
+
+**The admin gate is asserted, not assumed**, and the router docstring says why:
+before the per-actor floor was removed an actor-level figure could not be
+constructed at all, so this authorization is not the outer layer of a defence —
+it is the whole of it. `test_a_consumer_cannot_read_another_actors_figures`
+pins it.
+
+`GET /failure-patterns` **writes**, and both the route docstring and the OpenAPI
+description say so rather than hiding it: it stores the report and returns its
+id, because an instruction change has to cite a stored one.
+
+The registry's three `rest` mappings, left null in E20-T8 because the routes did
+not exist, are now filled in — and the parity gate that checks every mapping
+names a real operation passes.
 ### E20-T10 — Admin dashboard: agent performance and instruction lifecycle screens
 
 **Kind:** task · **Status:** pending · **Blocked by:** E20-T9 · **Hotspot:** no · **Repo:** contextplane-ui
