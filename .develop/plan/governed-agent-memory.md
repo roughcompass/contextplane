@@ -4290,7 +4290,7 @@ reviewer's policy ends up keyed on the wrong one.
 
 ### E5-T1 — ADR: which of E5's numbers can be governed, and which cannot yet
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: decide, before any of them is written, which E5 magnitudes enter the
 registry validated, which enter grandfathered, and which do not enter because
@@ -4309,6 +4309,40 @@ true one.
 Acceptance:
     make doc-refs doc-links
     make all
+
+**Delivered as [ADR-0014](../adr/0014-derived-magnitudes-are-a-third-status.md),
+and the finding is sharper than this entry predicted.** The registry's status
+vocabulary has exactly two values, and **E5's sampling parameters fit neither**.
+
+`validated` demands four evidence fields because "a status without its evidence
+is a word, and the word is what a later reader would trust". `grandfathered`
+demands a reason because "an exemption nobody has to justify is one nobody will
+revisit". An acceptance-sampling parameter follows by arithmetic from a stated
+defect rate and consumer's risk: there is no held-out result, because it is not
+a prediction. Recording it `validated` would mean inventing a method and a
+result for a check nobody ran; recording it `grandfathered` would assert nobody
+checked, which is false in the other direction — the derivation *is* the check,
+and unlike every other entry it is reproducible by anybody with a calculator.
+
+So the ADR adds a third status, `derived`, with `derived_from` and `derivation`
+as its evidence fields, and generalises `requires_validated` to be satisfied by
+`validated` **or** `derived`, never by `grandfathered`.
+
+Two consequences for the tasks below. **Expected loss does not enter the
+registry at all** until a loss model exists — not even as `grandfathered`, which
+would make it look like the seven numbers that ship and order things while
+awaiting evidence. This one does not ship, so E5-T3 and E5-T6 rank on leverage
+and sampling and say so on the surface. And **E5-T3's anti-starvation magnitude
+is likely `grandfathered`**: an age weighting is a reasoned position, neither a
+derivation nor a measurement. This ADR does not make the registry mostly
+`derived`.
+
+The dissent is what to carry into E5-T2 and E5-T4: `derived` may launder an
+empirical assumption as arithmetic. The OC curve is exact only for a
+representative draw, and E5's queue is *ranked* and partly disposed of by
+policy — so the derivation risks being arithmetic about a lot that does not
+exist. The representativeness assumption belongs in `derived_from`, but an
+assumption in a field is weaker than one in a gate.
 
 ### E4-T2 — The quarantine state, and the revert that makes it usable
 
