@@ -37,9 +37,8 @@ out and rediscovered as a surprise.
 
 **What this actually protects.** The status vocabulary is the half of
 servability that is unconditional on both serving paths, so it is the half a new
-term must join in every place or silently not apply in one. E4-T2 adds
-`quarantined_at` as exactly such a term, and ADR-0016 depends on it reaching all
-of them.
+term must join in every place or silently not apply in one. Quarantine will add
+`quarantined_at` as exactly such a term, and it has to reach all of them.
 """
 
 from __future__ import annotations
@@ -100,17 +99,17 @@ def test_the_read_predicate_keeps_its_unconditional_and_as_of_relative_halves_ap
     transports, so anything that must hold for *every* caller has to be in the
     unconditional half.
 
-    That is why ADR-0016 refuses to express quarantine as a `t_invalidated_at`
+    That is why quarantine must not be expressed as a `t_invalidated_at`
     write: quarantine at 14:00, ask `as_of=13:00`, and the claim comes back.
-    This test does not enforce that decision — it pins the property the decision
-    rests on, so the reasoning stops being true silently.
+    This test does not enforce that rule — it pins the property the rule rests
+    on, so the reasoning stops being true silently.
     """
     predicate = claim_serving._SERVABLE_AS_OF
 
     assert ":as_of" not in _STATUS_IN.search(predicate).group(0), (
         "the status term became `as_of`-relative; every rule that relies on status being "
-        "unconditional -- including quarantine, per ADR-0016 -- is now bypassable by a "
-        "caller-supplied instant"
+        "unconditional -- quarantine among them -- is now bypassable by a caller-supplied "
+        "instant"
     )
     assert "c.t_invalidated_at" in predicate and ":as_of" in predicate, (
         "`t_invalidated_at` is no longer compared against `as_of`; a historical read now "
