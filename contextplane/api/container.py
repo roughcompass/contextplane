@@ -121,6 +121,7 @@ from contextplane.service.memory.promotion_guardrails import GuardrailService
 from contextplane.service.memory.session_events import MemoryService
 from contextplane.service.memory.source_governance import SourceGovernanceService
 from contextplane.service.memory.source_ingest import SourceIngestService
+from contextplane.service.memory.source_namespaces import SourceNamespaceService
 from contextplane.service.notifications.core import NotificationService
 from contextplane.service.notifications.subscriptions import SubscriptionService
 from contextplane.service.retrieval import RetrievalService
@@ -188,6 +189,10 @@ class Services:
     capability_requests: CapabilityRequestService
     source_governance: SourceGovernanceService
     source_ingest: SourceIngestService
+    #: The handling tier a replayed stream declared. Read on the session-event
+    #: write path, so the envelope decision selects on a tier an operator stated
+    #: rather than on nothing at all.
+    source_namespaces: SourceNamespaceService
     # Constructed once here rather than per request in the router and the MCP
     # tool. The service is stateless, so building one per call was safe -- but
     # two call sites assembling their own from `session_factory`/`clock`/

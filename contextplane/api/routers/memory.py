@@ -45,6 +45,7 @@ from contextplane.service.memory.session_events import (
     MemoryService,
     SessionEvent,
 )
+from contextplane.service.memory.source_namespaces import SourceNamespaceService
 from contextplane.types import TenantContext
 from contextplane.usage.results import stash_result_count
 
@@ -68,6 +69,18 @@ def _enforcement(request: Request) -> AutonomyEnforcementService:
     """
     services: Services = request.app.state.services
     return services.arc_envelope_enforcement
+
+
+def _service_namespaces(request: Request) -> SourceNamespaceService:
+    """The stream registry, typed as always present.
+
+    Not `| None` like `memory` below: a deployment may legitimately not run
+    session memory, but one that does cannot opt out of knowing what its streams
+    carry. An absent registry would mean every replay resolving to no tier, which
+    is a governance decision taken by a wiring gap.
+    """
+    services: Services = request.app.state.services
+    return services.source_namespaces
 
 
 def _service(request: Request) -> MemoryService:
@@ -241,11 +254,35 @@ async def record_event(
     # The manifest describes the act, not the payload. `data_access` and
     # `kind` are what an envelope's matrix can select on; the body is what the
     # PII scan below is for.
+    #
+    # A replay carries the handling tier its *stream* declared, looked up rather
+    # than accepted from the caller. The exporter states which stream an event
+    # came from; an operator states, once, what that stream's content is. Taking
+    # the tier from the request instead would make a payroll replay exactly as
+    # sensitive as its exporter felt like claiming.
+    #
+    # Absent stays absent. An unregistered stream leaves this `None`, and the
+    # selection engine already reads an absent tier as the most restrictive one
+    # -- so an undeclared stream is governed strictly, and this route does not
+    # keep a second copy of that rule to drift from the first.
+    sensitivity = (
+        await _service_namespaces(request).sensitivity_of(
+            ctx,
+            source_system=body.external.source_system,
+            source_namespace=body.external.source_namespace,
+        )
+        if body.external
+        else None
+    )
     await enforce_envelope(
         request,
         ctx,
         _enforcement(request),
-        IntentManifest(session_id=session_id, intent_kind=IntentKind.DATA_ACCESS),
+        IntentManifest(
+            session_id=session_id,
+            intent_kind=IntentKind.DATA_ACCESS,
+            data_sensitivity=sensitivity,
+        ),
     )
     # The session is the subject an auditor can look up. Admission runs before
     # the write, so there is no event id yet to name instead.
