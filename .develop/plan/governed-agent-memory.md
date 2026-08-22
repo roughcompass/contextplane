@@ -4048,7 +4048,7 @@ Acceptance:
 
 ### E6-T4 — An undeclared stream is blocked, not merely handled carefully
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done — as an amendment · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a PII block tier that applies to content arriving from a stream nobody
 registered.
@@ -4068,8 +4068,50 @@ argument belongs in the code, and it should be checked against how the envelope
 path resolved the same tension, which was to be strict without refusing the
 write.
 
+**Resolved by measurement, and the answer is that the clause is already
+satisfied.** The task said to answer "is blocking right?" before building. The
+answer turned out to be that there is nothing left to block.
+
+`admission.blocking_field_policies()` is the cross product of every pilot field
+and every prohibited class, and `PROHIBITED_CLASSES` is read off the shipped
+detectors rather than written by hand. So admission already refuses **every class
+its scanner can detect, on every field it governs, from any source**. Content
+from an undeclared stream is held to exactly the floor content from a `public`
+one is.
+
+**This was established by building the mechanism and finding it did nothing.** A
+tier-derived floor was written -- an extra `field:*` wildcard applied when the
+resolved tier is most-restrictive, threaded from the write path through both
+guards -- and then run against the same inputs with and without it. Every outcome
+was identical, because the floor had already blocked everything the scanner
+recognises. The mechanism was reverted rather than shipped: a parameter that
+changes no outcome is the "governance object nothing consults" defect this plan
+keeps finding in other people's work, and writing a good docstring for it would
+have made it harder to notice, not better.
+
+The design it was reaching for is still recorded, because it is the right shape
+if the situation changes: **map the handling tier to the floor, not the
+registration state.** Building "undeclared streams are stricter" literally makes
+identical content admissible or not depending on a registration its author does
+not control, with the operator's remedy -- register the stream -- having nothing
+to do with the phone number in the text. An undeclared stream reaches a strict
+tier anyway, because absent already reads as most-restrictive.
+
+**One real gap surfaced and it is not about streams.**
+`security.pii_guard.scan_for_pii` builds a scanner carrying the *tenant's own*
+patterns and logs what they match. `admission._scanner` carries only the
+built-ins. So a tenant-configured pattern is detected, written to the detection
+log, and **never enforced by admission at any tier** -- a tenant that adds a
+custom detector and sets it to block gets a log entry and an admitted write. That
+deserves its own task and belongs to whoever owns the admission floor, not to
+E6.
+
+The finding is pinned by a test rather than left in this entry, so a future
+change that makes the floor non-exhaustive fails rather than silently reopening
+the hole the clause was worried about.
+
 Acceptance:
-    .venv/bin/python -m pytest tests/integration -q -k "undeclared or pii"
+    .venv/bin/python -m pytest tests/unit/test_admission.py -q
     make all
 
 ### E7-T1 — The tool registry, and what a default connection sees
