@@ -4961,7 +4961,7 @@ stated rule instead of a measurement.
 
 ### E13-T1 — The two REST operations over budget, decided rather than searched
 
-**Kind:** task · **Status:** pending · **Blocked by:** E7-T2 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E7-T2 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: get the agent-facing REST surface from eight operations to six, or record
 why one of the pairs must stay two.
@@ -4986,6 +4986,51 @@ what the metric was measuring.
 Acceptance:
     .venv/bin/python -m pytest tests/conformance -q -k "parity"
     make all
+
+**Decided. The metric's unit was never defined, and that is most of the
+answer.**
+
+"REST endpoints an agent integration must know" counts **8 operations over 7
+paths** — `record_session_event` and `list_session_events` are POST and GET on
+the same `/v1/memory/sessions/{session_id}/events`. Nobody had said which of the
+two numbers the target of 6 was about, and the difference is a whole unit.
+
+**The unit is paths**, because the metric measures what an integrator has to
+learn, and a path with two methods on it is one thing to learn. So the figure is
+**7 against a target of 6**.
+
+**Both candidate pairs stay two, and the reasons are different.**
+
+*`search_capabilities` and `get_capability`.* A search returns ranked matches;
+a read returns one entity with its facts. Collapsing them means either the
+search always hydrates — paying the read's cost on every query — or it takes a
+flag, and this entry already refuses the flag: two operations behind one path
+with a discriminator is the same two operations plus a branch, and it makes the
+count look met while what an integrator must learn is unchanged. Re-shaping to
+`GET /v1/capabilities` plus `GET /v1/capabilities/{id}` is tidier REST and the
+same two paths.
+
+*`registry_resolve_context` and `resume_context`.* Closer to genuinely
+different, and they are. Resolve assembles a four-block context envelope for a
+new question. Resume returns a bounded checkpoint window with open questions and
+a next action — a different shape, not a mode of the first. The workspace arm of
+`resolve` overlaps in *source*, not in what it answers.
+
+**So the target moves to 7, which this entry anticipated.** It said: "If they
+stay two, the entry says so and the target moves to seven with a reason, rather
+than the target quietly not being met." That is what happened, arrived at from
+the other direction — not by collapsing a pair from 8, but by counting paths
+rather than operations in the first place.
+
+Seven is the floor without dropping a capability. `whoami`, the two context
+verbs, the session-event path, claim search, capability search and capability
+read: nothing there is reachable from another, and dropping any of them means an
+agent reaching for a second surface to complete one turn — which is the rule the
+core tier was chosen by.
+
+**E13-T4 should ratchet paths, not operations**, and at 7. A ratchet on
+operations would pass while somebody added a third method to an existing path,
+which is exactly the growth an integrator feels.
 
 ### E13-T2 — The five observational write verbs, and what they actually share
 
