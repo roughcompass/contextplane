@@ -184,6 +184,55 @@ relaxed once the discriminator exists in schema and read models.
 Trust/quarantine state in the vector index key; adversarial-selectivity
 benchmark gates.
 
+**Grounded before decomposition, and three of this body's clauses do not survive
+contact. Read this before cutting anything from the paragraph above.**
+
+**"Three concurrent candidate generators" — concurrency ships, and there are
+four.** `assembler.assemble` runs the arms under `asyncio.gather` with a per-arm
+timeout and a per-arm item cap, both applied by the assembler rather than
+trusted to each arm. `BLOCK_NAMES` is four: canonical, ARC, observed claims,
+workspace. So this clause asks for something that exists, at the wrong count.
+
+**"RRF merge" is refused by the shipped design, on the record, and the refusal is
+better.** `assembler.py`'s first stated property is that authority is not
+flattened: "The four arms stay four blocks. Nothing merges them, re-ranks across
+them, or promotes a workspace note next to a canonical answer because it scored
+well. A single ranked list would be more convenient to consume and would destroy
+the only signal telling a reader which claims the registry stands behind."
+
+An RRF merge is precisely that single ranked list. Reciprocal rank fusion is a
+good tool where the inputs are interchangeable retrievers over one corpus, which
+is what it does inside `search.py`'s three arms and why that fusion is fine.
+Here the inputs are four *authority classes*. Fusing them answers "what is most
+relevant" by discarding "what does the registry stand behind", and the second is
+the question this product exists to answer. **The plan changes, not the tree:
+E3-T1 is an amendment striking the merge, not a task implementing it.**
+
+Two things that would genuinely improve ranking are still open and are not this:
+ordering *within* a block, and telling the caller how much of each block was cut
+by the item cap.
+
+**"The intent row MUST carry a completeness discriminator" — the premise holds
+and is the strongest clause in the body.** `context_receipts` has `state` and no
+`hydration_state`; an un-hydrated receipt would read as complete with zero
+exclusions. Confirmed against `0032_context_receipts.py`.
+
+But the ordering the body states must be enforced rather than assumed, because
+today's code is the *safe* side of it. `resolve.py` says: "The receipt write is
+not best-effort. If it fails, the resolution fails... an answer nobody can later
+show they were given is the thing receipts exist to prevent." Splitting the write
+into a synchronous intent row plus async hydration **relaxes exactly that**, and
+the body already says the relaxation may only happen once the discriminator
+exists in schema and read models. So the discriminator lands first, alone, and
+the split lands second — never in one change, because a reviewer cannot see a
+missing guarantee in a diff that adds a column.
+
+**What is untouched and still true:** derivative registration staying inside the
+synchronous transaction, the read surfaces never presenting a `pending` receipt
+as evidence, hydration lag alerting against an SLO, trust state in the vector
+index key, and the adversarial-selectivity benchmark. Those are the epic's real
+content and none of them was checked against a wrong premise.
+
 ### E4 — Provenance-scoped quarantine + DORA wiring
 
 **Kind:** epic · **Status:** pending · **Blocked by:** E2 · **Repo:** contextplane
@@ -637,7 +686,7 @@ and the window is recorded on the alias rather than left to memory.
 
 ### E19 — Catalog authoring in the dashboard
 
-**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane-ui
+**Kind:** epic · **Status:** done · **Blocked by:** none · **Repo:** contextplane-ui
 
 The dashboard can read the canonical graph and cannot write it. `POST
 /v1/relationships`, `PATCH /v1/relationships/{relationship_id}` and `POST
@@ -740,6 +789,17 @@ approval route. Six of eight tasks now, and the one that failed was written
 *after* this paragraph was, which is the part worth sitting with: knowing the
 failure mode by name did not prevent it. What caught it was reading the handler;
 what let it ship was a test that asserted body and method and not path.
+
+**Closed by E19-T8.** The surface table above holds, and the one defect the audit
+found beyond this body -- no `If-Match` on the catalog write path -- is fixed:
+the read keeps its validator, the three patches that honour a precondition send
+it, and a `412` keeps the operator's draft and shows the newer state beside it
+rather than discarding either.
+
+Eight tasks, and **six had a premise that did not survive contact with the
+tree**. That ratio is this epic's real output. It is also why closing it on a
+finished task list was wrong the first time: the list said nothing about whether
+the body was satisfied, and only walking the body surface by surface did.
 
 ---
 
@@ -1580,7 +1640,7 @@ Acceptance:
 
 ### E19-T8 — The catalog write path sends no `If-Match`
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
 
 Found while building E19-T7 and deliberately left out of it, because doing it
 properly is a different change with its own error handling.
@@ -3552,3 +3612,155 @@ Acceptance:
     .venv/bin/python -m alembic upgrade head
     .venv/bin/python -m pytest tests/integration -q -k "source_namespace or envelope"
     make all && make test-integration
+
+## Task decomposition — seventh wave (E3, against the resolve path that exists)
+
+Grounding this epic found three clauses that do not survive contact, recorded in
+its body above. The largest is that E3 asks for an RRF merge and the shipped
+assembler refuses to merge, with a stated reason that is better than the clause.
+So the first task here is an amendment, and the build starts at the second.
+
+The ordering of T2 and T3 is load-bearing and is the reason they are two tasks.
+
+### E3-T1 — ADR: the four blocks are not fused, and why RRF belongs one layer down
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: an ADR recording that `/v1/context/resolve` does not fuse its blocks into
+one ranked list, that E3's "RRF merge" clause is struck, and where reciprocal
+rank fusion *is* correct in this system.
+
+The distinction is the whole content and it is not "fusion is bad". `search.py`
+fuses three arms with governed weights and should: semantic, lexical and graph
+are interchangeable retrievers over one corpus, and the question is which
+document is most relevant. `assembler.py` composes four *authority classes*, and
+fusing them answers relevance by discarding provenance -- "which of these does
+the registry stand behind" stops being answerable when a workspace note can
+outrank a canonical fact on score.
+
+State the rule the next author needs: **fuse within an authority class, never
+across one.** That is checkable, unlike "be careful with ranking".
+
+Record what the refusal costs, because it is not free. A caller wanting one
+ordered list must merge client-side and will do it worse; the envelope is larger
+than a top-k; and an agent with a small context window has to decide which block
+to spend it on. The last is real and belongs to whichever task builds
+per-block budgets, not to a fusion nobody can audit.
+
+Also record the two things that *would* improve ranking and are not fusion:
+ordering within a block, and reporting how much of a block the item cap removed.
+Today a truncated block and a small block look identical.
+
+Acceptance:
+    make doc-links
+    sh -c 'test -f .develop/adr/0011-*.md'
+
+### E3-T2 — The receipt says whether it is finished
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+
+Goal: `context_receipts` gains `hydration_state` (`pending` | `complete` |
+`failed`) plus the item and exclusion counts known at write time, the read
+surfaces expose it, and `GET /v1/receipts/{id}`, `/exclusions` and `/references`
+never present a `pending` receipt as evidence.
+
+**This lands alone, before anything asynchronous, and that is the point of it
+being its own task.** Today every receipt is complete by construction because
+`receipts.record` writes arms, items and exclusions in one transaction and
+`resolve.py` fails the resolution if it fails. The column is therefore
+uninteresting today -- every row is `complete` -- and that is exactly why it can
+be reviewed on its own merits rather than inside a change that also removes a
+guarantee.
+
+The counts matter as much as the state and are the part easy to drop. A
+`complete` receipt with zero exclusions and a `pending` one with zero exclusions
+are the same row without them; with them, a reader can tell "nothing was
+withheld" from "we have not written down what was withheld yet". The receipts
+module's own standard is that a receipt which reads as complete while withholding
+something is worse than no receipt.
+
+Every existing row is `complete`, backfilled, because it was.
+
+Acceptance:
+    .venv/bin/python -m alembic upgrade head
+    .venv/bin/python -m pytest tests/integration -q -k "receipt"
+    make all
+
+### E3-T3 — The receipt intent commits synchronously; the rest hydrates after
+
+**Kind:** task · **Status:** pending · **Blocked by:** E3-T2 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the synchronous path writes a chained receipt-intent row and returns;
+arms, items and exclusions hydrate asynchronously; receipt-loss RPO is zero.
+
+**This is the task that relaxes a guarantee, and it must be reviewed as that.**
+`resolve.py` currently states: "The receipt write is not best-effort. If it
+fails, the resolution fails. That is a deliberate trade of availability for
+evidence." This task trades some of it back. What must survive is the property
+that trade bought -- that no answer is given which nobody can later show was
+given -- so the *intent* row is still synchronous and still fails the resolution
+if it fails. What becomes asynchronous is only the detail of what was served.
+
+Blocked on E3-T2 rather than bundled with it because a diff that both removes a
+guarantee and adds the discriminator making the removal safe is a diff where a
+reviewer cannot see the removal. The epic body already asks for this ordering;
+this records that it is a review property, not a sequencing preference.
+
+**`register_receipt_links` stays inside the synchronous transaction**, and the
+reason is not symmetry: an unregistered derivative is reached by no erasure
+sweep and swept by no expiry, so deferring it makes a retention hole that closes
+only if the worker runs. Erasure correctness is not eventually consistent.
+
+Hydration lag and hydration failure alert against an SLO. Follow what the
+extraction drain already does rather than inventing a shape: a depth gauge is
+not enough, because a queue that is short because it is keeping up and one that
+is short because nothing is being enqueued read identically -- that drain carries
+an oldest-pending age for exactly this reason and this needs the same.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "receipt or hydration"
+    make all && make test-integration
+
+### E3-T4 — Trust and quarantine state in the vector index key
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+
+Goal: a quarantined or untrusted item cannot be returned by a vector scan,
+because the scan cannot see it -- not because a filter removed it afterwards.
+
+The distinction is the task. Filtering after retrieval means a quarantined item
+consumes a slot in the top-k and the caller silently gets fewer results than
+asked for, and it means every future scan path has to remember the filter. In
+the key, the index answers the right question directly.
+
+Check first whether the arms already predicate on audience inside the query --
+`arms.py` says "All three resolve the audience inside the query rather than
+filtering after", which is the same shape and may already be the mechanism this
+extends rather than a new one to build.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "quarantine or vector"
+    make all
+
+### E3-T5 — The adversarial-selectivity benchmark, and what it gates
+
+**Kind:** task · **Status:** pending · **Blocked by:** E3-T4 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a benchmark measuring whether a caller can influence what the resolver
+selects, and a gate on its result.
+
+"Adversarial selectivity" is the epic's phrase and needs a definition before it
+can be measured, which is most of this task. The concrete threat this system
+already worries about: a manifest field a caller supplies changing which
+obligations apply. E1's audit found the analogous hole in the sensitivity tier
+-- a host sending an unknown value escaped every rule that named one -- and
+`_declared_sensitivity` closes it by reading unknown as most restrictive. The
+benchmark's job is to find the next one of those, not to produce a relevance
+number.
+
+So it belongs beside the eval harness in `eval/`, follows the frozen-fixture
+discipline, and reports before it gates.
+
+Acceptance:
+    make eval
+    make all
