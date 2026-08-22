@@ -602,12 +602,22 @@ ignore_imports = [
     "contextplane.security.pii_guard -> contextplane.context.admission",
 
     # context <-> workspaces, measured both ways: 8 imports workspaces ->
-    # context against 5 the other way. The minority direction loses.
+    # context against 6 the other way. The minority direction loses.
+    #
+    # It was 5 until `receipts.exclusions_for` gained the overdue-propagation
+    # guard, which needs `OverdueDerivativeRefusal`. Deliberately the same type
+    # `arms` raises rather than a second one: a caller catching one refusal and
+    # not the other would be protected on whichever surface it happened to name.
+    # That the exception lives in `workspaces.recall` at all is the real
+    # awkwardness here -- it is a propagation concept, not a workspace one, and
+    # if this list grows again that is the move to make rather than a seventh
+    # exemption.
     "contextplane.context.queries -> contextplane.workspaces.models",
     "contextplane.context.queries -> contextplane.workspaces.queries_audience",
     "contextplane.context.resume -> contextplane.workspaces.models",
     "contextplane.context.resume -> contextplane.workspaces.queries_audience",
     "contextplane.context.arms -> contextplane.workspaces.recall",
+    "contextplane.context.receipts -> contextplane.workspaces.recall",
 ]
 
 # -----------------------------------------------------------------------------

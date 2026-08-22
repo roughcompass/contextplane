@@ -188,9 +188,15 @@ class ClaimDerivativeHandler:
         sentence used to end "and reads fail closed", which described no code: the count
         had one consumer, on a workspace read, and the arm that serves claims did not
         ask. The refusal is real on the observed-claims arm and on all three workspace
-        reads; it is not wired on the canonical arm, the ARC arm, or the context-receipt
-        read surface, and each of those is a deliberate answer recorded at the arms
-        rather than an omission. A registration this handler makes is `blocking`, so
+        reads; it is not wired on the canonical arm or the ARC arm, and each of those is a
+        deliberate answer recorded at the arms rather than an omission.
+
+        This sentence used to include "the context-receipt read surface" in that
+        deliberate list, and `arms.py` simultaneously described the same surface as a
+        miss awaiting a fix. Two hand-maintained lists disagreeing about one surface is
+        how it stayed unguarded: `exclusions_for` serves the `item_key` that
+        `receipt_link` minimizes and is now guarded, while `get` and `arms_for` serve
+        tables no blocking handler touches and are correctly not. A registration this handler makes is `blocking`, so
         every guard that asks `blocking_only` does count it.
         """
         if operation not in derivatives.OPERATIONS:

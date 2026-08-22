@@ -5797,7 +5797,7 @@ now, which is less elegant and cannot do that.
 
 ### E3-T8 — A third receipt read nobody has listed, in the list's own docstring
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the overdue-propagation guard covers the receipt reads it is supposed to,
 and the set is derived rather than hand-maintained.
@@ -5821,6 +5821,50 @@ occurrence is otherwise already scheduled.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "overdue or receipt"
     make all
+
+**Delivered, and the finding was larger than a missing entry: two
+hand-maintained lists disagreed about the same surface.**
+
+`arms.py` named `ContextReceiptService.get` and `.exclusions_for` as an
+unguarded gap "fixing it is not this module's to do". `derivative_handlers.py`
+simultaneously described "the context-receipt read surface" as **"a deliberate
+answer recorded at the arms rather than an omission"**. One said defect, the
+other said intentional, and that is how it stayed unguarded.
+
+Deriving the rule settles all three reads at once. Guard a read exactly when it
+serves a column a *blocking* handler rewrites; `receipt_link` does
+`UPDATE ... SET item_key = :marker` on `context_receipt_items` and
+`context_receipt_exclusions`, and nothing else.
+
+- `exclusions_for` serves that column. **Genuinely unguarded, now fixed.**
+- `get` returns the `context_receipts` header, which carries no minimized
+  field. `arms.py` named it anyway — **the list was wrong in the other
+  direction**, and a guard there could not fire.
+- `arms_for` serves `context_receipt_arms`, untouched by any blocking handler.
+  Correctly unguarded, and on no list at all.
+
+So the answer to "can the set be derived" is: the **mandatory half can**, and
+`tests/conformance/test_overdue_guard_covers_the_blocking_reads.py` now does it.
+It extracts the blocking handlers' tables, finds every module whose *code* names
+one, and requires each to be classified as a serving path that guards, a writer
+that must not, or a declaration that runs no query. A guard that is merely
+*present* is not required by the rule — asserting the set both ways would turn a
+lower bound into a straitjacket, and the failure this task exists to prevent is
+a missing guard, not a spare one.
+
+**The check made the same mistake twice while being written, which is why it is
+AST-based.** Its first version matched the table names in `arms.py`'s prose
+about this rule and flagged it as an unclassified reader. Its second asked
+whether `exclusions_for`'s source contained `pending_overdue` and got a yes from
+that function's own docstring — so the mutation test passed with the guard
+removed. It now matches call nodes. A check that reads prose as evidence of
+behaviour is exactly the failure it was written to end.
+
+One cost accepted: `context.receipts -> workspaces.recall` joins the
+import-linter exemption list, taking the counted minority direction from 5 to 6
+against 8. The refusal type belongs in a propagation module rather than a
+workspace one, and the entry says so — if that list grows again, moving the
+exception is the fix rather than a seventh exemption.
 
 ---
 

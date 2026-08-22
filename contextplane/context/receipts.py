@@ -39,6 +39,8 @@ from contextplane.context.models_receipt import (
     ContextReceiptItem,
 )
 from contextplane.context.schemas.envelope import BLOCK_CANONICAL
+from contextplane.workers.derivative_propagation import pending_overdue
+from contextplane.workspaces import recall as workspace_recall
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections.abc import Mapping, Sequence
@@ -284,6 +286,21 @@ class ContextReceiptService:
         exclusions table carries no tenant of its own, and reading it by
         `receipt_id` alone would return another tenant's withholding to anyone
         who guessed an id.
+
+        **Guarded, and it is the only read on this surface that needs to be.**
+        The `receipt_link` derivative handler is registered `blocking`, and what
+        it does on propagation is `UPDATE context_receipt_exclusions SET
+        item_key = :marker`. So an exclusion row read before that propagation
+        lands carries an `item_key` the propagation is in the middle of
+        withdrawing, which is exactly what `pending_overdue(blocking_only=True)`
+        exists to refuse.
+
+        Its two siblings do **not** need it, and the reason is the same rule
+        read the other way: `get` returns the receipt header from
+        `context_receipts`, and `arms_for` returns rows from
+        `context_receipt_arms`. Neither table is touched by any blocking
+        handler, so a guard on either could not fire -- which is the no-op
+        `canonical_arm`'s entry in `arms.py` already refuses to add.
         """
         stmt = (
             select(ContextReceiptExclusion)
@@ -298,7 +315,27 @@ class ContextReceiptService:
             stmt = stmt.where(ContextReceiptExclusion.block == block)
 
         async with self._session_factory() as session:
+            await self._refuse_if_overdue(session, tenant_id=ctx.tenant_id)
             return tuple((await session.execute(stmt)).scalars().all())
+
+    async def _refuse_if_overdue(self, session: AsyncSession, *, tenant_id: uuid.UUID) -> None:
+        """Refuse to serve while this tenant's blocking propagation is past due.
+
+        Raises the same `OverdueDerivativeRefusal` the arms raise rather than a
+        type of its own. A caller that caught one refusal and not the other
+        would be protected on whichever surface it happened to name, and two
+        spellings of "this tenant's withdrawals are late" is the shape that let
+        this gap go unnoticed in the first place.
+
+        In the read's own session, so a check that passed on another connection
+        cannot vouch for a state this read never sees.
+        """
+        overdue = await pending_overdue(session, now=self._clock.now(), blocking_only=True, tenant_id=tenant_id)
+        if overdue:
+            raise workspace_recall.OverdueDerivativeRefusal(
+                f"{overdue} blocking derivative propagation item(s) are past due for this tenant; "
+                "an exclusion's item_key is what that propagation withdraws, so it is not served until it lands"
+            )
 
     async def arms_for(self, ctx: TenantContext, *, receipt_id: uuid.UUID) -> tuple[ContextReceiptArm, ...]:
         """Which blocks answered one resolution, and how each of them did.
