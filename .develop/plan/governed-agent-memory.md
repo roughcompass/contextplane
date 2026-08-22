@@ -5034,7 +5034,7 @@ which is exactly the growth an integrator feels.
 
 ### E13-T2 — The five observational write verbs, and what they actually share
 
-**Kind:** task · **Status:** pending · **Blocked by:** E13-T1 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E13-T1 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: decide which of the five write verbs overlap enough to consolidate, on
 evidence rather than on the fact that they are all writes.
@@ -5062,6 +5062,70 @@ enters the derivation and confidence machinery, `record_session_event` does not.
 
 Acceptance:
     .venv/bin/python -m pytest tests/conformance -q
+    make all
+
+**Decided: none of the five consolidate, and the grounding turned up a defect
+that matters more than the decision.**
+
+The five differ on **five distinct authorization models**, which settles it
+before ADR-0011's authority-class rule is even reached:
+
+| verb | PII scan | evidence | authorized by | idempotency | mutability |
+|---|---|---|---|---|---|
+| `assert_claim` | containment **and** PII, via `stage_claim_defended` | **≥1 required**, closed `kind` vocabulary | tenant | key on REST | staged, promotable |
+| `record_session_event` | `admit_or_refuse`, session-event field type | none | your own session | none | immutable |
+| `add_workspace_entry` | `_scan_field`, three outcomes | optional references | workspace membership | none | mutable |
+| `append_intent_checkpoint` | **none** | none | participation grant | **key required** | append-only chain |
+| `ingest_signal` | `admit_or_refuse` | envelope references | ingest role | — | — |
+
+A single verb over these is one verb with five authorization branches, and the
+branch *is* the discriminator E13-T1 already refused: the same surfaces plus a
+switch, with the count looking smaller and nothing an integrator learns getting
+shorter.
+
+`assert_claim` is furthest from the rest and it is the epic's own rule that says
+so. It is the only one requiring evidence, the only one running directive
+containment, and the only one entering a lifecycle where promotion — reviewed
+later, by a different actor — can move a value onto the canonical graph. Folding
+it into anything drops provenance completeness, which E13 forbids by name.
+
+**The defect: `append_intent_checkpoint` is the one write verb that does not
+scan for PII, on either transport.** Filed as E13-T5 below. It is the same shape
+as a bug this codebase already fixed once — `record_session_event`'s docstring
+records that it "called `record_event` directly and scanned nothing, while this
+tool's own docstring told agents it did" — except the checkpoint tool never
+claimed to scan, so nothing contradicted it and nobody looked.
+
+### E13-T5 — Checkpoints are agent-written free text, unscanned, and served to a second agent
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: `append_intent_checkpoint` scans before storage, like the other four
+observational writes do.
+
+`goal`, `decisions`, `assumptions`, `completed_checks`, `open_questions` and
+`next_action` are free text an agent composes. Neither
+`api/mcp/tools/intent_memory.py` nor `api/routers/intent_memory.py` nor
+`workspaces/checkpoints.py` calls `admit_or_refuse`, `scan_for_pii` or any
+scanner — the only "scan" in that area is prose about something else.
+
+**Why this is worse than an unscanned note.** A checkpoint is the resume
+surface: `resume_context` serves its content to whoever picks the task up next.
+So unscanned text written by one agent is served to another, which is the
+crossing a scan on the workspace entry beside it is there to prevent.
+
+Two things to settle rather than assume:
+
+- **Which field type.** `PII_FIELD_TYPE_SESSION_EVENT` is the closest existing
+  one and may simply be right; if a checkpoint needs its own policy, say what
+  differs rather than adding a constant that reads as a distinction.
+- **Which fields.** All six are agent-authored, but `metadata` on a session
+  event is deliberately *not* scanned and its tool docstring says so loudly. If
+  any checkpoint field is meant to be the same, it needs the same warning in the
+  same place.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "intent_memory and pii"
     make all
 
 ### E13-T3 — A usage signal that could justify retiring anything
@@ -5142,7 +5206,7 @@ data at all.
 
 ### E13-T4 — The consolidation gate, so the counts cannot drift back
 
-**Kind:** task · **Status:** pending · **Blocked by:** E13-T1 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E13-T1 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the two metrics that are now measurable become gates, at the numbers
 actually achieved.
@@ -5162,7 +5226,27 @@ subtraction without a ratchet is a one-time cleanup that grows back.
 
 Acceptance:
     make lint
-    make all
+
+**Delivered as two ratchets inside the existing registry gate**, not a second
+script. That gate already knows what the core tier is; a separate check would be
+a second place the definition lives.
+
+`_CORE_TOOL_CEILING = 8` and `_CORE_PATH_CEILING = 7`. Both set at what is
+*achieved* — the tool count met its target, and the path count is E13-T1's floor
+rather than E13's unreachable six. A ratchet holding an aspiration nothing can
+satisfy is a failing build, not a gate.
+
+**Paths, not operations**, per E13-T1, and mutation-testing confirmed the
+distinction is real rather than pedantic. Promoting an extended tool that
+introduces a new path trips *both* ratchets. Promoting one that adds a method to
+a path already in the set trips only the tool ratchet — which is correct: an
+integrator learning `/v1/memory/sessions/{id}/events` learns it once whether it
+carries one method or three. An operation ratchet would have flagged that as
+surface growth and missed nothing an integrator feels.
+
+The failure message says "lower the ratchet when the count drops — never raise
+it to fit", because the one way this gate becomes decoration is somebody
+adjusting the number instead of the surface.    make all
 ### E5-T2 — The SamplingPolicy, keyed on a tuple two-thirds of which exists
 
 **Kind:** task · **Status:** pending · **Blocked by:** E5-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
