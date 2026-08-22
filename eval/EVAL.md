@@ -1786,3 +1786,93 @@ scope and the pooled mapping is correct for all of them. The key is in place so
 that the day a tenant overrides a confidence magnitude, their fit separates
 without anybody remembering to make it, and two overriding tenants cannot read
 each other's.
+
+## Adversarial selectivity
+
+**Question.** Can a caller shed a governance obligation by changing what it says
+about itself in the manifest?
+
+E3-T5 asks for a benchmark of "adversarial selectivity", and most of the task
+was fixing a definition the phrase does not carry on its own. The one used here
+is narrow and mechanical:
+
+> A caller **escapes** when a rule that applies to an honest manifest stops
+> applying to a manifest the same caller could equally well have sent.
+
+This is not a relevance measurement. The threat is the one E1's audit found
+once: `rule_applies` matches the manifest's caller-supplied dimensions against
+a rule's selectors, and every matcher answers `False` for a value it does not
+recognise — so an unrecognised value does not fail loudly, it *sheds the rule*.
+A host declaring `data_sensitivity="ultra-secret"`, or omitting the field,
+escaped every rule that named a tier. `_declared_sensitivity` closed that by
+reading the unknown as `MOST_RESTRICTIVE` before matching.
+
+E3-T5's stated job was to find the next one. It found two.
+
+### The measurement
+
+Frozen fixture: `eval/fixtures/adversarial_selectivity.json`. One minimal
+mandatory directive per probe, scoped on exactly one dimension, so an outcome is
+attributable to that dimension and not to interacting rules. Run by
+`make eval`; the gate is `tests/unit/test_adversarial_selectivity_gate.py`.
+
+**13 of 16 probe variants shed their rule.**
+
+| Dimension | Escapes | Which | Kind |
+|---|---|---|---|
+| `data_sensitivity` | 1/4 | `adjacent_tier` | misdeclaration only — **closed** |
+| `environment` | 4/4 | `omitted`, `unknown_value`, `empty_string`, `adjacent_value` | **open-vocabulary evasion** |
+| `domain_ids` | 3/3 | `omitted`, `unknown_value`, `adjacent_value` | **open-vocabulary evasion** |
+| `entity_ids` | 2/2 | `omitted`, `different_entity` | misdeclaration |
+| `requested_action_classes` | 2/2 | `omitted`, `narrower_declaration` | misdeclaration |
+| `intent_kind` | 1/1 | `different_kind` | misdeclaration |
+
+### Reading the table
+
+**The two kinds of escape are not the same finding, and conflating them would
+overstate this by a factor of four.**
+
+*Evasion by unrecognised value* is a defect in this engine. `environment` and
+`domain_ids` are open-vocabulary strings matched by bare set membership:
+`environment=None`, `environment="prod-ish"` and `domain_ids=[]` each shed
+every rule scoped to them. No attestation helps, because the caller has not
+lied about anything — it has declined to say, and declining to say is treated
+as not matching. That is the E1 hole, twice, unfixed.
+
+*Misdeclaration* is not a defect here. A caller naming a different entity, or
+declaring `merge` when it intends to `deploy`, has lied — and no fail-closed
+read of a well-formed value can detect that. The defence is attestation: the
+manifest is signed by the host and hashed into the claims digest. These
+dimensions are probed anyway, because a benchmark that only covers what
+somebody already suspected is a benchmark that confirms suspicions.
+
+`data_sensitivity` escaping only on `adjacent_tier` is the correct result and
+doubles as the harness's anti-vacuity control: the one dimension known to be
+closed must report exactly one escape, of the kind selection cannot see. If it
+ever reports more, the fix has regressed and every other number here is
+suspect.
+
+### Why E1's fix does not transfer, and what is therefore not decided
+
+Reading an unknown sensitivity tier as the most restrictive one works because
+sensitivity is an **ordered scale with a maximum**. Environments and domains
+have no ordering — there is no "most restrictive environment" to read an
+unknown as.
+
+So closing these two needs a different shape, and both candidates cost
+something real:
+
+- **Apply every rule scoped to the dimension when the manifest is silent.**
+  Fail-closed and simple, and it means a caller who genuinely operates in no
+  particular environment now owes every environment's obligations.
+- **Refuse a manifest that omits a dimension some active rule scopes on.**
+  Precise, and it makes a caller's success depend on rules it cannot see, which
+  is a support burden and an information leak about the rule set.
+
+**Neither is chosen here.** This is a report, following the discipline the
+extraction ground truth established the hard way — its first measurement was a
+fixture defect reading as a model result, and a threshold set beside that number
+would have been set against the defect. The gate holds two things that cannot
+regress: `data_sensitivity` stays closed, and the escaping set stays exactly
+what this table records. Equality, not a count, so a hole closing fails the
+gate too — which is the moment a fix gets recorded here rather than absorbed.

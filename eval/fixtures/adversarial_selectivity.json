@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "frozen": true,
+  "_comment": "Adversarial selectivity probes: one per caller-supplied manifest dimension that `rule_applies` matches on. Each probe pairs a rule selector naming a value with an honest manifest value that matches it, then varies the manifest value adversarially. A variant ESCAPES when the rule applied honestly and stops applying under the variant -- the caller has shed an obligation by changing what it said about itself. Frozen: the escape counts below are a measurement of a fixed corpus, and a corpus that grows quietly turns a ratchet into a number about something else. The probes deliberately use one minimal mandatory directive each, so a change in escape status is attributable to the dimension and not to interacting rules.",
+  "dimensions": [
+    {
+      "dimension": "data_sensitivity",
+      "kind": "scalar",
+      "description": "The dimension E1's audit found and closed. `_declared_sensitivity` reads an unknown or absent tier as MOST_RESTRICTIVE before matching, so neither omission nor a made-up value sheds the rule. This probe is the anti-vacuity control: if it ever reports an escape, the fix has regressed and the whole benchmark's calibration is suspect.",
+      "rule_selector": { "data_sensitivity_tiers": ["restricted"] },
+      "honest": "restricted",
+      "variants": {
+        "omitted": null,
+        "unknown_value": "ultra-secret",
+        "empty_string": "",
+        "adjacent_tier": "public"
+      },
+      "expected_escapes": ["adjacent_tier"]
+    },
+    {
+      "dimension": "environment",
+      "kind": "scalar",
+      "description": "Matched by bare `_matches_scalar(rule.environments, manifest.environment)` with no fail-closed wrapper. There is no ordering on environments, so E1's fix does not transfer: there is no 'most restrictive environment' to read an unknown as.",
+      "rule_selector": { "environments": ["production"] },
+      "honest": "production",
+      "variants": {
+        "omitted": null,
+        "unknown_value": "prod-ish",
+        "empty_string": "",
+        "adjacent_value": "staging"
+      },
+      "expected_escapes": ["omitted", "unknown_value", "empty_string", "adjacent_value"]
+    },
+    {
+      "dimension": "domain_ids",
+      "kind": "set",
+      "description": "Matched by bare `_matches_any(rule.domain_ids, manifest.domain_ids)`. An empty manifest set intersects nothing, so declaring no domains sheds every domain-scoped rule. Note the asymmetry with the rule side: an empty *rule* selector means 'no constraint', an empty *manifest* set means 'matches nothing'.",
+      "rule_selector": { "domain_ids": ["payments"] },
+      "honest": ["payments"],
+      "variants": {
+        "omitted": [],
+        "unknown_value": ["paymentz"],
+        "adjacent_value": ["logging"]
+      },
+      "expected_escapes": ["omitted", "unknown_value", "adjacent_value"]
+    },
+    {
+      "dimension": "entity_ids",
+      "kind": "uuid_set",
+      "description": "Matched by `_matches_any`. Naming fewer entities sheds entity-scoped rules. Unlike the three above this is not an open-vocabulary hole -- an entity id either exists or does not -- so the escape here is misdeclaration rather than evasion by unknown value, and the defence is attestation rather than a fail-closed read.",
+      "rule_selector": { "entity_ids": ["e1000000-0000-4000-8000-000000000001"] },
+      "honest": ["e1000000-0000-4000-8000-000000000001"],
+      "variants": {
+        "omitted": [],
+        "different_entity": ["e1000000-0000-4000-8000-0000000000ff"]
+      },
+      "expected_escapes": ["omitted", "different_entity"]
+    },
+    {
+      "dimension": "requested_action_classes",
+      "kind": "action_class_set",
+      "description": "Matched by `_matches_any` on overlap. A closed vocabulary, so no unknown value is constructible -- but requesting fewer classes than the caller intends to perform sheds the rules naming the omitted ones. Same misdeclaration axis as entity_ids.",
+      "rule_selector": { "action_classes": ["deploy"] },
+      "honest": ["deploy"],
+      "variants": {
+        "omitted": [],
+        "narrower_declaration": ["merge"]
+      },
+      "expected_escapes": ["omitted", "narrower_declaration"]
+    },
+    {
+      "dimension": "intent_kind",
+      "kind": "intent_kind",
+      "description": "A closed enum and the only required dimension of the six -- it cannot be omitted, so the only variant is declaring a different valid kind. Included so the benchmark covers every dimension `rule_applies` reads rather than only the interesting ones.",
+      "rule_selector": { "intent_kinds": ["code_change"] },
+      "honest": "code_change",
+      "variants": {
+        "different_kind": "data_access"
+      },
+      "expected_escapes": ["different_kind"]
+    }
+  ]
+}
