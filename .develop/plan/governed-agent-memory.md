@@ -3983,6 +3983,34 @@ It even carries the vocabulary this entry said it would have to invent -- "it ha
 to carry what happens at the end" is `erasure_mode`, and the four values are
 `delete`, `minimize`, `minimize_and_tombstone` and `exempt`.
 
+**Sharpened by E6-T3: the gap is not structural, it is a period nobody
+enforces.** Grounding migration 0066 established that session events carry
+`expires_at`, written on every row from the tenant's `memory_retention_days`,
+and that `ix_mse_expiry` exists specifically to sweep on it — and that
+**nothing sweeps.** `RetentionExpiryWorker` iterates the twelve record classes
+in `retention_policies`; `session_event` is not one, and `retention/` does not
+reference `memory_session_events` at all. The only `DELETE` against that table
+is actor erasure.
+
+So the concrete failure is: the highest-volume record class in the system
+advertises a retention period the database CHECK-constrains to 1–180 days,
+carries a column and a purpose-built index to enforce it, and **accumulates
+forever**. A deployment reading its own configuration would believe otherwise.
+
+That changes what this task has to decide first. Not "invent a vocabulary" —
+that exists — but whether `session_event` becomes the thirteenth governed record
+class, inheriting holds, tombstones and the sweeper, or keeps its bespoke
+per-tenant period with a sweeper of its own.
+
+Prefer the first, and the reason is `legal_basis`: it is the field the framework
+is built around, and a record class outside the framework has no legal basis
+recorded anywhere. The argument against is that `memory_retention_days` is
+per-*tenant* while `retention_policies` is keyed on `(policy_version,
+record_class)` — so folding it in either drops per-tenant configurability or
+needs a tenant override the framework does not currently have. Whichever way it
+goes, say what happens to the 1–180 CHECK, because it is the only place that
+period is currently constrained at all.
+
 **What is actually missing is one record class: `session_event`.** Session events
 are governed by `tenants.memory_retention_days` -- a CHECK-constrained integer
 between 1 and 180, read per write in `session_events.py` -- and an `expires_at`
@@ -4010,7 +4038,7 @@ Acceptance:
 
 ### E6-T3 — Crypto-shredding, which a shipped decision already assumes exists
 
-**Kind:** task · **Status:** pending · **Blocked by:** E6-T2 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E6-T2 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: per-scope content keys, disposal by destroying the key, and an auditable
 deletion event recording that it happened.
@@ -4045,6 +4073,42 @@ vocabulary is where that distinction lives.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "shred or disposal"
     make all && make test-integration
+
+**Delivered as a strike, not a build — and grounding it found something larger
+than the clause it was sent to fix.**
+
+*Why strike.* Crypto-shredding has no consumer. No retention class asks for
+unreadability-rather-than-absence, and adding a fifth erasure mode to a closed
+set of four that twelve record classes are already classified against is a
+vocabulary change that needs a demand first. Building it now would be another
+mechanism consulted by nothing — the exact outcome E6-T4 already produced once
+and had to revert.
+
+*The correction needed correcting.* The first replacement premise said disposal
+for this table is `expires_at` expiry, full stop. That is the **design** and it
+is not the behaviour: `expires_at` is written on every row from the tenant's
+`memory_retention_days`, `ix_mse_expiry` exists to sweep on it, and
+**nothing sweeps.** `RetentionExpiryWorker` operates on the twelve record
+classes in `retention_policies`; `session_event` is not one, and `retention/`
+does not reference the table at all.
+
+So migration 0066 carried **two** claims about a disposal that does not happen.
+The second was easy to miss: *"`expires_at` sweeps now fan out across
+partitions. Accepted: `ix_mse_expiry` is a background sweep with no latency
+budget"* — present tense, costing out a job that does not run. Both are amended;
+the second is restated conditionally, because the trade it describes is still
+the right one to have made about a sweep that will exist.
+
+*The partitioning conclusion never moved.* The hash key is a subset of
+`uq_mse_session_seq` and leads both read indexes, so range partitioning breaks
+that invariant regardless of how disposal works. Only the premise was wrong,
+twice.
+
+**This sharpens E6-T2 rather than closing it.** The finding is not a docstring
+problem: the highest-volume record class in the system advertises a retention
+period the database CHECK-constrains to 1–180 days, carries a column and a
+purpose-built index to enforce it, and accumulates forever. That is E6-T2's
+subject and it now has a concrete failure rather than a structural observation.
 
 ### E6-T4 — An undeclared stream is blocked, not merely handled carefully
 
