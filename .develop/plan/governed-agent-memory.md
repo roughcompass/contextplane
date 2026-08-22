@@ -543,6 +543,16 @@ count trending to zero. Rule: no consolidation may drop a governance property
 (provenance completeness, receipts, envelope gating) — surfaces shrink, the
 control set does not.
 
+**Metric status, after decomposition measured all three.** Default-profile tool
+count is **already met at exactly 8** — E7-T1's registry records `core_count: 8`
+against `tool_count: 67`, so E13 keeps it shrunk rather than shrinking it. The
+REST target is **8 against ≤ 6**, two over, with both candidate pairs nameable
+(E13-T1). Deprecated-surface count is **blocked, deliberately and on the
+record** (E13-T3): there is no usage corpus, because nothing has been released,
+and retiring a tool on absence of evidence is refused. The dual-alias window is
+**struck** — this is a greenfield repository with no external consumers, so
+surfaces that consolidate are replaced, not aliased.
+
 ### E15 — Salience: deciding what is worth keeping
 
 **Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane, contextplane-ui
@@ -4356,17 +4366,41 @@ one. An operator who cannot undo a quarantine will not run it on a real
 incident, so the mechanism that has no revert is a mechanism nobody uses under
 the conditions it was built for.
 
-Bitemporal is the shipped idiom: `t_invalidated_at` closes a row without
-destroying it, which is what makes revert expressible at all. Reuse it rather
-than adding a `quarantined` boolean — a boolean records that something is
-quarantined and forgets when, by whom, and under which predicate, and all three
-are what an incident review asks for first.
+**Amended by [ADR-0016](../adr/0016-quarantine-is-a-materialised-state-on-its-own-column.md);
+this paragraph's original recommendation was a bypass and is struck.**
 
-Reuse the erasure/derivative propagation path for reaching embeddings. That path
-already exists, already reaches the index, and already has a story for what
-happens when propagation is late (`pending_overdue`, and the arms refuse to
-serve rather than serving stale). A second propagation path for quarantine would
-have to relearn all of it.
+It said: reuse `t_invalidated_at` rather than adding a flag. That is defeated by
+a query parameter. `_SERVABLE_AS_OF`'s `status` term is unconditional, but its
+`t_invalidated_at` term is **`as_of`-relative** — deliberately, since "a claim
+closed after the instant asked about was still believed then, which is the whole
+point of asking". And `as_of` is caller-supplied on both transports: a query
+parameter on `GET /v1/memory/claims`, an argument on the `query_claims` MCP
+tool. Quarantine a bad connector run at 14:00, and `query_claims(as_of="13:00")`
+serves every quarantined claim.
+
+**Follow `discard`'s shape instead.** It writes `status='rejected'` and "it never
+serves again" — unservable at every `as_of`, because that term is unconditional.
+Quarantine gets a dedicated `quarantined_at`, joined into `_SERVABLE_AS_OF` as
+an unconditional `AND c.quarantined_at IS NULL`, with the matching term in
+`_SERVABLE_STATUSES` so `project_claim` retracts the vector too. The
+rule-to-row ledger — which predicate closed which rows, when, by whom — is a
+side table read at apply, revert and audit, **never at read**. That answers what
+the struck paragraph was right to worry about: a bare boolean forgetting the
+provenance of the decision.
+
+Reuse the derivative propagation path for reaching embeddings —
+`enqueue_for_sources(..., operation=OPERATION_REBUILD,
+trigger=TRIGGER_POLICY_CHANGE)`, which needs no new vocabulary and no tombstone,
+and whose revert is the identical call.
+
+**A second claim struck.** This entry said that path "already has a story for
+what happens when propagation is late (`pending_overdue`, and the arms refuse to
+serve rather than serving stale)". It does not cover this:
+`register_derivative` defaults `blocking=False`, `register_claim_artefact` never
+passes it, and `arms.py` already records that a `blocking_only` guard over
+`vector` "would never fire". This does not damage the design — correctness
+commits synchronously and only recall is async — but a reviewer who accepts that
+sentence will believe a guard is protecting something it cannot reach.
 
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "quarantine"
@@ -4654,7 +4688,7 @@ Acceptance:
 
 ### E13-T3 — A usage signal that could justify retiring anything
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: decide what evidence would justify retiring a tool, and either build the
 thing that produces it or record that retirement waits for a release.
@@ -4683,6 +4717,50 @@ tool nobody needs, and the registry comment already says why.
 
 Acceptance:
     make all
+
+**Decided: wait for a release.** E13's third metric — deprecated-surface count
+trending to zero — is **explicitly blocked**, not quietly unmeasured, and that
+is the whole deliverable.
+
+*Why not persist per-tool call counts.* It is the option that looks like
+progress and is the most expensive wrong turn available. A per-tool counter
+table is a new record class, so under E6-T2's framework it needs a
+`legal_basis`, a `retention_days` and an `erasure_mode` before it may store
+anything — and E6-T3 has just established that the last record class added
+outside that framework advertises a period nothing enforces. Building a
+retention obligation in order to measure a metric nobody can act on yet inverts
+the cost.
+
+It is also the option that would produce a *number* before it produces
+*evidence*, and a number is what gets acted on. Six months of development-tree
+call counts would show every extended tool at zero, which is true and means
+nothing — no agent has ever connected.
+
+*Why not derive from receipts.* Receipts record what a resolution served, not
+which tool a caller invoked. That measures an adjacent thing, and the adjacency
+is exactly where a retirement decision would go wrong: a tool can be essential
+and appear in no receipt, because not every tool resolves context.
+
+*What "wait" concretely means*, so this is a decision and not a deferral:
+
+1. The metric is marked blocked in E13's epic body, with this task as the
+   reason. An unmeasured metric that nobody has declared blocked reads as a
+   metric somebody forgot.
+2. **Retirement on absence of evidence is refused now, in writing**, rather
+   than left as a temptation for whoever first looks at a Prometheus dashboard.
+   `install_tool_metrics` gives a per-tool counter, and that counter answers
+   "was this called in the current scrape window" — never "has any agent ever
+   needed this". The two are indistinguishable on a graph.
+3. The trigger to revisit is a *release with real connections*, not a date and
+   not a volume of internal usage. E7-T1 already had to make this exact
+   substitution once, deriving its core set from a stated rule because "this
+   service has never been released, and the receipts in a development tree are
+   the test suite's". The same corpus is still missing, and it is the same
+   corpus.
+
+E13-T4's ratchet is unaffected: it gates the two metrics that *are* measurable —
+core tool count and the core tier's REST footprint — and those need no usage
+data at all.
 
 ### E13-T4 — The consolidation gate, so the counts cannot drift back
 
@@ -5115,3 +5193,95 @@ author is the person most likely to reach for the stronger word.
 
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+## Task decomposition — thirteenth wave (three defects found while judging E4-T1)
+
+None of these is E4. All three were found by reading the servability and
+propagation machinery closely enough to decide ADR-0016, and all three are
+pre-existing. Filed separately so a quarantine PR does not quietly carry three
+unrelated fixes.
+
+### E3-T6 — `discard` leaves the claim's vectors in the index
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a discarded claim's vectors leave the index, as a superseded or
+unconsolidated claim's already do.
+
+`ClaimService.discard` sets `status='rejected'` on a claim that may be `staged`
+and consolidated — that is, currently indexed — and never calls `project_claim`.
+The module does not import it. `close_superseded` and `mark_consolidated` both
+do.
+
+`embedding_index.py` says `project_claim` is *"Called from the two places that
+change whether a claim is servable"*. `discard` is a third, and the docstring
+has been counting wrong.
+
+**Not a correctness leak** — every read filters on `status`, so a rejected claim
+cannot be served. It is exactly the recall loss retraction exists to prevent:
+*"every dead vector in the index occupies a candidate slot that a live one could
+have used"*, bounded only by retention expiry. One call to fix, and the
+docstring's count to correct with it.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "discard or embedding"
+    make all
+
+### E3-T7 — The conformance test that holds the servability rules together does not exist
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the several spellings of "this claim is servable" are held to agreeing by
+a test rather than by a sentence claiming a test exists.
+
+`embedding_index.py` states: *"A conformance test holds them to agreeing rather
+than a shared string pretending they are one rule."* **No such test exists.**
+Nothing under `tests/` references `_SERVABLE_STATUSES` or `_SERVABLE_AS_OF`, or
+asserts the two agree.
+
+A docstring asserting a guarantee nobody built is worse than silence, because
+the next author reads it and stops looking — which is how this was found, by
+someone checking whether a third term could safely be added.
+
+There are three spellings today: `_SERVABLE_STATUSES` in `embedding_index.py`,
+`_SERVABLE_AS_OF` in `claim_serving.py`, and an inline variant in
+`curation_queue.py`. **The third one should differ and the test must say so**, in
+the entry rather than as a discovered surprise: an operator must still see a
+discarded or quarantined claim in the curation queue, so the queue's predicate is
+deliberately not the serving predicate. A test that forced all three to match
+would be wrong, and a test that ignored the third would be checking two things
+that are already in one file.
+
+Worth doing before E4-T2, which adds a fourth term to a rule currently
+synchronised by prose.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/conformance -q -k "servable"
+    make all
+
+### E3-T8 — A third receipt read nobody has listed, in the list's own docstring
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the overdue-propagation guard covers the receipt reads it is supposed to,
+and the set is derived rather than hand-maintained.
+
+`arms.py` names `ContextReceiptService.get` and `.exclusions_for` as unguarded by
+`pending_overdue`. `.arms_for` is the same shape, joins the same receipt, and is
+on neither the list nor the guard.
+
+The docstring beside that list already makes this task's argument: *"Twice now
+this check was wired on the one path in front of somebody -- documented as
+covering 'the serving paths', plural, and covering one -- and both times the miss
+was found by a reader who went looking for the set."* This is the third time,
+found the same way, on the list that records the first two.
+
+So the fix is not only to add `.arms_for`. **A hand-maintained list of read
+paths has now been wrong three times**, and the entry should decide whether the
+set can be derived — every public read on the service, or every method touching
+a receipt table — rather than curated. If it cannot, say why, because the next
+occurrence is otherwise already scheduled.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "overdue or receipt"
+    make all
