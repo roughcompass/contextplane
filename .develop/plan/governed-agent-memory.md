@@ -56,6 +56,32 @@ stays open across it. **E1 is deliberately not marked done** — a first wave is
 the claimable frontier, not the scope, and closing an epic because its
 decomposed tasks finished is the same error that closed E19 prematurely.
 
+**Resolved: the second option, and the fact that made it undecidable is gone.**
+The circularity above rested on E2 not existing. E2 is now done, and E2-T2 gave
+"stream" a concrete referent: the `(source_system, source_namespace)` pair a
+replayed session event carries. There is a stream to scope to, so the clause can
+be cut against something rather than moved to keep it next to a word. E1 gains
+**E1-T11** and stays open across it.
+
+**What grounding it found, which changes what the task is for.** The clause reads
+as a security requirement — stop an agent understating the sensitivity of what
+it is about to touch — and on both wired paths that is already prevented, by two
+different mechanisms neither of which is this clause:
+
+- On `POST /v1/arc/context/resolve` the manifest's `data_sensitivity` and
+  `requested_action_classes` are **host-attested**. `verify_attestation` takes
+  the manifest, produces a `manifest_claims_digest`, and the challenge is
+  validated against that digest. An agent cannot understate its sensitivity
+  without the enrolled host signing the understatement.
+- On the session-event write path the route *constructs* the manifest itself and
+  the caller supplies neither field, so there is nothing to forge.
+
+So the clause's stated motivation is met. What is genuinely missing is narrower
+and worth naming precisely: **replayed external content has no declared
+sensitivity at all**, and the envelope decision on that path therefore selects on
+`intent_kind` alone. A replay from a chat export and a replay from a payroll
+system are not the same handling risk, and today neither says which it is.
+
 ### E2 — Hot observation write path
 
 **Kind:** epic · **Status:** done · **Blocked by:** E1 · **Repo:** contextplane
@@ -3331,3 +3357,89 @@ Acceptance:
     .venv/bin/python -m pytest tests/unit/test_scoring_accessor.py -q
     make scoring-accessor
     make all && make test-integration
+
+## Task decomposition — sixth wave (E1's last clause, cuttable now that E2 exists)
+
+### E1-T11 — A replayed stream declares its handling tier once, not per event
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+
+Goal: an operator registers a source namespace with a data-sensitivity tier and
+an action class, and the session-event write path puts them in the
+`IntentManifest` the envelope decision reads — so a replay from a payroll export
+is governed as restricted without the caller saying so, and without the caller
+being able to say otherwise.
+
+**This is the narrow remainder of E1's clause, not the whole of it.** The clause
+reads as "stop an agent declaring its own sensitivity", and both wired paths
+already prevent that -- host attestation on the ARC resolve path, and a
+route-constructed manifest on the memory path. See E1's body. What is left is
+that replayed external content declares *nothing*, so the envelope decision on
+that path selects on `intent_kind` alone.
+
+**The stream identity already exists and is not being invented here.** E2-T2 put
+`source_system` and `source_namespace` on `memory_session_events`, with a CHECK
+that an event naming one names both. That pair is the stream. E2-T2 chose the
+per-event conditional and said explicitly it was the weaker of two answers and
+that it declined to pre-empt this decision; this is that decision, and it does
+not migrate any data -- the CHECK narrows to reference the registry when the
+registry exists.
+
+**Where the registration lives, and why not `arc_source_connectors`.** That table
+is the obvious candidate and is the wrong one. It registers *connectors* --
+schemes, hosts, media types, verifier ids, a byte ceiling, a credential ref --
+which is how ARC fetches a document it was pointed at. A replayed conversational
+turn is pushed to us by an exporter and fetched from nowhere; it has no scheme
+and no host. Reusing the table would mean every replay source inventing an
+`allowed_schemes` to satisfy a constraint that describes a different act, which
+is the `assertion_provenance` mistake E2-T2 declined to make one table over.
+
+So: a new table keyed on `(tenant_id, source_system, source_namespace)`.
+
+**The tier is the closed one, and that is the point of ADR-0006 having closed
+it.** `contextplane/sensitivity.py` exports an ordered `TIERS` and a `rank()`
+that refuses a name it does not know. The column carries a CHECK generated from
+that tuple, so a registration cannot name a tier the program cannot rank. ARC's
+own `data_sensitivity` stays the open string it is -- ADR-0006 decided those two
+vocabularies stay separate, and this task does not reopen that.
+
+**An unregistered namespace needs no new rule, which is worth knowing before
+writing one.** Leave `data_sensitivity` unset and `_declared_sensitivity` already
+reads it as most restrictive, so an unregistered stream gets the strictest
+envelope until somebody registers it -- the pressure pointing the right way, and
+arrived at without a second copy of a rule that exists. What the task must not do
+is substitute `public` on absence, which would make skipping registration the way
+to get permissive handling.
+
+**The premise this task would otherwise die on is verified, not assumed.** A
+manifest field is worth nothing unless a decision acts on it, and three separate
+audits in this plan have now found a mechanism nobody consulted. So it was
+checked before the task was written: `selection.rule_applies` ends with
+`_matches_scalar(rule.data_sensitivity_tiers, _declared_sensitivity(manifest.data_sensitivity))`,
+and `arc_applicability_rules` carries the column. The envelope decision loads
+those rules through `_LOAD_RULES` and evaluates them with the same function. So
+the wiring is a lookup and a field, not a new dimension.
+
+**And the fail-closed rule is already written, in the place this task would
+otherwise have re-invented it.** `_declared_sensitivity` reads an unknown tier
+*or an absent one* as the most restrictive, and its docstring records why: the
+manifest's field is caller-supplied and open, so plain set membership let a host
+escape every rule that named a tier by sending `"ultra-secret"` or nothing —
+"both were measured before this was written". That means an unregistered
+namespace already lands on the strict answer this task argues for, and the
+registry's job is to let an operator say *which* tier a stream actually is,
+rather than to install a default that already exists. Do not add a second
+fail-closed rule beside that one.
+
+**Action class is the weaker half and may not survive contact.** The clause names
+it alongside sensitivity, and `requested_action_classes` exists on the manifest.
+But a *stream* does not obviously have one action class -- a chat export carries
+questions, decisions and tool traces alike -- where it does obviously have one
+handling tier. Build the sensitivity half first, then decide whether a
+per-stream action class is a real declaration or a field an operator would have
+to guess at. Recording a guess is worse than recording nothing.
+
+Acceptance:
+    .venv/bin/python -m alembic upgrade head
+    .venv/bin/python -m pytest tests/integration -q -k "source_namespace or envelope"
+    make all
