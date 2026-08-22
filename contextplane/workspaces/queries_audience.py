@@ -24,11 +24,18 @@ import datetime
 import uuid
 
 from sqlalchemy import ColumnElement, Select, and_, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from contextplane.exceptions import ConflictError
 from contextplane.workspaces.audience import RECOGNIZED_RESOLVERS
 from contextplane.workspaces.models import IntentCheckpoint, IntentHead, IntentParticipantGrant
 from contextplane.workspaces.schemas.intent_memory import IntentParticipantGrantV1, ParticipantRole
+
+#: The temporal exclusion migration 0070 installs. Named here so the translation
+#: below matches on the driver's structured `constraint_name` rather than on
+#: message text, which Postgres is free to rephrase.
+_NO_OVERLAP = "ex_intent_participant_grants_no_overlap"
 
 
 def _active_grant_predicate(*, tenant_id: uuid.UUID, actor_id: str, moment: datetime.datetime) -> ColumnElement[bool]:
@@ -103,7 +110,21 @@ async def insert_grant(
     tenant_id: uuid.UUID,
     grant: IntentParticipantGrantV1,
 ) -> None:
-    """Store one grant. The contract object has already refused a self-grant."""
+    """Store one grant. The contract object has already refused a self-grant.
+
+    A grant whose window overlaps one this actor already holds on this task is
+    refused by `ex_intent_participant_grants_no_overlap` and reported as a
+    conflict. Translating it here rather than letting the `IntegrityError` reach
+    a router is the whole point of E7-T5: both adapters catch `AudienceDenied`
+    and nothing else, so an untranslated constraint violation is a 500 for what
+    is really "that actor is already a participant".
+
+    Note what this does *not* refuse: a grant after a revoke. Revoke closes the
+    window at `moment` and the reads treat the range as half-open, so the new
+    grant's window starts where the old one ended and the two do not overlap.
+    That sequence was a 500 before this constraint existed and is the ordinary
+    case now.
+    """
     session.add(
         IntentParticipantGrant(
             tenant_id=tenant_id,
@@ -116,7 +137,18 @@ async def insert_grant(
             resolver_version=grant.resolver_version,
         )
     )
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        # Named, not matched on message text. `constraint_name` comes from the
+        # driver's structured error, so this does not break when Postgres
+        # rephrases its diagnostics.
+        if getattr(getattr(exc.orig, "__cause__", None), "constraint_name", None) != _NO_OVERLAP:
+            raise
+        raise ConflictError(
+            f"actor {grant.actor_id} already participates in task {grant.intent_id} over an overlapping window; "
+            "revoke the existing grant before issuing a new one"
+        ) from exc
 
 
 async def revoke_grant(
@@ -131,6 +163,20 @@ async def revoke_grant(
 
     Returns whether anything changed. A row already ended earlier is left
     alone: re-revoking must not extend the window that was already closed.
+
+    **Scoped to the grant whose window contains `moment`.** This used to select
+    every row for `(tenant, intent, actor)` and take `scalar_one_or_none()`,
+    which was safe only while a unique constraint guaranteed there was one.
+    Since 0070 replaced that with a temporal exclusion, an actor granted,
+    revoked and granted again has several rows and the old read would raise
+    `MultipleResultsFound`. The exclusion is what makes this narrowed read
+    single-valued: at most one window can contain any instant.
+
+    The predicate is written out rather than reusing `_active_grant_predicate`
+    because that one also requires a recognized `resolver_version`, and a grant
+    issued by a resolver this build no longer recognizes must still be
+    revocable. Refusing to revoke something because it is already unreadable
+    would leave a row nobody can serve and nobody can close.
     """
     row = (
         await session.execute(
@@ -138,6 +184,11 @@ async def revoke_grant(
                 IntentParticipantGrant.tenant_id == tenant_id,
                 IntentParticipantGrant.intent_id == intent_id,
                 IntentParticipantGrant.actor_id == actor_id,
+                IntentParticipantGrant.granted_at <= moment,
+                or_(
+                    IntentParticipantGrant.expires_at.is_(None),
+                    IntentParticipantGrant.expires_at > moment,
+                ),
             )
         )
     ).scalar_one_or_none()
