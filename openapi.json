@@ -12841,7 +12841,7 @@
         "type": "object"
       },
       "SearchResultItem": {
-        "description": "One search hit, with the evidence that made it match.\n\n``citations`` names the artifacts that matched rather than embedding them.\nBodies are documents; returning all of them inside a list response ships\ncontent the caller did not ask for, and each citation carries the link to\nread the one they want.\n\n``tenant_id`` is audit-only, like everywhere else this shape appears.",
+        "description": "One search hit, with the evidence that made it match.\n\n``citations`` names the artifacts that matched rather than embedding them.\nBodies are documents; returning all of them inside a list response ships\ncontent the caller did not ask for, and each citation carries the link to\nread the one they want.\n\n``tenant_id`` is audit-only, like everywhere else this shape appears.\n\n``fused_rank_score`` is the retrieval fusion's output and says so. It was\n``score`` -- and the service dataclass behind it was renamed for a stated\nreason while this one was not, so the adapter spent a release writing\n``score=result.fused_rank_score`` and undoing the rename one layer from the\nonly place a reader sees it. Three quantities in this system share the 0..1\nscale and mean different things; a field called ``score`` teaches the next\nauthor that a bare one is acceptable, and the wire is where that lesson is\nlearned.",
         "properties": {
           "citations": {
             "items": {
@@ -12858,6 +12858,10 @@
           "entity_type": {
             "title": "Entity Type",
             "type": "string"
+          },
+          "fused_rank_score": {
+            "title": "Fused Rank Score",
+            "type": "number"
           },
           "matching_facts": {
             "anyOf": [
@@ -12884,10 +12888,6 @@
             "title": "Retrieval Arms",
             "type": "object"
           },
-          "score": {
-            "title": "Score",
-            "type": "number"
-          },
           "tenant_id": {
             "anyOf": [
               {
@@ -12905,7 +12905,7 @@
           "entity_id",
           "name",
           "entity_type",
-          "score",
+          "fused_rank_score",
           "retrieval_arms",
           "citations"
         ],

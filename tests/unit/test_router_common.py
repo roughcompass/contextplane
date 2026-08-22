@@ -275,7 +275,7 @@ class TestSearchResultToItem:
         assert item.entity_id == _ENTITY_ID
         assert item.name == "PaymentAPI"
         assert item.entity_type == "capability"
-        assert item.score == 0.87
+        assert item.fused_rank_score == 0.87
         assert item.retrieval_arms == {"lexical": 0.5, "semantic": 0.9}
         assert len(item.citations) == 1
         assert item.citations[0].fact_id == fact.fact_id

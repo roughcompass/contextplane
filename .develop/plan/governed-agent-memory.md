@@ -3276,7 +3276,7 @@ Acceptance:
 
 ### E15-T6 — The rename stopped at the adapter
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — openapi.json · **Repo:** contextplane, contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — openapi.json · **Repo:** contextplane, contextplane-ui
 
 Goal: `SearchResultItem.score` becomes `fused_rank_score` on the wire, the
 contract is exported, and the UI pin follows.
@@ -3301,10 +3301,54 @@ Cross-repo, backward-incompatible on a response field, so it follows the shape
 the workspace already uses: the service PR renames and exports, one UI PR bumps
 the pin and regenerates the client together.
 
+**Landed with a guard rather than only a rename**, because the way this survived
+was a check narrower than its own goal. E15-T1's acceptance grepped
+`contextplane/types.py`; its goal sentence described the tree. The new test greps
+the **contract** -- the artifact the claim is about, and the surface a UI author
+copies a name from -- and refuses any schema property called exactly `score`.
+`fused_rank_score`, `salience`, `eval_score` and `confidence` all pass, because
+each says which quantity it is. Verified by reintroducing the field and watching
+it fail.
+
+Three test call sites had to move with it, all constructing the response model.
+None of them was asserting the old name as a property worth keeping; they were
+building a fixture.
+
+**The UI turns out to need almost nothing, and that is checked rather than
+assumed.** `SearchResultItem.score` appears in the dashboard exactly twice: in
+the generated client, and in one test fixture. No product code reads it -- the
+Context Lab page mentions "score" only in prose about what the resolver does not
+do. So the pin bump is a regeneration and a fixture edit. It is still its own PR
+in its own repo, because this rename is *not* backward compatible and the two
+repos cannot merge atomically. E15-T7.
+
 Acceptance:
     make openapi-export
-    sh -c '! grep -n "\"score\"" openapi.json'
-    make lint && make typecheck && make test-coverage
+    .venv/bin/python -m pytest tests/conformance/test_openapi_drift.py -q
+    make all
+
+### E15-T7 — The contract pin bump for the second rename
+
+**Kind:** task · **Status:** pending · **Blocked by:** E15-T6 · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
+
+Goal: vendor the contract E15-T6 exported, regenerate the client, and fix the one
+fixture that names the old field.
+
+E15-T2 was the same task for the first rename and closed as "nothing to do",
+because no UI code read `SearchResult.score`. This one is not quite nothing: the
+generated client carries `score: number` on `SearchResultItem`, and
+`ContextLabPage.test.tsx` builds a fixture with it. Both move; no product code
+does.
+
+The window matters and is short. Between the service merging and this landing,
+the dashboard's vendored contract disagrees with the service about a response
+field -- which is exactly why the workspace splits these into two PRs rather than
+pretending an atomic cross-repo merge exists, and why the second one should not
+wait.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "search"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
 
 ### E17-T4 — The tenant accessor no consumer calls
 
