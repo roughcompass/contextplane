@@ -58,6 +58,43 @@ def test_the_floor_covers_the_whole_cross_product() -> None:
     assert set(policies.values()) == {"block"}
 
 
+def test_the_floor_is_the_same_for_every_stream_however_it_was_declared() -> None:
+    """E6 asks for "a PII block tier for undeclared streams". There is nothing
+    left for one to refuse, and this pins why.
+
+    The floor is the cross product of every pilot field and every prohibited
+    class, and `PROHIBITED_CLASSES` is read off the shipped detectors -- so
+    admission already refuses every class its scanner can detect, on every field
+    it governs, from any source. A stricter tier for an unclassified stream would
+    have to refuse something, and there is nothing in that set left to refuse.
+
+    Content from an undeclared stream is therefore already held to the same floor
+    as content from a `public` one, which is the property the clause was reaching
+    for. Attempting it as a separate mechanism produced a no-op: an extra
+    wildcard policy on the field changed no outcome on any input, because the
+    floor had already blocked everything the scanner recognises.
+
+    What this does *not* cover is a tenant-configured pattern.
+    `security.pii_guard.scan_for_pii` builds a scanner carrying the tenant's own
+    patterns and logs what they match; `admission._scanner` carries only the
+    built-ins. So a custom pattern is detected, recorded, and never enforced by
+    admission at any tier. That is a real gap and it is not about streams -- see
+    E6-T4 in the plan.
+    """
+    floor = blocking_field_policies()
+
+    # Every class the admission scanner can detect is already blocked on every
+    # field it governs. Nothing a tier could add is missing from this set.
+    for field_type in PILOT_FIELD_TYPES:
+        for pii_class in PROHIBITED_CLASSES:
+            assert floor[f"{field_type}:{pii_class}"] == "block"
+
+    assert PROHIBITED_CLASSES == {pattern.name for pattern in BUILT_IN_PATTERNS}, (
+        "the floor is only exhaustive while the prohibited set is the detector set; "
+        "a detector outside it would be one an undeclared stream could carry past admission"
+    )
+
+
 def test_the_floor_keys_match_the_scanner_lookup_shape() -> None:
     """`field_type:class`. A key in any other shape is a policy the scanner
     never consults, which looks like a floor and is not."""
