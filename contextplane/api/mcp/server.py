@@ -39,10 +39,12 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import json
 import logging
 import time
 from collections.abc import Callable
-from typing import Any
+from pathlib import Path
+from typing import Any, Final
 
 from fastapi import FastAPI
 from mcp.server.fastmcp import FastMCP
@@ -155,6 +157,73 @@ def install_tool_metrics(server: FastMCP) -> None:
     server.tool = instrumented_tool  # type: ignore[method-assign]
 
 
+#: The committed registry: which tools exist and which tier each is in.
+_TOOL_REGISTRY_PATH: Final = Path(__file__).with_name("tool_registry.json")
+
+
+@functools.cache
+def core_tool_names() -> frozenset[str]:
+    """The verbs a default connection exposes.
+
+    Read from the committed artifact rather than listed here, so the tier
+    decision lives in one reviewable place and `scripts/check_mcp_tool_registry.py`
+    can hold it against what the modules actually register.
+    """
+    document = json.loads(_TOOL_REGISTRY_PATH.read_text(encoding="utf-8"))
+    names = frozenset(entry["name"] for entry in document["tools"] if entry.get("tier") == "core")
+    if not names:
+        # An empty core set would silently produce a server with no tools, which
+        # reads to a client exactly like a server that failed to start.
+        msg = f"{_TOOL_REGISTRY_PATH.name} declares no core tools; a default connection would expose nothing"
+        raise RuntimeError(msg)
+    return names
+
+
+def install_surface_filter(server: FastMCP, *, surface: str) -> None:
+    """Drop non-core registrations when the surface is `core`.
+
+    Composed onto the same seam `install_tool_metrics` uses -- FastMCP exposes
+    no supported hook for this, so both replace the bound `tool` method and this
+    one must be installed *after* the metrics wrapper so it wraps it rather than
+    being wrapped by it. A dropped tool must not be counted as an instrumented
+    one.
+
+    Filtering at registration rather than at call time is deliberate for this
+    task: a tool that is listed and then refused invites an agent to plan around
+    a verb it cannot use, and a tool that is hidden but still callable is
+    obscurity. Not registering it makes the list and the behaviour the same
+    answer. Per-principal exposure is a different question and needs both halves
+    -- that is E7-T3.
+    """
+    if surface == SURFACE_FULL:
+        return
+    allowed = core_tool_names()
+    underlying = server.tool
+
+    def filtered(*args: object, **kwargs: object) -> Callable[[AnyFunction], AnyFunction]:
+        # Same reason the metrics wrapper ignores this: `underlying` has a
+        # concrete keyword signature this forwards without knowing.
+        decorator = underlying(*args, **kwargs)  # type: ignore[arg-type]
+
+        def decide(fn: AnyFunction) -> AnyFunction:
+            if getattr(fn, "__name__", None) in allowed:
+                return decorator(fn)
+            # Returned unregistered. The module's `register()` still ran, so a
+            # tool added without a registry entry is caught by the gate rather
+            # than silently appearing here.
+            return fn
+
+        return decide
+
+    server.tool = filtered  # type: ignore[method-assign]
+
+
+#: Which tools a server exposes. `core` is the default connection E7 asks for;
+#: `full` is every registered tool and is what a test constructing a server
+#: directly asks for when it exercises one.
+SURFACE_CORE: Final = "core"
+SURFACE_FULL: Final = "full"
+
 # ---------------------------------------------------------------------------
 # Factory: build a FastMCP server closed over service instances
 # ---------------------------------------------------------------------------
@@ -168,6 +237,7 @@ def create_contextplane_mcp_server(
     clock: Clock | None = None,
     notifications: NotificationService | None = None,
     includes: IncludeService | None = None,
+    surface: str = SURFACE_FULL,
 ) -> FastMCP:
     """Return a FastMCP instance with the registered registry tools.
 
@@ -207,6 +277,9 @@ def create_contextplane_mcp_server(
 
     # Instrument every tool defined below. Must precede the first registration.
     install_tool_metrics(mcp_server)
+    # And drop the ones this surface does not expose. After the metrics wrapper,
+    # so a dropped tool is not counted as an instrumented one.
+    install_surface_filter(mcp_server, surface=surface)
 
     # whoami + single-entity catalog lookups.
     catalog_tools.register(
