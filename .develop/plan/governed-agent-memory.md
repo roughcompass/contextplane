@@ -4050,7 +4050,7 @@ Acceptance:
 
 ### E7-T2 — Parity, extending the gate that already half-exists
 
-**Kind:** task · **Status:** pending · **Blocked by:** E7-T1 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E7-T1 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: every registry entry names a tool that exists and a REST operation that
 exists, in both directions, plus the docs conformance half.
@@ -4069,6 +4069,70 @@ lists agree.
 
 Acceptance:
     .venv/bin/python -m pytest tests/conformance -q -k "parity"
+    make all
+
+**Delivered, and what widening the actor rule found.** Nine tests now: the
+registry↔code directions live in a `make lint` gate, and the conformance file
+carries the contract half (every REST mapping names an operation the OpenAPI
+document has), the docs half (all 8 core tools documented, nothing documented
+that was removed, and a ratchet at 20 on the undocumented extended surface), and
+the actor rule generalised from memory to every tool.
+
+Widening the actor rule surfaced two tools that take one — `grant_intent_participation`
+and `revoke_intent_participation`. **Exempted, on evidence rather than
+convenience:** the parameter is the operation's *patient*, never its principal.
+Authority comes from `ctx.actor_id`, minted from the validated JWT where no tool
+argument reaches; `_require_owner` refuses any caller whose active role on the
+task is not owner — strictly above what the grant confers; that check is in the
+service both transports call; and self-grant is refused by the contract
+dataclass and again by `ck_grant_not_self`. The exemption set is pinned for
+**equality**, so a third tool appearing and one of these disappearing both fail.
+
+The rule inverts inside the exemption, which is the part worth writing down. For
+session memory the parameter's *absence* is the control — nothing downstream
+would refuse a caller who named a colleague. For a grant, the parameter's
+*presence* is what the owner check operates on. Removing it would break REST/MCP
+parity and delete delegation, not close a hole.
+
+**A defect found next door, filed rather than fixed here.**
+`uq_task_participant_grant` is `(tenant_id, intent_id, actor_id)` with no expiry
+in the key, and `revoke` keeps the row and sets `expires_at`. So re-granting a
+previously revoked participant violates the constraint, and both adapters catch
+only `AudienceDenied` — the caller gets a 500 rather than a refusal.
+Participation is effectively one-shot per actor per task, and nothing tests
+re-grant-after-revoke. That is E7-T5, below.
+
+### E7-T5 — Participation is one-shot per actor, and fails as a 500
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: an actor who was granted, revoked, and granted again gets participation
+back, and no reachable input produces an unhandled `IntegrityError`.
+
+Found while judging E7-T2's exemption, in code that exemption did not touch.
+`uq_task_participant_grant` is `(tenant_id, intent_id, actor_id)`
+(`contextplane/workspaces/models.py:52`) and revoke is a soft delete —
+`queries_audience.py:152` sets `expires_at` and keeps the row. The second grant
+therefore collides with the first, and `routers/intent_memory.py:100` and
+`mcp/tools/intent_memory.py:150` both catch only `AudienceDenied`.
+
+Two shapes, and the choice matters more than the fix:
+
+- **Re-grant reactivates the existing row.** Keeps one row per actor per task,
+  so `fetch_actor_role` stays a single lookup — but the grant history is
+  overwritten, and who granted participation the first time stops being
+  recoverable.
+- **Expiry joins the uniqueness key**, so revoked rows accumulate and only the
+  live one is unique. Keeps history; every audience read has to learn to ignore
+  the dead rows, and a missed predicate is a revoked participant who can still
+  read.
+
+Prefer the first unless the audit trail is required, and if it is, say where
+that requirement comes from. Either way the adapters need to stop turning a
+constraint violation into a 500.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration/test_intent_memory_surfaces.py -q
     make all
 
 ### E7-T3 — The full surface is opt-in, per envelope
