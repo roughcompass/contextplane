@@ -1,0 +1,187 @@
+{
+  "fixture_version": 1,
+  "scenario_count": 12,
+  "_comment": "Multi-session recall. Each scenario stages claims whose evidence names an event in an EARLIER session, then asks a question in a LATER one. Claim serving is tenant- and actor-scoped rather than session-scoped, so the earlier claim is reachable by construction -- what is measured is whether it is actually RETRIEVED, against the competition of every other scenario's claims in the same tenant. Predicates are the shipped global ontology's, checked against it rather than invented: `value_kind` says whether the value names an entity the seeder must create or a literal string, because the ontology types each predicate and refuses a mismatch. Frozen after the first measurement; extend with a new file rather than editing this one.",
+  "scenarios": [
+    {
+      "scenario_id": "ms-001",
+      "earlier_session_id": "sess-checkout-migration",
+      "later_session_id": "sess-checkout-migration-followup",
+      "claims": [
+        {
+          "subject": "payments-api",
+          "predicate": "depends_on",
+          "value": "ledger-service",
+          "value_kind": "entity",
+          "excerpt": "the checkout flow depends on the ledger service for balance reads"
+        }
+      ],
+      "query": "what does checkout depend on for balances?"
+    },
+    {
+      "scenario_id": "ms-002",
+      "earlier_session_id": "sess-incident-review",
+      "later_session_id": "sess-incident-review-followup",
+      "claims": [
+        {
+          "subject": "payments-api",
+          "predicate": "owned_by_team",
+          "value": "platform",
+          "value_kind": "string",
+          "excerpt": "the platform team took ownership of the payments API after the incident"
+        }
+      ],
+      "query": "who owns the payments API?"
+    },
+    {
+      "scenario_id": "ms-003",
+      "earlier_session_id": "sess-retry-design",
+      "later_session_id": "sess-retry-design-followup",
+      "claims": [
+        {
+          "subject": "charge-operation",
+          "predicate": "depends_on",
+          "value": "backoff-scheduler",
+          "value_kind": "entity",
+          "excerpt": "charges retry through the backoff scheduler with jitter"
+        }
+      ],
+      "query": "how do charges retry?"
+    },
+    {
+      "scenario_id": "ms-004",
+      "earlier_session_id": "sess-schema-cleanup",
+      "later_session_id": "sess-schema-cleanup-followup",
+      "claims": [
+        {
+          "subject": "refund-operation",
+          "predicate": "depends_on",
+          "value": "ledger-service",
+          "value_kind": "entity",
+          "excerpt": "refunds read the ledger before issuing"
+        }
+      ],
+      "query": "what do refunds read before issuing?"
+    },
+    {
+      "scenario_id": "ms-005",
+      "earlier_session_id": "sess-oncall-handover",
+      "later_session_id": "sess-oncall-handover-followup",
+      "claims": [
+        {
+          "subject": "notification-service",
+          "predicate": "owned_by_team",
+          "value": "growth",
+          "value_kind": "string",
+          "excerpt": "growth owns notifications since the handover"
+        }
+      ],
+      "query": "which team owns notifications?"
+    },
+    {
+      "scenario_id": "ms-006",
+      "earlier_session_id": "sess-capacity-planning",
+      "later_session_id": "sess-capacity-planning-followup",
+      "claims": [
+        {
+          "subject": "search-index",
+          "predicate": "depends_on",
+          "value": "embedding-worker",
+          "value_kind": "entity",
+          "excerpt": "the search index is rebuilt by the embedding worker"
+        }
+      ],
+      "query": "what rebuilds the search index?"
+    },
+    {
+      "scenario_id": "ms-007",
+      "earlier_session_id": "sess-auth-rollout",
+      "later_session_id": "sess-auth-rollout-followup",
+      "claims": [
+        {
+          "subject": "gateway",
+          "predicate": "depends_on",
+          "value": "oidc-validator",
+          "value_kind": "entity",
+          "excerpt": "the gateway validates tokens with the shared OIDC validator"
+        }
+      ],
+      "query": "how does the gateway validate tokens?"
+    },
+    {
+      "scenario_id": "ms-008",
+      "earlier_session_id": "sess-cost-review",
+      "later_session_id": "sess-cost-review-followup",
+      "claims": [
+        {
+          "subject": "embedding-worker",
+          "predicate": "depends_on",
+          "value": "remote-embedder",
+          "value_kind": "entity",
+          "excerpt": "the embedding worker calls the remote embedder for vectors"
+        }
+      ],
+      "query": "what produces vectors for the embedding worker?"
+    },
+    {
+      "scenario_id": "ms-009",
+      "earlier_session_id": "sess-deprecation",
+      "later_session_id": "sess-deprecation-followup",
+      "claims": [
+        {
+          "subject": "legacy-export",
+          "predicate": "owned_by_team",
+          "value": "platform",
+          "value_kind": "string",
+          "excerpt": "platform inherited the legacy export when data left"
+        }
+      ],
+      "query": "who inherited the legacy export?"
+    },
+    {
+      "scenario_id": "ms-010",
+      "earlier_session_id": "sess-latency-hunt",
+      "later_session_id": "sess-latency-hunt-followup",
+      "claims": [
+        {
+          "subject": "ledger-service",
+          "predicate": "deployment_environment",
+          "value": "production",
+          "value_kind": "string",
+          "excerpt": "the ledger service latency work landed in production"
+        }
+      ],
+      "query": "which environment did the ledger work land in?"
+    },
+    {
+      "scenario_id": "ms-011",
+      "earlier_session_id": "sess-compliance",
+      "later_session_id": "sess-compliance-followup",
+      "claims": [
+        {
+          "subject": "audit-log",
+          "predicate": "depends_on",
+          "value": "object-store",
+          "value_kind": "entity",
+          "excerpt": "the audit log is archived to the object store nightly"
+        }
+      ],
+      "query": "where is the audit log archived?"
+    },
+    {
+      "scenario_id": "ms-012",
+      "earlier_session_id": "sess-onboarding",
+      "later_session_id": "sess-onboarding-followup",
+      "claims": [
+        {
+          "subject": "gateway",
+          "predicate": "provides_to",
+          "value": "payments-api",
+          "value_kind": "entity",
+          "excerpt": "the gateway routes charge requests to the payments API"
+        }
+      ],
+      "query": "where does the gateway route charge requests?"
+    }
+  ]
+}

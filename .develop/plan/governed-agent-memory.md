@@ -3306,7 +3306,7 @@ to notice.
 
 ### E8-T4 — Multi-session recall has no measurement
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a fixture and a report answering whether material from one session is
 retrievable from another, joined into `make eval` beside the existing recall@10
@@ -3329,10 +3329,34 @@ The fixture is frozen after first measurement and never edited in place, per
 runs always or opt-in on a credential, the same split E8-T1 made and for the same
 reason: a recall figure measured against a stub measures the stub.
 
+**First measurement: 10/12 = 0.833 at recall@10**, stub embedder, no threshold.
+The two misses are queries whose wording shares little with the claim text, which
+is what a lexical-dominant regime is expected to miss.
+
+**The fixture found two things about the system before it measured anything, and
+both were found by failing.** A staged claim is not retrievable: `project_claim`
+refuses to queue until `consolidated_at` is set, and the drain is what turns a
+queued row into a vector. A fixture that staged and then queried reported
+**0/12** -- a harness failure wearing the shape of a recall result. The
+anti-vacuity assertion is the only thing that distinguished them, which is the
+argument for writing one into every measurement rather than only reporting.
+
+So: **an agent's cross-session recall depends on consolidation having run.** That
+is a real property, not a test detail, and it is recorded in `eval/EVAL.md` where
+somebody reading the figure will find it.
+
+**A third thing was found by the ontology refusing the fixture.** The first draft
+used a `uses_tool` predicate and gave `owned_by_team` an entity value. Neither
+exists: the shipped global ontology has no `uses_tool`, and `owned_by_team` is
+typed `string`. The claim writer refused both. The fixture now carries a
+`value_kind` per claim and was rewritten against the predicates that exist --
+which is the same "decomposition described the service the plan believed
+existed" failure, caught this time by a type the service already enforced.
+
 Acceptance:
     make eval
     .venv/bin/python -m pytest tests/integration -q -k "multi_session"
-    make lint && make typecheck
+    make all
 
 ### E15-T6 — The rename stopped at the adapter
 
