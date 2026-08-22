@@ -32,11 +32,36 @@ This is also the shipped precedent rather than a new idea: `embeddings` is
 this table takes the same shape for the same reasons.
 
 **Disposal does not need time partitions.** The reason to reach for range
-partitioning would be detaching an old month wholesale, but the retention design
-is crypto-shredding -- disposal by destroying the key, recorded as an auditable
-deletion event -- which operates on content, not on physical layout. A partition
-scheme chosen for a disposal mechanism this service does not use would cost the
-invariant above and buy nothing.
+partitioning would be detaching an old month wholesale, and that is not the
+disposal this table is designed for: a session event carries `expires_at`,
+derived per write from the tenant's `memory_retention_days`, and `ix_mse_expiry`
+exists to sweep on it. Row-wise expiry operates on rows, not on physical layout,
+so the partition scheme owes it nothing -- and a scheme chosen for a disposal
+mechanism this table does not use would cost the invariant above and buy
+nothing.
+
+*Amended by E6-T3, twice, because the first correction was also wrong.*
+
+This paragraph originally justified the same conclusion by saying "the retention
+design is crypto-shredding -- disposal by destroying the key, recorded as an
+auditable deletion event". **There is no content key and no shredding**, and no
+`shred` among `retention/policies.py`'s four erasure modes (`delete`,
+`minimize`, `minimize_and_tombstone`, `exempt`) -- so the claim rested on a
+mechanism with neither an implementation nor a name in the vocabulary that would
+have to carry it.
+
+**And the replacement must not overstate either.** `expires_at` is the *designed*
+disposal and it is written on every row, but **nothing sweeps it.**
+`RetentionExpiryWorker` operates on the twelve record classes in
+`retention_policies`, and `session_event` is not one of them -- `retention/`
+does not reference this table at all. So the paragraph below about sweep cost is
+describing a job that does not run. That gap is E6-T2's subject, not this
+migration's, and it is recorded here so the next reader does not have to
+rediscover it.
+
+The conclusion was never in doubt through any of this. The hash key is a subset
+of `uq_mse_session_seq` and leads both read indexes, so range partitioning would
+break that invariant regardless of how disposal works. Only the premise moved.
 
 **Rebuilt rather than converted, because the table is empty.** Postgres cannot
 turn a populated plain table into a partitioned one in place; the shipped route
@@ -46,9 +71,15 @@ empty in every deployment that will run this revision, and a rename-and-copy
 would be ceremony over zero rows. A future migration converting a *populated*
 table still needs the shadow route.
 
-`expires_at` sweeps now fan out across partitions. Accepted: `ix_mse_expiry` is
-a background sweep with no latency budget, and paying there to make the two
-foreground reads prune is the right side of that trade.
+`expires_at` sweeps would now fan out across partitions. Accepted: `ix_mse_expiry`
+would be a background sweep with no latency budget, and paying there to make the
+two foreground reads prune is the right side of that trade.
+
+Stated conditionally because, as the amendment above records, **no such sweep
+runs today.** The trade is still the right one to have made -- it is about what
+the sweep will cost when it exists -- but the original wording asserted a
+present-tense job, and a reader costing out retention would have taken it at its
+word.
 """
 
 from __future__ import annotations
