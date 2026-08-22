@@ -543,6 +543,16 @@ count trending to zero. Rule: no consolidation may drop a governance property
 (provenance completeness, receipts, envelope gating) — surfaces shrink, the
 control set does not.
 
+**Metric status, after decomposition measured all three.** Default-profile tool
+count is **already met at exactly 8** — E7-T1's registry records `core_count: 8`
+against `tool_count: 67`, so E13 keeps it shrunk rather than shrinking it. The
+REST target is **8 against ≤ 6**, two over, with both candidate pairs nameable
+(E13-T1). Deprecated-surface count is **blocked, deliberately and on the
+record** (E13-T3): there is no usage corpus, because nothing has been released,
+and retiring a tool on absence of evidence is refused. The dual-alias window is
+**struck** — this is a greenfield repository with no external consumers, so
+surfaces that consolidate are replaced, not aliased.
+
 ### E15 — Salience: deciding what is worth keeping
 
 **Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane, contextplane-ui
@@ -4786,7 +4796,7 @@ Acceptance:
 
 ### E13-T3 — A usage signal that could justify retiring anything
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: decide what evidence would justify retiring a tool, and either build the
 thing that produces it or record that retirement waits for a release.
@@ -4815,6 +4825,50 @@ tool nobody needs, and the registry comment already says why.
 
 Acceptance:
     make all
+
+**Decided: wait for a release.** E13's third metric — deprecated-surface count
+trending to zero — is **explicitly blocked**, not quietly unmeasured, and that
+is the whole deliverable.
+
+*Why not persist per-tool call counts.* It is the option that looks like
+progress and is the most expensive wrong turn available. A per-tool counter
+table is a new record class, so under E6-T2's framework it needs a
+`legal_basis`, a `retention_days` and an `erasure_mode` before it may store
+anything — and E6-T3 has just established that the last record class added
+outside that framework advertises a period nothing enforces. Building a
+retention obligation in order to measure a metric nobody can act on yet inverts
+the cost.
+
+It is also the option that would produce a *number* before it produces
+*evidence*, and a number is what gets acted on. Six months of development-tree
+call counts would show every extended tool at zero, which is true and means
+nothing — no agent has ever connected.
+
+*Why not derive from receipts.* Receipts record what a resolution served, not
+which tool a caller invoked. That measures an adjacent thing, and the adjacency
+is exactly where a retirement decision would go wrong: a tool can be essential
+and appear in no receipt, because not every tool resolves context.
+
+*What "wait" concretely means*, so this is a decision and not a deferral:
+
+1. The metric is marked blocked in E13's epic body, with this task as the
+   reason. An unmeasured metric that nobody has declared blocked reads as a
+   metric somebody forgot.
+2. **Retirement on absence of evidence is refused now, in writing**, rather
+   than left as a temptation for whoever first looks at a Prometheus dashboard.
+   `install_tool_metrics` gives a per-tool counter, and that counter answers
+   "was this called in the current scrape window" — never "has any agent ever
+   needed this". The two are indistinguishable on a graph.
+3. The trigger to revisit is a *release with real connections*, not a date and
+   not a volume of internal usage. E7-T1 already had to make this exact
+   substitution once, deriving its core set from a stated rule because "this
+   service has never been released, and the receipts in a development tree are
+   the test suite's". The same corpus is still missing, and it is the same
+   corpus.
+
+E13-T4's ratchet is unaffected: it gates the two metrics that *are* measurable —
+core tool count and the core tier's REST footprint — and those need no usage
+data at all.
 
 ### E13-T4 — The consolidation gate, so the counts cannot drift back
 
