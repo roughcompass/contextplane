@@ -4171,3 +4171,248 @@ Acceptance:
     make eval
     .venv/bin/python -m pytest tests/integration -q -k "two_call or quickstart"
     make all
+
+## Task decomposition — ninth wave (E4, whose central noun does not exist yet)
+
+Grounded before decomposing, and the grounding moves most of the epic. E3-T4
+established that **`quarantine` appears twice in the whole tree**, both in
+`profile/migration.py` as a profile-migration disposition. No claim, embedding,
+receipt or workspace entry has ever been quarantined. So E4 is not wiring an
+existing mechanism to DORA — it is building the mechanism, and the wiring is the
+smaller half.
+
+What E4 *can* build on, all of it already shipped:
+
+- **`get_blast_radius`** — a real graph traversal with a service method, a REST
+  route (`routers/graph.py`) and an MCP tool. E4's "dry-run blast-radius
+  preview" is this function applied to a quarantine predicate, not a second
+  traversal.
+- **`PromotionPolicy.blast_radius_threshold`** — per-tenant, `DEFAULT 5`,
+  `CHECK >= 0`, already consulted by `promotion_eligibility`. Blast radius is
+  *already* a governance trigger in this system; E4 adds a second consumer, not
+  a new concept.
+- **`IMPACT_*`** — a closed vocabulary of reasons a claim needs review, with
+  `IMPACT_BLAST_RADIUS` among them and an honest note that "narrows a surface"
+  is only decidable for a listed subset of predicates.
+- **Curation cases** — `CASE_OPEN`/`CASE_ROUTED`/`CASE_RESOLVED`, where a
+  disposition is a *proposal* and its approver is recorded at disposition time
+  rather than inferred later. E4's "auto-created incident case" is a case.
+- **Bitemporal invalidation** — `t_invalidated_at` plus the derivative
+  propagation and erasure machinery that already reaches embeddings.
+
+What does not exist at all: quarantine, bulk revert, and every DORA noun —
+materiality, regulatory clock, report windows, at-risk escalation. Searched for
+`dora`, `DORA`, `materiality`, `regulatory`, `notification_clock`: **zero hits
+each**.
+
+**A naming trap, flagged before somebody walks into it.** `severity` is already
+taken. It is the PII scanner's `advisory < warn < block` ordering, in
+`types.py`, `admission.py` and `pii_scanner.py`. DORA materiality is a different
+axis measured against different thresholds, and a field called `severity` on an
+incident case will be read as the scanner's by anyone who has seen the scanner
+first. Name it `materiality` and keep them apart.
+
+### E4-T1 — ADR: is quarantine a state, or a predicate evaluated at read?
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: decide the shape before anything is built, because the two shapes have
+different failure modes and only one of them matches what this system already
+does.
+
+The epic says "quarantine by provenance predicate", which reads as a rule
+evaluated per read: *anything from this connector run, this extractor version,
+this source namespace*. The alternative is a state materialised onto each
+affected row when the predicate is applied.
+
+The argument for materialising, and it is the same argument E3-T4 landed on:
+**this codebase already knows how to make something unservable, and it does it
+by removing the row from the index rather than by filtering at read.**
+`project_claim` retracts a claim's vectors the moment it stops being servable.
+A read-time provenance predicate would be a second, weaker mechanism — every
+future scan path would have to remember it, and the first one that forgets is a
+quarantined claim served with a straight face.
+
+The argument against, which the ADR has to answer honestly: a predicate is
+revocable in one statement and a materialised state is a bulk write over an
+unbounded set, which is exactly why E4 also asks for bulk revert. And a
+predicate can be *evaluated* against rows that arrive after it was written,
+where a materialised state cannot — a connector still emitting bad claims keeps
+producing servable ones until somebody re-runs the sweep.
+
+Prefer materialised state with a **standing predicate that re-applies on
+write**, if that can be built without a second admission path; say so explicitly
+if it cannot, because then the choice is genuinely between the two failure
+modes and the ADR should pick one and name what it is giving up.
+
+Whichever is chosen, it must answer: does a quarantined claim disappear from the
+index (E3-T4's retraction), or stay indexed and get filtered? Answering
+"filtered" contradicts a decision made two tasks ago and needs to say why.
+
+Acceptance:
+    make doc-refs doc-links
+    make all
+
+### E4-T2 — The quarantine state, and the revert that makes it usable
+
+**Kind:** task · **Status:** pending · **Blocked by:** E4-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+
+Goal: a provenance predicate quarantines the claims it matches, and one
+statement puts them back.
+
+Bulk revert is not a convenience feature here and should not be scheduled as
+one. An operator who cannot undo a quarantine will not run it on a real
+incident, so the mechanism that has no revert is a mechanism nobody uses under
+the conditions it was built for.
+
+Bitemporal is the shipped idiom: `t_invalidated_at` closes a row without
+destroying it, which is what makes revert expressible at all. Reuse it rather
+than adding a `quarantined` boolean — a boolean records that something is
+quarantined and forgets when, by whom, and under which predicate, and all three
+are what an incident review asks for first.
+
+Reuse the erasure/derivative propagation path for reaching embeddings. That path
+already exists, already reaches the index, and already has a story for what
+happens when propagation is late (`pending_overdue`, and the arms refuse to
+serve rather than serving stale). A second propagation path for quarantine would
+have to relearn all of it.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "quarantine"
+    make all
+
+### E4-T3 — The preview is `get_blast_radius`, not a second traversal
+
+**Kind:** task · **Status:** pending · **Blocked by:** E4-T2 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: before applying a quarantine, an operator sees what it would reach — using
+the traversal that already exists.
+
+`get_blast_radius` ships with a service method, a REST route and an MCP tool,
+and `promotion_eligibility` already treats its result as a governance trigger
+against a per-tenant threshold. The preview is that traversal seeded from the
+predicate's match set.
+
+Writing a second traversal is the failure mode to avoid, and it is a likely one
+because the shapes differ slightly: promotion asks about one claim, quarantine
+asks about a set. Widen the existing one; two graph walks that disagree about
+what "downstream" means is a worse outcome than a slightly awkward signature.
+
+The dry run must be honestly labelled as a *point-in-time* answer. The graph
+moves; a preview taken and acted on ten minutes later reached a different set,
+and an operator who believes otherwise will under-quarantine and not know it.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "blast_radius or quarantine"
+    make all
+
+### E4-T4 — Pre-quarantine of downstream receipts
+
+**Kind:** task · **Status:** pending · **Blocked by:** E4-T2 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a receipt whose inputs are being quarantined stops being servable before
+the sweep reaches it, not after.
+
+The ordering is the whole task. A quarantine that walks its blast radius one row
+at a time serves the last unreached receipt right up until it arrives, which is
+the window an incident response exists to close. Marking the downstream set
+first and reconciling afterwards inverts that: the cost of being wrong becomes a
+withheld receipt that should have been served, and withholding is the safe
+direction.
+
+E3-T2 built the vocabulary this needs. `hydration_state` already gates
+`/exclusions` and `/references` behind a 409 `receipt_not_hydrated`, and
+`HYDRATION_SERVABLE` is the frozenset deciding it. Whether pre-quarantine is a
+fourth hydration state or a separate column is a real question — a receipt that
+is fully hydrated but provisionally withheld is not the same thing as one that
+was never hydrated, and collapsing them loses the difference an operator needs.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "receipt and quarantine"
+    make all
+
+### E4-T5 — ADR: materiality is not severity, and the word is already taken
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: decide what makes an incident *major*, on what evidence, and who can say
+so — before a clock depends on the answer.
+
+This is first among the DORA tasks because everything else keys off it. The
+classification starts a regulatory clock with legal deadlines; a threshold
+picked to make the demo work is a threshold that either starts clocks nobody can
+meet or fails to start one that was required.
+
+Three things the ADR must settle:
+
+1. **The name.** `severity` is taken — it is the PII scanner's
+   `advisory < warn < block`, in `types.py`, `admission.py` and
+   `pii_scanner.py`. Use `materiality`. Two different orderings sharing one
+   field name is a defect waiting for a reader who has only seen the other one.
+2. **Who classifies.** Automatic classification from blast radius is
+   attractive and dangerous: it means a graph traversal starts a legal clock. If
+   it is automatic, the ADR states the threshold and where it is governed; if it
+   is human, it states what happens between detection and classification,
+   because that gap is unbounded and is itself the reportable delay.
+3. **What "major" means here specifically.** DORA's thresholds are external
+   and this service does not get to invent them. Cite them or state plainly
+   that the mapping is a placeholder pending legal input — an invented threshold
+   presented as a compliance feature is worse than an absent one.
+
+Acceptance:
+    make doc-refs doc-links
+    make all
+
+### E4-T6 — The notification clock, and why a missed deadline must be loud
+
+**Kind:** task · **Status:** pending · **Blocked by:** E4-T5 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: classification-as-major stamps initial, intermediate and final deadlines
+on the incident case, and their approach and breach are visible without anybody
+asking.
+
+Three deadlines, stamped as distinct instants at classification time rather than
+computed on read. Computed deadlines drift when the classification timestamp is
+corrected, and "when was this due" is precisely the question an audit asks.
+
+The case machinery exists: `CASE_OPEN`/`CASE_ROUTED`/`CASE_RESOLVED`, with a
+disposition recording its approver at disposition time — the same discipline
+this needs.
+
+**At-risk escalation is a gauge, not a log line**, and ADR-0012's assumption 2
+is the precedent: a scheduled job that silently stops turns a deadline into
+"whenever somebody looks". Anchor age was the analogous case there. Deadline
+state must be observable when nothing is happening, because nothing happening is
+the failure.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "incident or deadline"
+    make all
+
+### E4-T7 — Evidence-bundle export, scoped to one case
+
+**Kind:** task · **Status:** pending · **Blocked by:** E4-T6 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: everything a regulator asks for about one incident, exported as one
+bundle, with the scope enforced rather than described.
+
+`arc_get_review_package` is the closest shipped thing and is worth reading
+before designing this, but it is not the same: a review package supports a
+decision that is about to be made, and an evidence bundle documents one already
+taken. The audiences differ and so does what may be included.
+
+The scoping is the hard part and it cuts both ways. A bundle that quietly
+includes rows outside the case is a disclosure; one that quietly omits rows
+inside it is an incomplete regulatory filing. Neither can be checked by reading
+the output, so the scope predicate belongs in the query and the test belongs on
+the boundary — a second case's rows seeded alongside, and asserted absent.
+
+Note what the digest chains do and do not offer here. ADR-0012 is explicit that
+an internal chain proves nothing against the party holding the storage, and that
+the honest phrase is bounded-exposure tamper-evidence. An evidence bundle must
+not imply more than that, and must never use the word non-repudiation — the ADR
+says why, and says it expecting this task to be where somebody is tempted.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "evidence_bundle"
+    make all
