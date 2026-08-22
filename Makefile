@@ -353,6 +353,8 @@ eval: ## Measure memory quality: retrieval recall, time-travel correctness, ARC 
 	@set -e; \
 	echo "eval: ARC selection gate (no database)"; \
 	$(PYTEST) $(TEST_ROOT)/unit/test_arc_selection_eval_gate.py -q --timeout=120; \
+	echo "eval: adversarial selectivity — can a caller shed a rule by misdeclaring (no database)"; \
+	$(PYTEST) $(TEST_ROOT)/unit/test_adversarial_selectivity_gate.py -q --timeout=120 -s; \
 	echo "eval: extraction ground truth — fixture contract and scoring arithmetic"; \
 	echo "      (the quality measurement itself needs CLAUDE_API_KEY and skips without one)"; \
 	$(PYTEST) $(TEST_ROOT)/integration/test_extraction_ground_truth.py -q --timeout=600 -rs; \
