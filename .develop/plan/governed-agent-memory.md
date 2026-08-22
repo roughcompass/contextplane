@@ -4772,5 +4772,275 @@ endpoint is part of the behaviour, and a test that asserts the body and method
 but not the path will pass while the call goes somewhere that does something
 else entirely.
 
+## Task decomposition — twelfth wave (E10, E11, E12 — the last three undecomposed epics)
+
+Taken together in one wave because each one's grounding turned up the same kind
+of finding: a mechanism already shipped that changes what the epic is asking
+for, and in two cases makes it smaller.
+
+### E11-T1 — ADR: an explorer that recomputes is the differencing attack
+
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: decide whether E11's aggregates read a stored series or compute live —
+before any screen is built, because the two have different disclosure
+properties and the wrong one cannot be fixed in the UI.
+
+**Grounding found more than "existing suppression floors".**
+`contextplane/signals/aggregates.py` and the `privacy_aggregates` table are a
+full differencing defence, and its opening sentence is the finding: *"The hard
+part is not the floors — it is the recompute."*
+
+The attack it defends against is not a small cell. It is two figures for the
+same cell: computed over a window, published, and computed again after an
+erasure. **Every floor holds perfectly while that happens** — both figures clear
+the minimum, neither names anybody, and subtracting them names one person's
+contribution exactly.
+
+Three mechanisms carry the defence and none is a step somebody remembers: one
+version of a cell ever, enforced by a unique key so a recompute has nowhere to
+leave its predecessor; withholding is one-way and sticky across every later
+pass; and a withheld cell zeroes its actor count too, because reporting "six
+actors now" beside a reader's memory of seven has disclosed that the erased
+subject was one person.
+
+**So an explorer is exactly the shape of thing that breaks this.** A screen
+letting an auditor run the same breakdown on Monday and again on Friday
+reproduces the attack with no floor violated and no bug anywhere — the module
+that prevents it is the *writer*, and a reader that recomputes has routed around
+it. The docstring already says the read surfaces compute live and floor on the
+way out, which is *"correct for a question asked now"* and is not what an
+explorer is.
+
+The ADR decides: E11's aggregates read the stored series, or E11 states why its
+particular reads cannot participate in a difference. Prefer the first.
+
+Acceptance:
+    make doc-refs doc-links
+    make all
+
+**Delivered as [ADR-0013](../adr/0013-an-explorer-that-recomputes-is-the-attack.md).**
+The aggregates read the stored series; they do not compute live.
+
+Two refinements the writing produced. **The receipts half is unaffected and
+stays live** — a receipt records one resolution rather than an aggregate over a
+population, so reading it twice discloses nothing that reading it once did not.
+Folding it into this decision would have made E11-T2 harder for no gain.
+
+And **a metric E11 wants that is not in `AGGREGATE_METRICS` is a writer change,
+not a reader change.** That set is closed so a metric cannot be computed by one
+pass and forgotten by the next, and adding a live computation beside the stored
+series to cover a gap would reintroduce the recompute while looking like a small
+convenience. It also inherits a retention question, since `_SOURCE_CLASS_FOR`
+makes an aggregate carry its source's record class — friction in the right
+place, because an aggregate outliving its sources is a breach no floor detects.
+
+The dissent is worth reading before E11-T2 starts: this generalises from one
+writer to a whole epic, and a metric with no per-actor contribution arguably
+cannot leak by subtraction at all. The honest fix is a per-metric analysis
+nobody has done; the ADR takes the conservative line because being wrong in the
+permissive direction is silent.
+
+### E11-T2 — The receipts explorer, over endpoints that already exist
+
+**Kind:** task · **Status:** pending · **Blocked by:** E11-T1 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: a reader can find a receipt, see what it served and what it withheld, and
+follow its references — without a new endpoint.
+
+E3-T2 is the relevant recent work and it changed what a receipt can say about
+itself. `hydration_state` now distinguishes a receipt that is finished being
+written from one that is not, `/exclusions` and `/references` refuse with a 409
+`receipt_not_hydrated` rather than answering emptily, and `GET /receipts/{id}`
+returns the state so a caller can tell which it has.
+
+**That 409 is a UI state, not an error.** An explorer that renders it as a
+failure teaches its reader that the system is broken when it is being careful.
+Render it as "still being written", and make the distinction visible, because
+the alternative — an empty exclusions list — is the thing E3-T2 exists to
+prevent a caller from believing.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E11-T3 — Audit-role drill-down, and the justification that is the control
+
+**Kind:** task · **Status:** pending · **Blocked by:** E11-T1 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: an auditor can see per-actor detail nobody else can, and every such read
+records why it was made.
+
+`ROLE_AUDITOR` already exists as a first-class role in `auth/roles.py` and
+`VALID_ROLES`, so this is an authorization question with an answer, not a new
+role to invent.
+
+The justification is the whole control and it must be **recorded before the data
+is returned, in the same transaction**. A justification captured after the read,
+or best-effort alongside it, is a field that is empty exactly when it matters —
+the read that somebody did not want to explain is the read that completes and
+leaves no note. This is the same discipline `resolve.py` applies by refusing to
+make its receipt write best-effort.
+
+Free text is right here and worth defending: a dropdown of reasons produces the
+reason nearest the top, and the point is a sentence somebody has to be willing
+to have read back to them.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "audit and justification"
+    make all
+
+### E12-T1 — The connector framework exists; three named sources do not
+
+**Kind:** task · **Status:** pending · **Blocked by:** E5-T4 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: Backstage, CMDB and wiki reach the catalog through the connector
+framework that already ships, not through a second import path.
+
+`contextplane/ingest/connector_registry.py` is a single authoritative
+`source_type → Connector` mapping with `get_connector` and a typed
+`UnknownConnectorError`, and five connectors already use it: `docs_corpus`,
+`markdown_adr_rfc`, `openapi`, `package_json`, `release_notes`. None of them is
+one of E12's three, so the work is three connectors and not a framework.
+
+A bulk-import API that bypasses the registry is the failure mode to refuse. It
+would be a second place source types are known, and the first thing that goes
+wrong is that one of them knows about a source the other does not.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "connector"
+    make all
+
+### E12-T2 — Provenance mapping, following the precedent E2 already set
+
+**Kind:** task · **Status:** pending · **Blocked by:** E12-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+
+Goal: `observed_time` and `external_record_id` come from the source record and
+are never server-defaulted — enforced by the schema, not by the importer.
+
+**E2 already built this exact property for a different record class.** Migration
+0067 added `external_record_id` and `observed_at` to `memory_session_events`
+with a CHECK requiring `source_namespace`, `external_record_id` and
+`observed_at` to be present *together or not at all*. That constraint is the
+enforcement: an importer that forgets one is refused by the database rather than
+by a code review.
+
+Copy the shape. A `NOT NULL DEFAULT now()` on `observed_time` would be a
+server-defaulted value wearing a caller-supplied name, and it would be
+indistinguishable afterwards from a genuine one — which is the whole reason the
+epic names this property.
+
+Also inherit E1-T11's rule for undeclared sources: `SourceNamespaceService`
+returns `None` for a namespace nobody registered rather than substituting a
+default, so an import from an unregistered source is a refusal and not a silent
+`internal` classification.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "import and provenance"
+    make all
+
+### E12-T3 — The migrated-canonical disposition, and a halt E5 has not defined
+
+**Kind:** task · **Status:** pending · **Blocked by:** E5-T2, E5-T4, E12-T2 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a bulk import records its own dispositions honestly, sampled under the one
+governed sampling policy rather than a second regime.
+
+Two constraints the epic states and both are right. `disposition_actor =
+policy-automated` comes from E5-T4 and is never approximated by widening
+`approval_authority` — those answer different questions, and conflating them
+means a policy's write becomes indistinguishable from an approver's.
+
+The sampled audit draws from E5's single `SamplingPolicy`. **A second sampling
+regime here would be the failure E5-T4 already names**: acceptance sampling
+assumes the sample was inspected, and a batch import that samples itself under
+its own rules is grading its own homework with a marking scheme it chose.
+
+**A gap to close in E5 rather than work around here.** E12 says this inherits
+the policy's *"below-minimum-sample halt"*, and E5-T2 as written does not define
+one. Either E5-T2 gains it — a sampling policy that cannot draw its minimum
+sample must stop rather than proceed on a short one — or E12-T3 is blocked on a
+property that does not exist. Raise it against E5-T2; do not define a halt here,
+because a halt defined by its consumer is the second regime this task refuses.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "migrated_canonical"
+    make all
+
+### E10-T1 — Quarantine and suspend screens
+
+**Kind:** task · **Status:** pending · **Blocked by:** E4-T2, E4-T3 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: an operator can preview what a quarantine would reach, apply it, and
+revert it, from a screen.
+
+Blocked on E4-T2 and E4-T3 specifically rather than on E4 as a whole: this needs
+the state and the preview, and nothing here depends on the DORA half.
+
+Two properties from E4 that the UI must not soften. The preview is a
+**point-in-time** answer — the graph moves, and a screen that presents a
+ten-minute-old preview as current will cause an under-quarantine nobody
+notices. And revert is not a secondary action tucked in a menu: E4-T2's entry
+argues that an operator who cannot undo a quarantine will not run one on a real
+incident, which makes revert's discoverability part of whether the feature
+works at all.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E10-T2 — Navigation and DESIGN.md repositioning
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: the information architecture reflects what the product does, and
+`.develop/DESIGN.md` and the nav agree.
+
+Unblocked, and deliberately not waiting on the screens above — an IA decided
+after every screen exists is an IA fitted to the screens that happened to get
+built. E19 already landed catalog-side authoring, so there is enough surface to
+arrange.
+
+**E10's "cockpit dispositions" is not part of this.** That work is now E5-T6,
+cut with the epic that owns the disposition vocabulary and the ranked queue it
+displays. Listing it in both places would be two teams building one screen.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E10-T3 — ARC and PII operations out of the raw console
+
+**Kind:** task · **Status:** pending · **Blocked by:** E10-T2 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: the ARC and PII operations somebody currently performs against raw
+endpoints have screens.
+
+Scope this by reading what those operations actually are before designing
+anything — `arc_get_review_package`, the approval and challenge paths, and the
+PII policy surfaces are each a different job with a different reader, and a
+single "ARC console" is how they end up sharing a screen none of them fits.
+
+The E19-T7 defect is the one to carry into the adapter work here: the endpoint
+is part of the behaviour. A governed edit sent to the collection path instead
+of the item path mints a second record instead of updating one, and a test
+asserting the body and the method but not the path passes while it happens.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E10-T4 — Canon copy
+
+**Kind:** task · **Status:** pending · **Blocked by:** E10-T3 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: the words the product uses about itself are true and consistent.
+
+Last for a reason: copy written before the screens describes an intention, and
+copy written after describes what shipped.
+
+The standard is set by what this repo has already had to fix. "Semantic data
+mesh" was removed from both UI scope statements and a false "usage data"
+attribution was dropped, because neither was true. The nearby ADR-0012 rule is
+the same rule in another domain: never call bounded-exposure tamper-evidence
+*non-repudiation*, and the reason it is written down is that a marketing page's
+author is the person most likely to reach for the stronger word.
+
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
