@@ -212,6 +212,15 @@ Two things that would genuinely improve ranking are still open and are not this:
 ordering *within* a block, and telling the caller how much of each block was cut
 by the item cap.
 
+**The synchronous receipt write stays, on a measurement.** The body splits it
+into an intent row plus async hydration. That trades a guarantee `resolve.py`
+states outright — availability for evidence — and the saving was never measured.
+It is now: the whole resolve, "four arms, assembled, labelled and receipted, in
+one synchronous call", is **p95 12.9ms against a 150ms budget**, and the write is
+bounded by construction at four arm rows plus at most 200 items whatever the
+corpus does. E3-T3 is amended rather than built, with the conditions that would
+reopen it written into that entry.
+
 **"The intent row MUST carry a completeness discriminator" — the premise holds
 and is the strongest clause in the body.** `context_receipts` has `state` and no
 `hydration_state`; an un-hydrated receipt would read as complete with zero
@@ -372,6 +381,14 @@ is E6-T1.
 mechanism buys: anchoring every N minutes means tampering is detectable except
 within the last N, and it identifies no signer. A deployment that markets this as
 non-repudiation has mis-sold it.
+
+*Retention classes already ship, and E6-T2 is rescoped around that.*
+`contextplane/retention/` carries a `retention_policies` table over twelve record
+classes with legal basis, four erasure modes, holds and tombstones, plus a sweep
+worker. The clause reads as though none of it exists. What is genuinely missing
+is one class: `session_event`, governed by a per-tenant integer and an
+`expires_at` column entirely outside the framework -- the newest and
+highest-volume record class is the one retention does not reach.
 
 *Crypto-shredding is named in the tree and does not exist.* Migration 0066 cites
 crypto-shredding as the reason `memory_session_events` needs no time partitions
@@ -3779,7 +3796,7 @@ Acceptance:
 
 ### E3-T3 — The receipt intent commits synchronously; the rest hydrates after
 
-**Kind:** task · **Status:** pending · **Blocked by:** E3-T2 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** amended — not built, on a measurement · **Blocked by:** E3-T2 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the synchronous path writes a chained receipt-intent row and returns;
 arms, items and exclusions hydrate asynchronously; receipt-loss RPO is zero.
@@ -3808,9 +3825,43 @@ not enough, because a queue that is short because it is keeping up and one that
 is short because nothing is being enqueued read identically -- that drain carries
 an oldest-pending age for exactly this reason and this needs the same.
 
+**Measured before relaxing the guarantee, and the measurement says do not.**
+
+This task trades a guarantee `resolve.py` states explicitly -- "The receipt write
+is not best-effort. If it fails, the resolution fails. That is a deliberate trade
+of availability for evidence" -- for a latency saving. Nobody had measured the
+saving. So it was measured first.
+
+**`tests/perf/test_layered_context.py::test_context_resolve_p95_is_within_budget`
+covers exactly this path** -- its docstring says "four arms, assembled, labelled
+and receipted, in one synchronous call" -- and reports **p95 = 12.9ms against a
+150ms budget** (min 9.2, max 12.9, n=20, local). The receipt write is bounded
+above by that whole-path figure, and the path has 137ms of headroom.
+
+**The write is also bounded by construction, so the number does not drift with
+scale.** `DEFAULT_ITEM_CAP` is 50 per arm and the assembler applies it rather
+than trusting each arm, so a receipt is at most four arm rows plus 200 item rows
+plus exclusions, whatever the corpus does. This is not a cost that grows.
+
+So the split would relax a stated availability-for-evidence guarantee, add a
+durable payload and a drain worker with its own lag SLO, and buy a saving inside
+a 12.9ms p95 on a 150ms budget. **Not built.** E3's body is amended: the
+synchronous receipt write stays.
+
+**What E3-T2 delivered is still worth having and is not withdrawn.** The
+completeness discriminator makes a half-written receipt unable to pass as
+evidence. Today nothing writes one, so every receipt is `complete` -- which makes
+the column cheap insurance rather than dead weight, and it is what any future
+split would need first.
+
+**What would reopen this**, stated so the next reader does not have to re-derive
+it: the item cap rising substantially, the resolve p95 approaching its budget, or
+a CI measurement materially worse than the local one. Any of those is a reason to
+measure again; none of them is true now.
+
 Acceptance:
-    .venv/bin/python -m pytest tests/integration -q -k "receipt or hydration"
-    make all && make test-integration
+    .venv/bin/python -m pytest tests/perf/test_layered_context.py -q -m perf
+    make all
 
 ### E3-T4 — Trust and quarantine state in the vector index key
 
@@ -3858,7 +3909,7 @@ Acceptance:
 
 ### E6-T1 — ADR: what an external anchor buys, and what it must never be called
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: decide where a periodic digest is published, how often, and what the
 resulting claim is -- before any of it is built, because the claim is the part
@@ -3881,13 +3932,26 @@ assumptions -- a public transparency log, a second party's store, a notary -- an
 "cheapest" is not the criterion); and what an operator does when verification
 fails, which is the question nobody asks until it does.
 
+**Grounding sharpened the clause and turned up a third chain nobody had
+counted.** Two ship -- `arc_receipt_event_heads` and
+`arc_operational_event_heads` -- so the anchor publishes both heads. `audit_log`
+is **not** chained at all, which this task did not know; the ADR records that as
+an open scoping question rather than anchoring two things and implying three.
+
+The decision that took the most argument was rejecting a signature. Signing the
+head with a deployment key looks stronger and defends against everyone except the
+party the anchor exists to constrain -- and it invites exactly the
+non-repudiation language the clause forbids, because a signature implies a
+signer.
+
 Acceptance:
     make doc-links
-    sh -c 'test -f .develop/adr/0012-*.md'
+    sh -c 'test -f .develop/adr/0012-external-anchor-for-the-digest-chains.md'
+    make lint
 
-### E6-T2 — Retention classes, declared per stream rather than per deployment
+### E6-T2 — Session events are the record class retention does not govern
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** pending — rescoped · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: a retention class is a named policy -- how long, and what disposal means --
 that a stream or a claim category is assigned to, instead of the single
@@ -3904,6 +3968,41 @@ a name. It has to carry what happens at the end -- delete, shred, anonymise --
 because those differ in what survives and an operator choosing between them is
 choosing what an auditor will still be able to see.
 
+**Rescoped, because retention classes already ship and this task's premise was
+false.** It said retention is "the single per-tenant `memory_retention_days` that
+decides everything today". It is not. `contextplane/retention/` carries a
+`retention_policies` table keyed on `(policy_version, record_class)` with
+`legal_basis`, `retention_days`, `erasure_mode`, `minimization_action`,
+`tombstone_behaviour` and `verifier_disclosure`; a holds store that can keep a
+record past its period *attributably*; tombstones with per-tenant salts; and a
+`RetentionExpiryWorker` that sweeps, consults holds, and enqueues. Twelve record
+classes are governed, including `context_receipt`, `memory_claim`, `audit_log`
+and `workspace_entry`.
+
+It even carries the vocabulary this entry said it would have to invent -- "it has
+to carry what happens at the end" is `erasure_mode`, and the four values are
+`delete`, `minimize`, `minimize_and_tombstone` and `exempt`.
+
+**What is actually missing is one record class: `session_event`.** Session events
+are governed by `tenants.memory_retention_days` -- a CHECK-constrained integer
+between 1 and 180, read per write in `session_events.py` -- and an `expires_at`
+column, entirely outside the policy framework. So the newest and highest-volume
+record class in the system is the one class the retention design does not reach:
+no legal basis, no erasure mode, no hold can protect it, no tombstone records its
+disposal.
+
+That is the task. Bring `session_event` under `retention_policies`, decide its
+mode against the four that exist rather than adding a fifth, and reconcile the
+per-tenant integer with a policy row -- the integer is a tenant's *choice within*
+a class, which the framework does not currently model and may need to.
+
+**Do not reach for `arc_source_connectors` or a per-stream table.** The earlier
+draft of this entry suggested attaching retention to the stream registration
+E1-T11 built. Retention is a property of a *record class*, which is what the
+shipped framework says and what a legal basis attaches to; a per-stream period
+would be a second retention system keyed on something a lawyer does not reason
+about.
+
 Acceptance:
     .venv/bin/python -m alembic upgrade head
     .venv/bin/python -m pytest tests/integration -q -k "retention"
@@ -3915,6 +4014,14 @@ Acceptance:
 
 Goal: per-scope content keys, disposal by destroying the key, and an auditable
 deletion event recording that it happened.
+
+**The claim is worse than unbuilt: there is no *mode* for it either.**
+`retention/policies.py` declares exactly four erasure modes -- `delete`,
+`minimize`, `minimize_and_tombstone`, `exempt`. None of them is shredding. So
+migration 0066 rests on a disposal mechanism that has neither an implementation
+nor a name in the vocabulary that would have to carry it, and adding one is a
+change to a closed set that twelve record classes are already classified
+against.
 
 **Start by reading migration 0066, because this task is repairing a claim already
 in the tree.** That migration chose hash partitioning over range partitioning for
