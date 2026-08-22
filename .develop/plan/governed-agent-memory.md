@@ -5700,6 +5700,7 @@ Acceptance:
 ### E20-T2 — Remove the floor: `learning_reads.py` and every consumer
 
 **Kind:** task · **Status:** done · **Blocked by:** E20-T1 · **Hotspot:** yes — service/memory/ · **Repo:** contextplane
+**Kind:** task · **Status:** pending · **Blocked by:** E20-T1 · **Hotspot:** yes — service/memory/ · **Repo:** contextplane
 
 Goal: `contextplane/service/memory/learning_reads.py` loses `Floors`, `FloorsTooLoose`, `MIN_COHORT_ACTORS`, `MIN_CELL_EVENTS`, `Cell.suppressed`/`Cell.value`'s null-on-suppress behavior, and `build_breakdown`'s remainder-combination/withholding logic — replaced by a `Breakdown` that always carries every cell's true value, no `partial`/`withheld` states (a breakdown is either built or the query returned no rows), and `LearningReadService`'s three methods (`claim_aging`, `contradiction_backlog`, `promotion_yield`) construct cells directly from query rows with no floor test. The module docstring is rewritten to state the module's new, narrower claim: these are tenant-scope learning aggregates with no suppression, and the sentence "individual surveillance and team-performance evaluation are both forbidden" is deleted, not softened, per ADR-0017.
 
@@ -5782,6 +5783,11 @@ while E20 was being decomposed — 0071 by E4-T2's quarantine column and ledger,
 0072 by E20-T2's drop of the aggregate actor floor, which turned out to be a
 database CHECK as well as application code. The head moves; the entry's content
 does not.
+### E20-T3 — Migration: accuracy index and three new tables
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+
+Goal: one Alembic revision, `contextplane/storage/migrations/versions/0071_agent_accuracy_and_instructions.py` (`down_revision = "0070_grant_temporal_exclusion"`), that:
 
 1. Adds `CREATE INDEX ix_memory_claims_author_created ON memory_claims (author_actor_id, created_at) WHERE author_actor_id IS NOT NULL` — lets `AgentAccuracyService`'s join drive from `memory_claims` on actor+window and complete via the existing `ix_memory_adjudication_claim`, instead of scanning `memory_claim_adjudication` per candidate row. The existing lone `ix_memory_claims_author` stays (other readers key on author without a time bound).
 2. Creates `agent_failure_pattern_report` table with columns: `report_id UUID PK, tenant_id, author_actor_id, window_start, window_end, n_adjudicated, n_incorrect, n_intervention_sessions, n_sessions, groups JSONB, generated_at, generated_by`. `groups` is a JSONB snapshot storing `[{claim_category, predicate, incorrect_count, total_count, rate, example_claim_ids}]`, matching `memory_calibration_mapping.bins`' precedent of storing a fitted aggregate as an inspectable blob rather than a normalized child table. `CHECK (window_end > window_start)`, `CHECK (n_incorrect <= n_adjudicated)`.
@@ -5798,6 +5804,7 @@ Acceptance:
 ### E20-T4 — `AgentAccuracyService`: per-author accuracy, on read
 
 **Kind:** task · **Status:** done · **Blocked by:** E20-T2, E20-T3 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** pending · **Blocked by:** E20-T2, E20-T3 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `contextplane/service/memory/agent_accuracy.py`, structurally parallel to `calibration.py` (frozen dataclasses + pure aggregation + a thin service over `session_factory`), not to `learning_reads.py` (no `Floors` — none apply after E20-T1/T2).
 
