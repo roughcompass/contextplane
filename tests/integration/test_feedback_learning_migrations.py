@@ -1930,19 +1930,42 @@ def test_failed_derivative_work_says_why_it_failed(sync_engine: Engine, tenant_i
         _work_item(conn, tenant_id, derivative_id, state="failed", last_error=None)
 
 
-def test_an_aggregate_below_the_actor_floor_cannot_carry_a_value(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
-    """The floor is enforced by the schema, not only by the job that computes it.
-
-    A floor living solely in the aggregation code holds until the second consumer
-    writes its own query, and the offending row looks like every other row.
-    """
-    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
-        _aggregate(conn, tenant_id, actor_count=4, suppressed=False)
-
-
-def test_an_aggregate_below_the_floor_may_exist_only_as_a_suppressed_cell(
+def test_an_aggregate_below_the_old_actor_floor_may_now_carry_a_value(
     sync_engine: Engine, tenant_id: uuid.UUID
 ) -> None:
+    """The schema floor went with the application one, and this pins that it did.
+
+    `ck_aggregate_meets_the_floor` was `CHECK (suppressed OR actor_count >= 5)`,
+    and this test used to assert it refused such a row -- on the reasoning that a
+    floor living solely in the aggregation code holds until the second consumer
+    writes its own query.
+
+    Removing the code floor without the constraint would have left the writer
+    offering `suppressed = false` with a small `actor_count` and the insert
+    refused: an aggregate worker failing on real data rather than a test failing
+    in CI. Asserted positively, by writing the row the constraint used to
+    refuse, because checking for the constraint's absence by name would pass
+    equally if somebody renamed it.
+    """
+    with sync_engine.begin() as conn:
+        aggregate_id = _aggregate(conn, tenant_id, actor_count=4, suppressed=False)
+    with sync_engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT actor_count, suppressed FROM privacy_aggregates WHERE aggregate_id = :a"),
+            {"a": aggregate_id},
+        ).one()
+    assert row.actor_count == 4
+    assert row.suppressed is False
+
+
+def test_a_suppressed_cell_still_carries_no_value(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """`ck_aggregate_suppressed_carries_no_value` is deliberately kept.
+
+    `suppressed` did not disappear with the floor, it changed cause: it is now
+    set only by the differencing rule in the upsert, when a recomputed figure
+    disagrees with one already published. A cell withheld for that reason must
+    still carry no value, or the defence leaks through the column it withheld.
+    """
     with sync_engine.begin() as conn:
         aggregate_id = _aggregate(conn, tenant_id, actor_count=2, suppressed=True, value=None, cohort_key="team:tiny")
     with sync_engine.connect() as conn:

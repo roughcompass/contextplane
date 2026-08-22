@@ -2,11 +2,15 @@
 
 These answer the questions an owner has about the system — is context going stale,
 is it being reused, do handoffs succeed — and they answer them over people's
-reports, which is what makes the floors load-bearing rather than defensive. The
-floors, the suppression rule and the partial-total rule are imported from the
-learning-read module rather than restated here: two definitions that agree today is
-not the same as one rule enforced uniformly, and this is exactly the pair that would
-drift.
+reports.
+
+**There is no suppression here any more.** These aggregates used to be floored
+at construction, sharing `learning_reads`' definitions rather than restating
+them, because two definitions that agree today is not the same as one rule
+enforced uniformly. That decision removed the floors, uniformly and for every actor
+kind, and this module went with them. The shared-definition reasoning still
+holds for `Cell` and `build_breakdown`, which are still imported rather than
+copied.
 
 **Diagnostic observations are excluded structurally, not filtered late.** A
 diagnostic cites neither a receipt nor an item and is never learning-eligible: it is
@@ -16,10 +20,16 @@ context quality. Every aggregate excludes the kind in its own WHERE clause. The
 resume read is instead joined to one receipt; the diagnostic discriminant forces
 ``receipt_id`` NULL, so a diagnostic cannot enter that set in the first place.
 
-**No cell is per-actor and no cohort is finer than the tenant.** The reporter id is
-read by aggregate statements only to count *distinct* reporters, which is what the
-actor floor is tested against. The resume projection does not select reporter id,
-reporter type, or note at all. None reaches a value, a label, or a response.
+**No cell is per-actor and no cohort is finer than the tenant, in *this* module.**
+The reporter id is read by aggregate statements only to count *distinct*
+reporters -- a figure served beside each cell so a reader knows how much it rests
+on. The resume projection does not select reporter id, reporter type, or note at
+all. None reaches a value, a label, or a response.
+
+That is a property of these three queries, not a policy any more: the decision record for it
+removed the floor that made per-actor cells unconstructible system-wide, so a
+future reader here could group by reporter. Nothing stops it except that these
+statements do not.
 
 **Outcomes that bound but never joined are surfaced, because nothing else would.**
 An outcome reaches the receipt it belongs to only through a shared external-reference
@@ -46,7 +56,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from contextplane.service.memory.learning_reads import (
     Breakdown,
     Cell,
-    Floors,
     build_breakdown,
 )
 from contextplane.signals.feedback import KIND_DIAGNOSTIC
@@ -128,26 +137,16 @@ class ResumeFeedbackPage:
 
 
 class FeedbackReadService:
-    """Aggregate feedback reads for one tenant, floored at construction.
+    """Aggregate feedback reads for one tenant.
 
-    Constructed per request from the session factory and the floors, like the
-    learning-read service it shares its rules with. No method returns an unfloored
-    figure, so there is no ordering of calls that produces one.
+    Constructed per request from the session factory, like the learning-read
+    service it shares its cell and breakdown types with. It used to take floors
+    besides, and no method could return an unfloored figure; the decision record for it removed
+    that, so every figure here is now the measured one.
     """
 
-    def __init__(
-        self,
-        session_factory: async_sessionmaker[AsyncSession],
-        *,
-        floors: Floors | None = None,
-    ) -> None:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
-        self._floors = floors or Floors()
-
-    @property
-    def floors(self) -> Floors:
-        """The floors in force, so a caller can serve them beside the figures."""
-        return self._floors
 
     async def breakdown(
         self,
@@ -157,7 +156,12 @@ class FeedbackReadService:
         window_start: datetime.datetime,
         window_end: datetime.datetime,
     ) -> Breakdown:
-        """One metric's cells, already suppressed, combined and partial-totalled."""
+        """One metric's cells and their total.
+
+        No longer suppressed, combined or partial-totalled: the decision record for it removed the
+        floors, so every cell carries its measured value and the total is the
+        true one.
+        """
         ratings = _RATINGS_FOR[metric]
         async with self._session_factory() as session:
             rows = (
@@ -179,7 +183,6 @@ class FeedbackReadService:
                 actor_count=int(row.actor_count),
                 event_count=int(row.event_count),
                 value=int(row.event_count),
-                floors=self._floors,
             )
             for row in rows
         ]
@@ -188,7 +191,6 @@ class FeedbackReadService:
             window_start=window_start,
             window_end=window_end,
             cells=cells,
-            floors=self._floors,
         )
 
     async def resume_page(
@@ -335,8 +337,12 @@ class UnjoinedOutcomeReadService:
 
     Separate from the feedback service above because it answers an operator's
     question about plumbing rather than an owner's question about quality, and
-    because its floors do not apply: suppressing a small count here would hide
-    exactly the single stuck outcome the read exists to find.
+    and because it never had floors to begin with: suppressing a small count here
+    would hide exactly the single stuck outcome the read exists to find. That
+    exemption is now the rule everywhere (recorded as an architecture decision) rather than this service's
+    peculiarity, and the sentence stays because the *reason* is still specific to
+    it — the others lost their floors by decision, this one never had a case for
+    them.
     """
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:

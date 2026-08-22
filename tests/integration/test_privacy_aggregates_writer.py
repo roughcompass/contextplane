@@ -39,7 +39,6 @@ from typing import Any
 
 import pytest
 import pytest_asyncio
-import sqlalchemy.exc
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -358,37 +357,48 @@ async def test_a_stored_cell_expires_with_the_records_it_summarizes(world: dict[
 
 
 @pytest.mark.asyncio
-async def test_the_schema_refuses_a_reported_cell_below_the_approved_floor(
-    world: dict[str, Any],
-) -> None:
-    """The floor is checked where the row lands, not only in the job that computes it.
+async def test_the_schema_no_longer_enforces_an_actor_floor(world: dict[str, Any]) -> None:
+    """The constraint went with the application floor, and this pins that it did.
 
-    Code may be stricter; nothing may be looser, and a writer nobody has read yet
-    cannot talk the database into publishing a cell three people contributed to.
+    `ck_aggregate_meets_the_floor` was `CHECK (suppressed OR actor_count >= 5)` --
+    the same rule as `Floors`, written where no application change could reach
+    it. Removing the code floor without it would have left the writer offering
+    `suppressed = false` with a small `actor_count` and the insert refused, which
+    surfaces as an aggregate worker failing on real data rather than as a test.
+
+    Asserted positively, by writing the row the constraint used to refuse.
+    Checking that the constraint is *absent* by name would pass equally if
+    somebody renamed it.
     """
+    async with world["factory"]() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO privacy_aggregates (tenant_id, cohort_key, metric, window_start, "
+                "  window_end, actor_count, value, suppressed, partial, policy_version, "
+                "  computed_at, expires_at) "
+                "VALUES (:t, :c, 'hand_written', :ws, :we, 3, '{}'::jsonb, FALSE, FALSE, :v, :now, :exp)"
+            ),
+            {
+                "t": world["tenant_id"],
+                "c": COHORT_TENANT,
+                "ws": _RECENT,
+                "we": _RECENT + aggregates.WINDOW,
+                "v": policies.POLICY_VERSION,
+                "now": _NOW,
+                "exp": _NOW + datetime.timedelta(days=1),
+            },
+        )
+
     async with world["factory"]() as session:
-        with pytest.raises(sqlalchemy.exc.IntegrityError, match="ck_aggregate_meets_the_floor"):
+        stored = (
             await session.execute(
-                text(
-                    "INSERT INTO privacy_aggregates (tenant_id, cohort_key, metric, window_start, "
-                    "  window_end, actor_count, value, suppressed, partial, policy_version, "
-                    "  computed_at, expires_at) "
-                    "VALUES (:t, :c, 'hand_written', :ws, :we, 3, '{}'::jsonb, FALSE, FALSE, :v, :now, :exp)"
-                ),
-                {
-                    "t": world["tenant_id"],
-                    "c": COHORT_TENANT,
-                    "ws": _RECENT,
-                    "we": _RECENT + aggregates.WINDOW,
-                    "v": policies.POLICY_VERSION,
-                    "now": _NOW,
-                    "exp": _NOW + datetime.timedelta(days=1),
-                },
+                text("SELECT actor_count, suppressed FROM privacy_aggregates WHERE metric = 'hand_written'")
             )
-        await session.rollback()
+        ).one()
+    assert stored.actor_count == 3
+    assert stored.suppressed is False
 
 
-@pytest.mark.asyncio
 async def test_every_metric_is_computed_against_the_real_database(world: dict[str, Any]) -> None:
     """The grouping-set statements run, and each metric materializes its own cell.
 

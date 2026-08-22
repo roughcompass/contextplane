@@ -5699,7 +5699,7 @@ Acceptance:
 
 ### E20-T2 — Remove the floor: `learning_reads.py` and every consumer
 
-**Kind:** task · **Status:** pending · **Blocked by:** E20-T1 · **Hotspot:** yes — service/memory/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E20-T1 · **Hotspot:** yes — service/memory/ · **Repo:** contextplane
 
 Goal: `contextplane/service/memory/learning_reads.py` loses `Floors`, `FloorsTooLoose`, `MIN_COHORT_ACTORS`, `MIN_CELL_EVENTS`, `Cell.suppressed`/`Cell.value`'s null-on-suppress behavior, and `build_breakdown`'s remainder-combination/withholding logic — replaced by a `Breakdown` that always carries every cell's true value, no `partial`/`withheld` states (a breakdown is either built or the query returned no rows), and `LearningReadService`'s three methods (`claim_aging`, `contradiction_backlog`, `promotion_yield`) construct cells directly from query rows with no floor test. The module docstring is rewritten to state the module's new, narrower claim: these are tenant-scope learning aggregates with no suppression, and the sentence "individual surveillance and team-performance evaluation are both forbidden" is deleted, not softened, per ADR-0017.
 
@@ -5716,11 +5716,72 @@ Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "learning_reads or aggregates"
     make test-unit && make lint && make typecheck
 
+**Delivered. Three things the entry's consumer list did not name, and all three
+were load-bearing.**
+
+**The floor was also a database CHECK, and removing only the code half would
+have broken the writer on real data.** Migration 0043 created
+`privacy_aggregates` with `CONSTRAINT ck_aggregate_meets_the_floor CHECK
+(suppressed OR actor_count >= 5)` — the same rule, written where no application
+change can reach it. With the writer no longer suppressing and no longer zeroing
+`actor_count`, a window covering four contributors offers `suppressed = false`
+with `actor_count = 4` and the insert is refused. **The unit tests could not see
+it** — they drive a fake session — so this would have surfaced as an aggregate
+worker failing in production. Migration 0072 drops it. Found by taking this
+entry's own acceptance grep literally rather than treating it as a formality.
+
+`ck_aggregate_suppressed_carries_no_value` is deliberately kept: `suppressed`
+did not disappear with the floor, it changed cause, and a cell withheld by the
+differencing rule must still carry no value or that defence leaks through the
+column it withheld.
+
+**The OpenAPI contract changes.** `BreakdownOut` loses `floors`, `partial` and
+`withheld`; `CellOut` loses `suppressed` and its `value` stops being nullable;
+`FloorsOut` is deleted outright. `openapi.json` is regenerated, and
+`test_openapi_drift` is what caught it. Checked before assuming: the dashboard
+does **not** consume these schemas — its `withheld` references are receipt
+exclusions, a different concept — so nothing in `contextplane-ui` breaks.
+
+**Fifty tests across three files covered the floors**, and separating them was
+most of the work rather than a tidy-up. Thirteen died with the mechanism; the
+rest survive, including every structural absence check (no route names an actor,
+none takes a cohort parameter, the response model carries no contributor counts).
+
+Those survivors now assert something weaker, and the files say so: they are
+properties of *these three routes*, not a policy the system enforces. A failure
+means somebody widened this surface, not that they breached a rule — and nothing
+outside those files prevents a new surface from doing what these do not.
+
+**The differencing defence survived intact, which was the thing most at risk.**
+`signals/aggregates.py` still withholds a cell whose recompute disagrees with a
+published figure; what changed is that `suppressed` now enters the upsert as
+`False` always and is driven purely by that statement, rather than being seeded
+by a floor verdict from the writer. The relevant unit test —
+"the database can withhold a cell this side considers reportable" — passes
+unchanged.
+
+**One behaviour changed shape rather than disappearing.** An empty window used
+to be stored as a *withheld* cell with a null value, because an empty breakdown
+failed the floors. It is now stored as a breakdown with no cells and a total of
+zero. The property the test exists for — "computed, nothing to report" is
+distinguishable from "never computed" — is unchanged.
+
+**The dissent's warning is now the live state.** ADR-0017 offered
+authorization-plus-justification as the replacement for suppression, and nothing
+in this task built it. Per-actor aggregation is constructible and the substitute
+is named but absent. E20's later tasks should not treat that as settled.
+
 ### E20-T3 — Migration: accuracy index and three new tables
 
 **Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
-Goal: one Alembic revision, `contextplane/storage/migrations/versions/0071_agent_accuracy_and_instructions.py` (`down_revision = "0070_grant_temporal_exclusion"`), that:
+Goal: one Alembic revision, `contextplane/storage/migrations/versions/0073_agent_accuracy_and_instructions.py` (`down_revision = "0072_drop_the_aggregate_actor_floor"`), that:
+
+*Renumbered from the 0071/0070 this entry was written against.* Both were taken
+while E20 was being decomposed — 0071 by E4-T2's quarantine column and ledger,
+0072 by E20-T2's drop of the aggregate actor floor, which turned out to be a
+database CHECK as well as application code. The head moves; the entry's content
+does not.
 
 1. Adds `CREATE INDEX ix_memory_claims_author_created ON memory_claims (author_actor_id, created_at) WHERE author_actor_id IS NOT NULL` — lets `AgentAccuracyService`'s join drive from `memory_claims` on actor+window and complete via the existing `ix_memory_adjudication_claim`, instead of scanning `memory_claim_adjudication` per candidate row. The existing lone `ix_memory_claims_author` stays (other readers key on author without a time bound).
 2. Creates `agent_failure_pattern_report` table with columns: `report_id UUID PK, tenant_id, author_actor_id, window_start, window_end, n_adjudicated, n_incorrect, n_intervention_sessions, n_sessions, groups JSONB, generated_at, generated_by`. `groups` is a JSONB snapshot storing `[{claim_category, predicate, incorrect_count, total_count, rate, example_claim_ids}]`, matching `memory_calibration_mapping.bins`' precedent of storing a fitted aggregate as an inspectable blob rather than a normalized child table. `CHECK (window_end > window_start)`, `CHECK (n_incorrect <= n_adjudicated)`.

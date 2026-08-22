@@ -2941,40 +2941,18 @@
             "type": "string"
           },
           "denominator": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "The population the total is over, named for a reader who would otherwise infer a rate.",
-            "title": "Denominator"
-          },
-          "floors": {
-            "$ref": "#/components/schemas/FloorsOut"
+            "title": "Denominator",
+            "type": "integer"
           },
           "metric": {
             "title": "Metric",
             "type": "string"
           },
-          "partial": {
-            "description": "True when at least one cell was suppressed, so the total is over a subset.",
-            "title": "Partial",
-            "type": "boolean"
-          },
           "total": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Recomputed over reported cells only, never the true population. With a cell withheld, serving the real total would let a reader recover the withheld figure by subtraction.",
-            "title": "Total"
+            "description": "The total over every cell. It used to be recomputed over reported cells only, because serving the real population beside a withheld cell lets a reader recover the withheld figure by subtraction; with nothing withheld there is nothing to subtract toward.",
+            "title": "Total",
+            "type": "integer"
           },
           "window_end": {
             "format": "date-time",
@@ -2985,11 +2963,6 @@
             "format": "date-time",
             "title": "Window Start",
             "type": "string"
-          },
-          "withheld": {
-            "description": "True when the whole breakdown was withheld because its remainder could not be combined into a bucket clearing the floors. Distinct from every cell being suppressed: not even the shape of the distribution is served.",
-            "title": "Withheld",
-            "type": "boolean"
           }
         },
         "required": [
@@ -2998,12 +2971,9 @@
           "window_start",
           "window_end",
           "classification",
-          "floors",
           "cells",
           "total",
-          "denominator",
-          "partial",
-          "withheld"
+          "denominator"
         ],
         "title": "BreakdownOut",
         "type": "object"
@@ -3601,33 +3571,21 @@
       },
       "CellOut": {
         "additionalProperties": false,
-        "description": "One reported figure, or the record that one was withheld.\n\nThe counts behind a suppressed cell are deliberately absent from this model.\nServing them would defeat the suppression: an actor count of two is the\ndisclosure the floor exists to prevent.",
+        "description": "One reported figure.\n\n`FloorsOut` and `suppressed` are gone with the floors they described\n`value` is no longer nullable: there is no state in which a cell\nexists without its figure, so a null here would have no meaning left to\ncarry.",
         "properties": {
           "label": {
             "title": "Label",
             "type": "string"
           },
-          "suppressed": {
-            "title": "Suppressed",
-            "type": "boolean"
-          },
           "value": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Null exactly when the cell was suppressed for falling below a floor. Not zero: a withheld cell is not an empty one, and reporting it as zero would understate every total computed from this breakdown.",
-            "title": "Value"
+            "description": "The measured figure for this cell.",
+            "title": "Value",
+            "type": "integer"
           }
         },
         "required": [
           "label",
-          "value",
-          "suppressed"
+          "value"
         ],
         "title": "CellOut",
         "type": "object"
@@ -7434,28 +7392,6 @@
           "provenance_class"
         ],
         "title": "FieldProvenanceInput",
-        "type": "object"
-      },
-      "FloorsOut": {
-        "additionalProperties": false,
-        "description": "The thresholds in force, served so a suppressed cell is legible.",
-        "properties": {
-          "min_actors": {
-            "description": "Minimum distinct contributors before a cell may carry a value.",
-            "title": "Min Actors",
-            "type": "integer"
-          },
-          "min_events": {
-            "description": "Minimum events before a cell may carry a value.",
-            "title": "Min Events",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "min_actors",
-          "min_events"
-        ],
-        "title": "FloorsOut",
         "type": "object"
       },
       "GrantCreate": {

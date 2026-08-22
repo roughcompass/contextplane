@@ -76,7 +76,6 @@ from contextplane.service.memory.learning_reads import (
     COHORT_TENANT,
     Breakdown,
     Cell,
-    Floors,
     build_breakdown,
 )
 from contextplane.signals.feedback import KIND_DIAGNOSTIC
@@ -310,24 +309,14 @@ class PrivacyAggregateWriter:
         self,
         session_factory: async_sessionmaker[AsyncSession],
         *,
-        floors: Floors | None = None,
         clock: Clock | None = None,
         trailing_windows: int = TRAILING_WINDOWS,
         suspect_batch: int = DEFAULT_SUSPECT_BATCH,
     ) -> None:
         self._session_factory = session_factory
-        # `Floors` refuses anything looser than the approved minima at
-        # construction, so a deployment that configured less finds out here rather
-        # than in a published cell.
-        self._floors = floors or Floors()
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._trailing_windows = trailing_windows
         self._suspect_batch = suspect_batch
-
-    @property
-    def floors(self) -> Floors:
-        """The floors in force, so a caller can report them beside the series."""
-        return self._floors
 
     async def run_once(self) -> PrivacyAggregateReport:
         """Timed wrapper. The work itself is in `_run_inner`.
@@ -460,14 +449,19 @@ class PrivacyAggregateWriter:
             window_start=window_start,
             window_end=window_end,
         )
-        # Withheld at computation for two independent reasons, and the upsert can
-        # still withhold a cell this side considers reportable: the floors here
-        # cannot see the figure already published, and the statement can.
-        suppressed = breakdown.withheld or not self._floors.admits(
-            actor_count=actor_count,
-            event_count=sum(cell.event_count for cell in breakdown.cells),
-        )
-        value = None if suppressed else json.dumps(_serialize(breakdown))
+        # Nothing is withheld at computation any more. the decision record for it removed the
+        # floors, so a breakdown is either built or has no cells, and this side
+        # has no reason of its own to suppress.
+        #
+        # **The upsert still can, and that is the mechanism that matters here.**
+        # `_UPSERT_CELL_SQL` withholds a cell whose recomputed value disagrees
+        # with one already published, because the difference between two figures
+        # for the same cell across an erasure discloses the erased subject's
+        # contribution exactly. That is the differencing defence over stored series,
+        # orthogonal to actor cardinality, and it is untouched: this writer
+        # offers a value, and the statement decides whether it may stand.
+        suppressed = False
+        value = json.dumps(_serialize(breakdown))
         result = await session.execute(
             text(_UPSERT_CELL_SQL),
             {
@@ -476,10 +470,16 @@ class PrivacyAggregateWriter:
                 "metric": metric,
                 "window_start": window_start,
                 "window_end": window_end,
-                "actor_count": 0 if suppressed else actor_count,
+                "actor_count": actor_count,
                 "value": value,
+                # False on the way in, always. The column is now driven purely by
+                # the differencing rule in the statement -- a cell is suppressed
+                # because a recompute disagreed with what was published, never
+                # because too few actors contributed to it.
                 "suppressed": suppressed,
-                "partial": False if suppressed else breakdown.partial,
+                # No partial totals exist to report: with no suppressed cell,
+                # a total is over everything it says it is over.
+                "partial": False,
                 "policy_version": policies.POLICY_VERSION,
                 "now": now,
                 "expires_at": _cell_expiry(metric, window_end),
@@ -524,7 +524,6 @@ class PrivacyAggregateWriter:
                     actor_count=int(row.actor_count),
                     event_count=int(row.event_count),
                     value=int(row.event_count),
-                    floors=self._floors,
                 )
             )
         return (
@@ -533,7 +532,6 @@ class PrivacyAggregateWriter:
                 window_start=window_start,
                 window_end=window_end,
                 cells=cells,
-                floors=self._floors,
             ),
             actor_count,
         )

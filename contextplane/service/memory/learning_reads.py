@@ -1,33 +1,35 @@
-"""Learning aggregates, and the floors that make them constructible at all.
+"""Tenant-scope learning aggregates.
 
 Separate from `claim_serving.py`, which serves one cited claim to a consumer that
-asked for it. These answer "how is this system doing", and the difference is not
-presentational: a cited claim is a thing somebody may read, while an aggregate over
-people's reports is a thing that must not be constructible below a threshold. Two
-modules, because a single one would eventually grow a code path that returns a
-count of one.
+asked for it. These answer "how is this system doing" over a tenant's own
+records: how staged claims are ageing, how large the contradiction backlog is,
+what fraction of proposals are promoted.
 
-**The floors live here and are applied at construction.** Both aggregate surfaces
-import them from this module rather than each keeping a copy, because "the same
-floors, enforced uniformly" is unachievable with two definitions that merely agree
-today. This module sits below the feedback aggregates in the import graph, which is
-what lets it be the single home; the alternative — returning raw counts and letting
-each caller apply the rule — is the leak, since an unfloored aggregate that exists
-at all can be logged, cached or served by the next code path somebody adds.
+**There is no suppression here.** Every cell carries its measured value, and a
+breakdown is either built or the query returned no rows -- there is no third
+"withheld" outcome and no partial total.
 
-**Why suppression alone is not enough.** Withholding a small cell still discloses
-it when a true total is published beside the survivors: a reader subtracts. So a
-total is recomputed over reported cells only and labelled partial, and the true
-total is never served next to a suppressed cell. That is the one rule here whose
-absence would defeat every other rule in the module.
+That is a deliberate reversal, recorded in
+`.develop/adr/0017-per-actor-aggregates-are-no-longer-floored.md`. This module
+used to enforce `MIN_COHORT_ACTORS`/`MIN_CELL_EVENTS` at construction and refuse
+per-actor cells outright, on the reasoning that an aggregate over people's
+reports must not be constructible below a threshold. E20 needs exactly the
+surface that forbade -- a per-author accuracy read -- and the floor was removed
+uniformly, for every actor kind, rather than carved out for agents.
 
-**What these aggregates deliberately cannot express.** There is no per-actor cell
-and no cohort finer than the tenant. Not an omission: the only permitted use is
-measuring system quality, and individual surveillance and team-performance
-evaluation are both forbidden — so a per-team breakdown is not a feature this
-withholds pending a floor, it is a surface that must not exist. The actor floor
-then does the work it is for: a metric nobody but a handful of people contributed
-to is withheld even at tenant scope.
+**Read the ADR's dissent before adding a reader.** The protection this module
+gave was structural: an aggregate that cannot be constructed cannot be leaked by
+a misconfigured role, a log line, a cached response, or the next endpoint
+somebody adds. What replaces it is authorization on the read -- which answers a
+different question, and which nothing in this module enforces. If a caller needs
+a per-human breakdown, the access decision belongs at that caller, following
+E11-T3's precedent of authorization plus a recorded justification.
+
+**One suppression that is not this module's and must not be removed with it.**
+`signals/aggregates.py` withholds a `privacy_aggregates` cell whose recomputation
+after an erasure would disclose a subject by subtraction. That is a differencing
+defence over stored series, orthogonal to actor cardinality, and it survives
+untouched -- see the differencing decision record.
 """
 
 from __future__ import annotations
@@ -40,110 +42,63 @@ from collections.abc import Sequence
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from contextplane.exceptions import ValidationError
 from contextplane.types import TenantContext
 
-#: The approved minima. Code may enforce stricter values; nothing may enforce
-#: looser, and `Floors` refuses rather than clamping so a deployment that asked
-#: for less finds out at construction instead of in a published cell.
-MIN_COHORT_ACTORS = 5
-MIN_CELL_EVENTS = 5
-
-#: The one cohort these aggregates are computed over. A literal rather than a
-#: column because there is no membership model to group by, and inventing one
-#: would build the team-performance surface the policy forbids.
+#: The one cohort these aggregates are computed over.
+#:
+#: Still a literal, and still the tenant -- That decision removed the *floor*, not the
+#: grouping. Nothing here has a membership model to break down by, so a finer
+#: cohort would have to be invented rather than read, and inventing one is a
+#: separate decision from the one that ADR took.
 COHORT_TENANT = "tenant"
-
-#: The label a combined remainder carries. It is only ever emitted when the
-#: remainder itself clears both floors — otherwise the whole breakdown goes.
-BUCKET_OTHER = "other"
-
-
-class FloorsTooLoose(ValidationError):
-    """Raised when a caller asks for a floor below the approved minimum.
-
-    A refusal rather than a silent clamp: a deployment that configured three
-    actors per cohort and got five would keep believing it had configured three,
-    and the next person to read that configuration would trust it.
-    """
-
-
-@dataclasses.dataclass(frozen=True)
-class Floors:
-    """The thresholds a cell must clear before it may carry a value."""
-
-    min_actors: int = MIN_COHORT_ACTORS
-    min_events: int = MIN_CELL_EVENTS
-
-    def __post_init__(self) -> None:
-        if self.min_actors < MIN_COHORT_ACTORS:
-            msg = (
-                f"cohort actor floor {self.min_actors} is below the approved minimum "
-                f"of {MIN_COHORT_ACTORS}; stricter is permitted, looser is not"
-            )
-            raise FloorsTooLoose(msg)
-        if self.min_events < MIN_CELL_EVENTS:
-            msg = (
-                f"cell event floor {self.min_events} is below the approved minimum "
-                f"of {MIN_CELL_EVENTS}; stricter is permitted, looser is not"
-            )
-            raise FloorsTooLoose(msg)
-
-    def admits(self, *, actor_count: int, event_count: int) -> bool:
-        """Whether a cell with these counts may be reported at all."""
-        return actor_count >= self.min_actors and event_count >= self.min_events
 
 
 @dataclasses.dataclass(frozen=True)
 class Cell:
-    """One reportable figure, or the record that one was withheld.
+    """One reported figure.
 
-    `value` is None exactly when `suppressed` is true — a property rather than a
-    stored field, so there is no way to construct a cell whose disclosed value
-    disagrees with its own suppression flag.
+    `value` is a plain field now. It used to be a property returning `None` when
+    a floor withheld the figure, paired with a stored `measured_value` so a
+    recompute could re-test the withheld number -- machinery that only existed to
+    keep a suppressed cell honest about what it was hiding. With no suppression
+    there is nothing to hide and nothing to re-test, so the two collapse into
+    one.
 
-    `measured_value` and the counts stay on a suppressed cell on purpose. They are
-    what a later recompute re-tests against the floors, and what lets a thin cell be
-    folded into a remainder that clears them — a remainder built from the disclosed
-    values would sum a column of nulls and report an "other" bucket of zero, which
-    is how this was wrong before a test asked. None of the three is serialized.
+    The counts stay. They are not floor inputs any more; they are what a reader
+    needs to know how much a figure rests on, which is a legitimate thing to
+    serve and was always serialized for the reported cells.
     """
 
     label: str
     actor_count: int
     event_count: int
-    measured_value: int
-    suppressed: bool
-
-    @property
-    def value(self) -> int | None:
-        """The figure, or None when a floor withheld it."""
-        return None if self.suppressed else self.measured_value
+    value: int
 
     @classmethod
-    def measured(cls, label: str, *, actor_count: int, event_count: int, value: int, floors: Floors) -> Cell:
-        """Build a cell already tested against the floors.
+    def measured(cls, label: str, *, actor_count: int, event_count: int, value: int) -> Cell:
+        """Build a cell.
 
-        The only constructor callers use, so there is no path that produces a
-        reportable cell without having asked whether it may be reported.
+        Kept as a named constructor rather than dropped for the plain one, so
+        every call site reads the same as it did and the diff that removed the
+        floors is not also a diff that renamed everything.
         """
-        return cls(
-            label=label,
-            actor_count=actor_count,
-            event_count=event_count,
-            measured_value=value,
-            suppressed=not floors.admits(actor_count=actor_count, event_count=event_count),
-        )
+        return cls(label=label, actor_count=actor_count, event_count=event_count, value=value)
 
 
 @dataclasses.dataclass(frozen=True)
 class Breakdown:
-    """A metric's cells, its total over the reported ones, and whether it is whole.
+    """A metric's cells and the total over them.
 
-    `withheld` is the third outcome, and it is not the same as every cell being
-    suppressed: it means the breakdown was abandoned because the remainder could
-    not be combined into a bucket that clears the floors, so not even the shape of
-    the distribution is served.
+    Two outcomes, not three: a breakdown is built, or the query returned no rows
+    and there are no cells. `partial` and `withheld` are gone with the floors
+    that produced them -- `partial` meant "a cell was suppressed, so this total
+    is over the survivors" and `withheld` meant "even the shape would identify
+    somebody", and neither state is reachable now.
+
+    `total` is therefore the true total, not a recomputation over survivors. The
+    old one was deliberately *not* the true total, because publishing the real
+    population beside a suppressed cell is the subtraction attack. With nothing
+    suppressed there is nothing to subtract toward.
     """
 
     metric: str
@@ -151,13 +106,11 @@ class Breakdown:
     window_start: datetime.datetime
     window_end: datetime.datetime
     cells: tuple[Cell, ...]
-    total: int | None
-    partial: bool
-    withheld: bool
+    total: int
 
     @property
-    def denominator(self) -> int | None:
-        """The population the total is over — the same number, named for the reader.
+    def denominator(self) -> int:
+        """The population the total is over -- the same number, named for the reader.
 
         Served alongside the total because a rate without its denominator is the
         figure most often misread as a count.
@@ -171,73 +124,29 @@ def build_breakdown(
     window_start: datetime.datetime,
     window_end: datetime.datetime,
     cells: Sequence[Cell],
-    floors: Floors,
     cohort_key: str = COHORT_TENANT,
 ) -> Breakdown:
-    """Apply suppression, combination and partial totalling to one metric's cells.
+    """Assemble one metric's cells and total them.
 
-    The order matters and is fixed. Suppressed cells are combined into a remainder
-    first, because a remainder that clears the floors is more informative than a
-    row of withheld cells; if it does not clear them, the whole breakdown is
-    withheld rather than served with the survivors, since survivors plus a known
-    population is the subtraction attack in a different shape.
+    What this used to do, and no longer does: test each cell against the floors,
+    fold the withheld ones into an "other" remainder, abandon the whole breakdown
+    if that remainder was itself too thin, and total over the survivors only. All
+    four steps existed to stop a reader recovering a suppressed figure by
+    subtraction, and the decision record for it removed the suppression they protected.
+
+    What is left is a sum, which is why this stays a function rather than
+    becoming a constructor call: the cells still arrive from three different
+    queries, and one place that turns cells into a breakdown is still worth
+    having when a fourth is added.
     """
-    reported = [cell for cell in cells if not cell.suppressed]
-    hidden = [cell for cell in cells if cell.suppressed]
-
-    combined: list[Cell] = list(reported)
-    if hidden:
-        remainder = Cell.measured(
-            BUCKET_OTHER,
-            actor_count=sum(cell.actor_count for cell in hidden),
-            event_count=sum(cell.event_count for cell in hidden),
-            # The measured figures, not the disclosed ones: every hidden cell has
-            # withheld its value, so summing `value` would build a remainder of zero.
-            value=sum(cell.measured_value for cell in hidden),
-            floors=floors,
-        )
-        if remainder.suppressed:
-            # Nothing is served: not the survivors, not the shape. A breakdown
-            # whose remainder identifies a handful of people by elimination is
-            # withheld entire.
-            return Breakdown(
-                metric=metric,
-                cohort_key=cohort_key,
-                window_start=window_start,
-                window_end=window_end,
-                cells=(),
-                total=None,
-                partial=False,
-                withheld=True,
-            )
-        combined.append(remainder)
-
-    if not combined:
-        return Breakdown(
-            metric=metric,
-            cohort_key=cohort_key,
-            window_start=window_start,
-            window_end=window_end,
-            cells=(),
-            total=None,
-            partial=False,
-            withheld=True,
-        )
-
-    # Recomputed over reported cells only. Deliberately not the true total: with a
-    # cell withheld, publishing the real population is what lets a reader recover
-    # the withheld figure by subtraction. Every cell in `combined` is reportable by
-    # construction, so this sums exactly what the caller is shown.
-    total = sum(cell.measured_value for cell in combined)
+    ordered = tuple(cells)
     return Breakdown(
         metric=metric,
         cohort_key=cohort_key,
         window_start=window_start,
         window_end=window_end,
-        cells=tuple(combined),
-        total=total,
-        partial=bool(hidden),
-        withheld=False,
+        cells=ordered,
+        total=sum(cell.value for cell in ordered),
     )
 
 
@@ -344,26 +253,18 @@ def _bucket_label(bucket_index: int | None) -> str:
 
 
 class LearningReadService:
-    """Aggregate learning reads for one tenant, floored at construction.
+    """Aggregate learning reads for one tenant.
 
-    Every method returns `Breakdown` objects that have already been through the
-    floors. There is deliberately no method that returns raw counts: the moment one
-    exists, the enforcement is a convention about which method to call.
+    Every method returns a `Breakdown` built directly from its query's rows.
+    There used to be no method returning raw counts, on the reasoning that the
+    moment one existed the floor enforcement became a convention about which
+    method to call. That reasoning went with the floors (recorded as an architecture decision); what is left
+    is three named metrics rather than a general counting surface, which is a
+    smaller claim and still worth keeping.
     """
 
-    def __init__(
-        self,
-        session_factory: async_sessionmaker[AsyncSession],
-        *,
-        floors: Floors | None = None,
-    ) -> None:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
-        self._floors = floors or Floors()
-
-    @property
-    def floors(self) -> Floors:
-        """The floors in force, so a caller can serve them beside the figures."""
-        return self._floors
 
     async def claim_aging(
         self,
@@ -423,7 +324,6 @@ class LearningReadService:
                 actor_count=int(row.actor_count),
                 event_count=int(row.event_count),
                 value=int(row.event_count),
-                floors=self._floors,
             )
             for row in rows
         ]
@@ -432,7 +332,6 @@ class LearningReadService:
             window_start=window_start,
             window_end=window_end,
             cells=cells,
-            floors=self._floors,
         )
 
     async def _aged(
@@ -470,7 +369,6 @@ class LearningReadService:
                 actor_count=int(row.actor_count),
                 event_count=int(row.event_count),
                 value=int(row.event_count),
-                floors=self._floors,
             )
             for row in rows
         ]
@@ -479,23 +377,17 @@ class LearningReadService:
             window_start=window_start,
             window_end=window_end,
             cells=cells,
-            floors=self._floors,
         )
 
 
 __all__ = [
-    "BUCKET_OTHER",
     "COHORT_TENANT",
     "LEARNING_METRICS",
     "METRIC_CLAIM_AGING",
     "METRIC_CONTRADICTION_BACKLOG",
     "METRIC_PROMOTION_YIELD",
-    "MIN_CELL_EVENTS",
-    "MIN_COHORT_ACTORS",
     "Breakdown",
     "Cell",
-    "Floors",
-    "FloorsTooLoose",
     "LearningReadService",
     "build_breakdown",
 ]
