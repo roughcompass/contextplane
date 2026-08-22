@@ -176,7 +176,7 @@
       "name": "search_claims",
       "module": "contextplane/api/mcp/tools/memory.py",
       "tier": "core",
-      "rest": "POST /v1/memory/claims:search"
+      "rest": "GET /v1/memory/claims/search"
     },
     {
       "name": "adjudicate_claim",
