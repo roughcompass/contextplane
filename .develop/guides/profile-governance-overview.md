@@ -45,4 +45,4 @@ It does not decide permissions. Ownership records accountability and grants reco
 sharing; neither is consulted by the authorization layer, and that separation is
 enforced by a gate rather than by convention.
 
-For operating it, see [profile governance operations](../06-operations/profile-governance.md).
+For operating it, see [profile governance operations](../operations/profile-governance.md).
