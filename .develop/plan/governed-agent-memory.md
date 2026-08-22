@@ -5175,7 +5175,7 @@ Acceptance:
 
 ### E3-T7 — The conformance test that holds the servability rules together does not exist
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the several spellings of "this claim is servable" are held to agreeing by
 a test rather than by a sentence claiming a test exists.
@@ -5204,6 +5204,30 @@ synchronised by prose.
 Acceptance:
     .venv/bin/python -m pytest tests/conformance -q -k "servable"
     make all
+
+**Delivered**, and the entry's warning about the third spelling held: the
+curation queue's predicate must differ, so it is asserted **negatively** with
+the reason in the failure message, rather than left out and rediscovered.
+
+The contract turned out to be **agreement on the status vocabulary, not identity
+of the predicate**. A shared constant would make one of the two wrong, because
+the read path needs `as_of`-relative terms the index path has no instant to
+compare against. So the test reads the status term *out of* `_SERVABLE_AS_OF`
+rather than restating it — a restated expectation agrees with the code only
+until somebody edits one of them.
+
+A second test pins the split ADR-0016 rests on: `status` unconditional,
+`t_invalidated_at` `as_of`-relative. That reasoning now stops being true loudly
+rather than silently.
+
+Mutation-checked rather than assumed — adding `rejected` to
+`_SERVABLE_STATUSES` fails the first test with the divergence named.
+
+One thing about the writing worth recording. The third test's first draft
+located the queue's SQL by guessing at module attribute names, found none, and
+asserted over an empty string: a test that passed while checking nothing, which
+is the exact failure this file exists to correct. It reads the module source
+now, which is less elegant and cannot do that.
 
 ### E3-T8 — A third receipt read nobody has listed, in the list's own docstring
 
