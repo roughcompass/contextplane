@@ -69,6 +69,18 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         "service/memory/claim_curator_actions.py",
         "service/memory/claim_authority.py",
         "service/memory/claim_erasure_writes.py",
+        # Failure-pattern reports. The one entry on this list that genuinely
+        # serves claim *content*: a group carries up to five example
+        # `value_jsonb` values and the adjudicator's note, because a rate
+        # nobody can check is a lead nobody follows.
+        #
+        # Admissible because of what it serves them *as*. Every example is a
+        # claim a reviewer has already judged **incorrect** -- the surface
+        # exists to show what the agent got wrong. The risk this gate guards is
+        # a staged claim acquiring canonical authority by being read as though
+        # the registry stood behind it, and a value labelled "this was judged
+        # wrong" is the opposite of that. A correct claim never appears here.
+        "service/memory/agent_failure_patterns.py",
         # Per-author accuracy. Reads `memory_claims` to join adjudications to
         # the actor that wrote the claim, and reads nothing else from it.
         #

@@ -108,6 +108,10 @@ from contextplane.service.catalog.schema import SchemaService
 from contextplane.service.catalog.vocabulary import VocabularyService
 from contextplane.service.governance.erasure import ErasureRegistry
 from contextplane.service.governance.visibility import VisibilityService
+from contextplane.service.memory.agent_accuracy import AgentAccuracyService
+from contextplane.service.memory.agent_autonomy import AgentAutonomyService
+from contextplane.service.memory.agent_failure_patterns import AgentFailurePatternService
+from contextplane.service.memory.agent_instructions import AgentInstructionService
 from contextplane.service.memory.calibration import CalibrationService
 from contextplane.service.memory.capability_requests import CapabilityRequestService
 from contextplane.service.memory.claim_history import ClaimHistoryService
@@ -182,6 +186,10 @@ class Services:
     calibration: CalibrationService
     consolidation: ConsolidationService
     claim_history: ClaimHistoryService
+    agent_accuracy: AgentAccuracyService
+    agent_autonomy: AgentAutonomyService
+    agent_failure_patterns: AgentFailurePatternService
+    agent_instructions: AgentInstructionService
     claim_serving: ClaimServingService
     promotion: PromotionService
     promotion_guardrails: GuardrailService
