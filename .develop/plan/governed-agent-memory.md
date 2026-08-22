@@ -212,6 +212,15 @@ Two things that would genuinely improve ranking are still open and are not this:
 ordering *within* a block, and telling the caller how much of each block was cut
 by the item cap.
 
+**The synchronous receipt write stays, on a measurement.** The body splits it
+into an intent row plus async hydration. That trades a guarantee `resolve.py`
+states outright — availability for evidence — and the saving was never measured.
+It is now: the whole resolve, "four arms, assembled, labelled and receipted, in
+one synchronous call", is **p95 12.9ms against a 150ms budget**, and the write is
+bounded by construction at four arm rows plus at most 200 items whatever the
+corpus does. E3-T3 is amended rather than built, with the conditions that would
+reopen it written into that entry.
+
 **"The intent row MUST carry a completeness discriminator" — the premise holds
 and is the strongest clause in the body.** `context_receipts` has `state` and no
 `hydration_state`; an un-hydrated receipt would read as complete with zero
@@ -3779,7 +3788,7 @@ Acceptance:
 
 ### E3-T3 — The receipt intent commits synchronously; the rest hydrates after
 
-**Kind:** task · **Status:** pending · **Blocked by:** E3-T2 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** amended — not built, on a measurement · **Blocked by:** E3-T2 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the synchronous path writes a chained receipt-intent row and returns;
 arms, items and exclusions hydrate asynchronously; receipt-loss RPO is zero.
@@ -3808,9 +3817,43 @@ not enough, because a queue that is short because it is keeping up and one that
 is short because nothing is being enqueued read identically -- that drain carries
 an oldest-pending age for exactly this reason and this needs the same.
 
+**Measured before relaxing the guarantee, and the measurement says do not.**
+
+This task trades a guarantee `resolve.py` states explicitly -- "The receipt write
+is not best-effort. If it fails, the resolution fails. That is a deliberate trade
+of availability for evidence" -- for a latency saving. Nobody had measured the
+saving. So it was measured first.
+
+**`tests/perf/test_layered_context.py::test_context_resolve_p95_is_within_budget`
+covers exactly this path** -- its docstring says "four arms, assembled, labelled
+and receipted, in one synchronous call" -- and reports **p95 = 12.9ms against a
+150ms budget** (min 9.2, max 12.9, n=20, local). The receipt write is bounded
+above by that whole-path figure, and the path has 137ms of headroom.
+
+**The write is also bounded by construction, so the number does not drift with
+scale.** `DEFAULT_ITEM_CAP` is 50 per arm and the assembler applies it rather
+than trusting each arm, so a receipt is at most four arm rows plus 200 item rows
+plus exclusions, whatever the corpus does. This is not a cost that grows.
+
+So the split would relax a stated availability-for-evidence guarantee, add a
+durable payload and a drain worker with its own lag SLO, and buy a saving inside
+a 12.9ms p95 on a 150ms budget. **Not built.** E3's body is amended: the
+synchronous receipt write stays.
+
+**What E3-T2 delivered is still worth having and is not withdrawn.** The
+completeness discriminator makes a half-written receipt unable to pass as
+evidence. Today nothing writes one, so every receipt is `complete` -- which makes
+the column cheap insurance rather than dead weight, and it is what any future
+split would need first.
+
+**What would reopen this**, stated so the next reader does not have to re-derive
+it: the item cap rising substantially, the resolve p95 approaching its budget, or
+a CI measurement materially worse than the local one. Any of those is a reason to
+measure again; none of them is true now.
+
 Acceptance:
-    .venv/bin/python -m pytest tests/integration -q -k "receipt or hydration"
-    make all && make test-integration
+    .venv/bin/python -m pytest tests/perf/test_layered_context.py -q -m perf
+    make all
 
 ### E3-T4 — Trust and quarantine state in the vector index key
 
