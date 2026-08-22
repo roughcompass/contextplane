@@ -23,12 +23,20 @@ Coverage:
 - `_claim_visible`: the claim's own visibility rule in isolation.
 - `_visible_subjects`: the subject's visibility rule in isolation, including
   the empty-input short circuit.
-- `get`/`query`/`retrieve`: the double filter wired end to end -- a claim
-  that is public but whose subject is not visible is withheld, and a claim
-  that is private but whose subject *is* visible is also withheld. A
-  positive control (both checks pass) proves these are not vacuously true --
-  a `get`/`query`/`retrieve` that always returned nothing would pass every
-  negative test here and fail only the positive ones.
+- `get`: the double filter wired end to end -- a claim that is public but
+  whose subject is not visible is withheld, and a claim that is private but
+  whose subject *is* visible is also withheld. A positive control (both
+  checks pass) proves these are not vacuously true -- a `get` that always
+  returned nothing would pass every negative test here and fail only the
+  positive ones. `_BY_ID_SQL` carries no tenant predicate, which is why
+  `get` is the path where these two checks decide anything.
+- `query`/`consolidated_since`/`retrieve`: the tenant *pin*, not a filter.
+  All three select on `c.owning_tenant_id = :tid`, so a foreign row is not
+  something they can return; `_assert_owner_pinned` says so and refuses if it
+  ever happens. The three tests here cover the pin being present in the SQL,
+  a foreign row refusing rather than being trimmed, and a positive control
+  that serves a row while `is_visible` is patched to refuse everything --
+  which is what proves the per-row subject read is really gone.
 - Inline provenance: an L3/architect persona gets the evidence excerpt
   inline; every other persona gets the handle only.
 """
@@ -44,7 +52,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import contextplane.service.governance.visibility as visibility_module
-from contextplane.exceptions import ValidationError
+from contextplane.exceptions import TenantIsolationError, ValidationError
 from contextplane.service.memory.claim_serving import (
     PERSONA_AGENT,
     PERSONA_ARCHITECT,
@@ -157,6 +165,12 @@ def _serving_session_factory(
         sql = " ".join(str(stmt).split())
         executed.append(sql)
         if "ORDER BY c.asserted_valid_from DESC" in sql:
+            return _mapping_result(all_rows=query_rows or [])
+        # `consolidated_since` orders by review time rather than assertion time,
+        # which is the whole reason it is a separate read. It shares
+        # `query_rows`: no test needs the two to return different sets, and a
+        # third keyword would be a knob nothing turns.
+        if "ORDER BY c.consolidated_at DESC" in sql:
             return _mapping_result(all_rows=query_rows or [])
         if "WHERE c.claim_id = :cid" in sql:
             return _mapping_result(first_row=by_id_row)
@@ -439,40 +453,112 @@ async def test_get_returns_the_served_claim_when_both_the_claim_and_its_subject_
 
 
 # ---------------------------------------------------------------------------
-# query(): subject-level visibility filtering over a result set
+# The tenant pin: asserted on the three reads that select on it, filtered on
+# the one that does not
 # ---------------------------------------------------------------------------
+#
+# These four tests replace four that filtered instead of asserting, and the
+# replacement is the finding. Each of the old ones fabricated a row with
+# `owning_tenant_id=uuid.uuid4()` -- a claim owned by a tenant that is not the
+# caller -- and then watched the post-filter drop it. No query in this module
+# can return such a row: `_QUERY_SQL`, `_CONSOLIDATED_SINCE_SQL` and
+# `_ARM_FILTERS` all select on `c.owning_tenant_id = :tid`, and
+# `owning_tenant_id` is the *subject entity's* tenant by construction, so the
+# subject is always the caller's own entity and `is_visible` was always going
+# to say yes.
+#
+# So the tests proved the filter worked against an input the database cannot
+# produce, and the filter cost one entity select plus one ACL query per row to
+# reach a conclusion the WHERE clause had already reached. What is worth
+# testing is the invariant they assumed: that the pin is in the SQL, and that
+# a read which somehow returns a foreign row refuses rather than trims.
+
+
+def test_every_read_that_the_tripwire_guards_actually_pins_the_tenant() -> None:
+    """The premise, checked in the SQL rather than asserted in a docstring.
+
+    `_assert_owner_pinned` is only safe because these three reads cannot return
+    another tenant's rows. That is a property of their SQL, so this reads the
+    SQL. Deleting the predicate and leaving the assertion would turn a filter
+    into a 500 for every caller, which is loud -- but this fails first, at lint
+    speed, and says which read lost it.
+    """
+    from contextplane.service.memory import claim_serving as module
+
+    pinned = "c.owning_tenant_id = :tid"
+    assert pinned in module._QUERY_SQL
+    assert pinned in module._CONSOLIDATED_SINCE_SQL
+    assert pinned in module._ARM_FILTERS
+    assert pinned in module._SEMANTIC_ARM_SQL
+    assert pinned in module._LEXICAL_ARM_SQL
+    # And the one that deliberately does not, because it must serve a public
+    # claim about another tenant's entity. If this ever gains the predicate,
+    # `get` stops answering cross-tenant reads and the two checks it still runs
+    # become dead -- so the absence is as load-bearing as the presence.
+    assert pinned not in module._BY_ID_SQL
+
+
+@pytest.mark.parametrize("read", ["query", "consolidated_since", "retrieve"])
+@pytest.mark.asyncio
+async def test_a_read_that_returns_a_foreign_row_refuses_instead_of_trimming_it(read: str) -> None:
+    """The regression the tripwire exists for, on each read that carries it.
+
+    Reaching this state means the tenant predicate went missing, and the harm
+    is not the row -- a post-filter would have dropped it and returned a
+    correct, shorter answer. The harm is that the query is now scanning every
+    tenant's partitions and throwing the results away, silently, until someone
+    reads a bill. Refusing is what makes that a bug report on the first run.
+    """
+    ctx = tenant_context()
+    foreign = _claim_row(owning_tenant_id=uuid.uuid4())
+    rows = {"query": {"query_rows": [foreign]}, "consolidated_since": {"query_rows": [foreign]}}.get(
+        read, {"semantic_rows": [foreign], "lexical_rows": []}
+    )
+    factory, _ = _serving_session_factory(citations_rows=[_citation_row()], **rows)
+    service = ClaimServingService(factory, clock=FakeClock(_NOW))
+
+    embedder = MagicMock(model_version="m1")
+    embedder.encode = MagicMock(return_value=[[0.1, 0.2]])
+    calls = {
+        "query": lambda: service.query(ctx, ClaimQuery()),
+        "consolidated_since": lambda: service.consolidated_since(ctx, after=_NOW, as_of=_NOW, limit=10),
+        "retrieve": lambda: service.retrieve(ctx, query="x", embedder=embedder),
+    }
+
+    with pytest.raises(TenantIsolationError, match="owned by another tenant"):
+        await calls[read]()
 
 
 @pytest.mark.asyncio
-async def test_query_excludes_a_row_whose_subject_is_not_visible_and_keeps_the_rest(
+async def test_query_serves_a_row_the_pin_admits_without_a_per_row_visibility_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The positive control, and the reason the removed reads were removable.
+
+    `is_visible` is patched to refuse everything. The row is served anyway --
+    because a row the pin admitted is the caller's own subject, and nothing
+    consults the subject read on this path any more. A version that still
+    called it would return nothing here.
+    """
     ctx = tenant_context()
-    visible_subject, hidden_subject = uuid.uuid4(), uuid.uuid4()
-    kept = _claim_row(subject_entity_id=visible_subject, value="kept")
-    dropped = _claim_row(subject_entity_id=hidden_subject, value="dropped")
-    factory, _ = _serving_session_factory(
-        query_rows=[kept, dropped],
-        citations_rows=[_citation_row()],
-        entities=[MagicMock(entity_id=visible_subject)],
-    )
+    row = _claim_row(owning_tenant_id=ctx.tenant_id, value="kept")
+    factory, _ = _serving_session_factory(query_rows=[row], citations_rows=[_citation_row()])
+    refuse = MagicMock(return_value=False)
+    monkeypatch.setattr(visibility_module, "is_visible", refuse)
     monkeypatch.setattr(visibility_module, "fetch_shared_with_tenants_one", AsyncMock(return_value=[]))
-    monkeypatch.setattr(visibility_module, "is_visible", MagicMock(return_value=True))
 
     service = ClaimServingService(factory, clock=FakeClock(_NOW))
     served = await service.query(ctx, ClaimQuery())
 
     assert [c.value for c in served] == ["kept"]
+    assert refuse.call_count == 0, "the subject visibility read is still running on the pinned path"
 
 
 @pytest.mark.asyncio
-async def test_query_applies_min_confidence_after_visibility_not_instead_of_it(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_query_applies_min_confidence_to_the_decayed_number(monkeypatch: pytest.MonkeyPatch) -> None:
     ctx = tenant_context()
-    subject_id = uuid.uuid4()
-    row = _claim_row(subject_entity_id=subject_id, confidence=0.9)
-    factory, _ = _serving_session_factory(
-        query_rows=[row], citations_rows=[_citation_row()], entities=[MagicMock(entity_id=subject_id)]
-    )
+    row = _claim_row(owning_tenant_id=ctx.tenant_id, confidence=0.9)
+    factory, _ = _serving_session_factory(query_rows=[row], citations_rows=[_citation_row()])
     monkeypatch.setattr(visibility_module, "fetch_shared_with_tenants_one", AsyncMock(return_value=[]))
     monkeypatch.setattr(visibility_module, "is_visible", MagicMock(return_value=True))
 
@@ -485,53 +571,47 @@ async def test_query_applies_min_confidence_after_visibility_not_instead_of_it(m
 
 
 # ---------------------------------------------------------------------------
-# retrieve(): the same double filter over the fused ranking
+# retrieve(): the fused ranking, over rows the pin admits
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_retrieve_filters_the_fused_ranking_by_both_claim_and_subject_visibility(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_retrieve_serves_every_row_the_pin_admits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both rows come back, including the one marked private.
+
+    A claim marked `private` whose owning tenant is the caller is the caller's
+    own private claim, and withholding it from its owner was never the rule --
+    `_claim_visible` says so at its first branch. The old test only saw that
+    branch refuse because it gave the private row a foreign owner.
+    """
     ctx = tenant_context()
-    visible_subject, hidden_subject = uuid.uuid4(), uuid.uuid4()
-    kept = _claim_row(
-        subject_entity_id=visible_subject, visibility="public", owning_tenant_id=uuid.uuid4(), value="kept"
-    )
-    claim_only_hidden = _claim_row(
-        subject_entity_id=visible_subject, visibility="private", owning_tenant_id=uuid.uuid4(), value="claim-hidden"
-    )
-    subject_only_hidden = _claim_row(
-        subject_entity_id=hidden_subject, visibility="public", owning_tenant_id=uuid.uuid4(), value="subject-hidden"
-    )
     factory, _ = _serving_session_factory(
-        semantic_rows=[kept, claim_only_hidden, subject_only_hidden],
+        semantic_rows=[
+            _claim_row(owning_tenant_id=ctx.tenant_id, visibility="public", value="public-one"),
+            _claim_row(owning_tenant_id=ctx.tenant_id, visibility="private", value="own-private"),
+        ],
         lexical_rows=[],
         citations_rows=[_citation_row()],
-        entities=[MagicMock(entity_id=visible_subject)],
     )
     monkeypatch.setattr(visibility_module, "fetch_shared_with_tenants_one", AsyncMock(return_value=[]))
     monkeypatch.setattr(visibility_module, "is_visible", MagicMock(return_value=True))
-
     embedder = MagicMock(model_version="m1")
     embedder.encode = MagicMock(return_value=[[0.1, 0.2]])
 
     service = ClaimServingService(factory, clock=FakeClock(_NOW))
     served = await service.retrieve(ctx, query="anything", embedder=embedder, top_k=5)
 
-    assert [c.value for c in served] == ["kept"]
+    assert sorted(c.value for c in served) == ["own-private", "public-one"]
 
 
 @pytest.mark.asyncio
-async def test_retrieve_applies_min_confidence_after_the_visibility_filter(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_retrieve_applies_min_confidence_to_the_decayed_number(monkeypatch: pytest.MonkeyPatch) -> None:
     ctx = tenant_context()
-    subject_id = uuid.uuid4()
-    row = _claim_row(subject_entity_id=subject_id, confidence=0.9)
+    row = _claim_row(owning_tenant_id=ctx.tenant_id, confidence=0.9)
     factory, _ = _serving_session_factory(
         semantic_rows=[row],
         lexical_rows=[],
         citations_rows=[_citation_row()],
-        entities=[MagicMock(entity_id=subject_id)],
     )
     monkeypatch.setattr(visibility_module, "fetch_shared_with_tenants_one", AsyncMock(return_value=[]))
     monkeypatch.setattr(visibility_module, "is_visible", MagicMock(return_value=True))
