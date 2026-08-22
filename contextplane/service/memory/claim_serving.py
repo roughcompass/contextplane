@@ -296,9 +296,7 @@ class ClaimServingService:
             )
 
             self._assert_owner_pinned(ctx, rows, read="consolidated_since")
-            return tuple(
-                [await self._to_served(session, row, as_of=as_of, persona=persona, now=now) for row in rows]
-            )
+            return tuple([await self._to_served(session, row, as_of=as_of, persona=persona, now=now) for row in rows])
 
     async def get(self, ctx: TenantContext, claim_id: uuid.UUID, *, persona: str = PERSONA_AGENT) -> ServedClaim | None:
         """One claim by id, or None if the caller may not see it.
