@@ -382,6 +382,14 @@ mechanism buys: anchoring every N minutes means tampering is detectable except
 within the last N, and it identifies no signer. A deployment that markets this as
 non-repudiation has mis-sold it.
 
+*Retention classes already ship, and E6-T2 is rescoped around that.*
+`contextplane/retention/` carries a `retention_policies` table over twelve record
+classes with legal basis, four erasure modes, holds and tombstones, plus a sweep
+worker. The clause reads as though none of it exists. What is genuinely missing
+is one class: `session_event`, governed by a per-tenant integer and an
+`expires_at` column entirely outside the framework -- the newest and
+highest-volume record class is the one retention does not reach.
+
 *Crypto-shredding is named in the tree and does not exist.* Migration 0066 cites
 crypto-shredding as the reason `memory_session_events` needs no time partitions
 -- "disposal by destroying the key, recorded as an auditable deletion event" --
@@ -3941,9 +3949,9 @@ Acceptance:
     sh -c 'test -f .develop/adr/0012-external-anchor-for-the-digest-chains.md'
     make lint
 
-### E6-T2 — Retention classes, declared per stream rather than per deployment
+### E6-T2 — Session events are the record class retention does not govern
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** pending — rescoped · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: a retention class is a named policy -- how long, and what disposal means --
 that a stream or a claim category is assigned to, instead of the single
@@ -3960,6 +3968,41 @@ a name. It has to carry what happens at the end -- delete, shred, anonymise --
 because those differ in what survives and an operator choosing between them is
 choosing what an auditor will still be able to see.
 
+**Rescoped, because retention classes already ship and this task's premise was
+false.** It said retention is "the single per-tenant `memory_retention_days` that
+decides everything today". It is not. `contextplane/retention/` carries a
+`retention_policies` table keyed on `(policy_version, record_class)` with
+`legal_basis`, `retention_days`, `erasure_mode`, `minimization_action`,
+`tombstone_behaviour` and `verifier_disclosure`; a holds store that can keep a
+record past its period *attributably*; tombstones with per-tenant salts; and a
+`RetentionExpiryWorker` that sweeps, consults holds, and enqueues. Twelve record
+classes are governed, including `context_receipt`, `memory_claim`, `audit_log`
+and `workspace_entry`.
+
+It even carries the vocabulary this entry said it would have to invent -- "it has
+to carry what happens at the end" is `erasure_mode`, and the four values are
+`delete`, `minimize`, `minimize_and_tombstone` and `exempt`.
+
+**What is actually missing is one record class: `session_event`.** Session events
+are governed by `tenants.memory_retention_days` -- a CHECK-constrained integer
+between 1 and 180, read per write in `session_events.py` -- and an `expires_at`
+column, entirely outside the policy framework. So the newest and highest-volume
+record class in the system is the one class the retention design does not reach:
+no legal basis, no erasure mode, no hold can protect it, no tombstone records its
+disposal.
+
+That is the task. Bring `session_event` under `retention_policies`, decide its
+mode against the four that exist rather than adding a fifth, and reconcile the
+per-tenant integer with a policy row -- the integer is a tenant's *choice within*
+a class, which the framework does not currently model and may need to.
+
+**Do not reach for `arc_source_connectors` or a per-stream table.** The earlier
+draft of this entry suggested attaching retention to the stream registration
+E1-T11 built. Retention is a property of a *record class*, which is what the
+shipped framework says and what a legal basis attaches to; a per-stream period
+would be a second retention system keyed on something a lawyer does not reason
+about.
+
 Acceptance:
     .venv/bin/python -m alembic upgrade head
     .venv/bin/python -m pytest tests/integration -q -k "retention"
@@ -3971,6 +4014,14 @@ Acceptance:
 
 Goal: per-scope content keys, disposal by destroying the key, and an auditable
 deletion event recording that it happened.
+
+**The claim is worse than unbuilt: there is no *mode* for it either.**
+`retention/policies.py` declares exactly four erasure modes -- `delete`,
+`minimize`, `minimize_and_tombstone`, `exempt`. None of them is shredding. So
+migration 0066 rests on a disposal mechanism that has neither an implementation
+nor a name in the vocabulary that would have to carry it, and adding one is a
+change to a closed set that twelve record classes are already classified
+against.
 
 **Start by reading migration 0066, because this task is repairing a claim already
 in the tree.** That migration chose hash partitioning over range partitioning for
