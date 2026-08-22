@@ -4248,6 +4248,63 @@ modes and the ADR should pick one and name what it is giving up.
 Whichever is chosen, it must answer: does a quarantined claim disappear from the
 index (E3-T4's retraction), or stay indexed and get filtered? Answering
 "filtered" contradicts a decision made two tasks ago and needs to say why.
+## Task decomposition — tenth wave (E5, and the E9 rule that governs all of it)
+
+E5 asks for numbers that decide what a human reviewer looks at first. E9's
+property applies to every one of them — *no ungoverned score orders anything a
+user sees* — and a review queue is the most literal case of that rule in the
+product. So the constraint is not a footnote here; it is the frame.
+
+**What the registry looks like today, which decides what E5 can honestly
+claim.** `ranking_registry.json` holds **seven** governed magnitudes and **all
+seven are `grandfathered`** — none validated. The recorded reasons are
+consistent and worth reading before adding an eighth: most say the label a
+validation would rest on (*whether a claim was later retrieved and cited on a
+succeeding turn*) needs a citation-to-outcome join that does not exist.
+
+E5's numbers are not all the same kind, and lumping them together is the
+mistake to avoid:
+
+- **Acceptance-sampling parameters are *derived*, not fitted.** They follow
+  from a stated risk tolerance — what fraction of bad dispositions is
+  acceptable, and with what confidence. That is an argument, not a
+  measurement, and it can be recorded as a *complete* one. This is the first
+  magnitude in this registry that could be governed without being
+  grandfathered, and that is worth doing deliberately.
+- **Leverage is measurable today.** `get_blast_radius` already answers "how
+  much depends on this", and `promotion_eligibility` already treats the answer
+  as a governance trigger against a per-tenant threshold. Leverage is a read,
+  not a new model.
+- **Expected loss is neither, and this is the honest gap.** It needs a loss
+  model — what a wrong disposition actually costs — and nobody has stated one.
+  The same missing outcome join that grandfathered the other seven blocks it.
+
+**The queue is FIFO today.** `curation_queue.py` orders by `created_at` at both
+its listing sites. There is no ranking to fix, which means E5 does not improve a
+ranking — it *introduces* one, and introduces its failure modes with it.
+
+**`action_class` already exists**, in ARC's scope vocabulary
+(`lower_scope_action_class`). E5 must reuse it or state why a review action
+class is a different axis. Two vocabularies spelled the same way is how a
+reviewer's policy ends up keyed on the wrong one.
+
+### E5-T1 — ADR: which of E5's numbers can be governed, and which cannot yet
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: decide, before any of them is written, which E5 magnitudes enter the
+registry validated, which enter grandfathered, and which do not enter because
+they cannot yet be stated.
+
+All seven existing entries are grandfathered and each says honestly why. An
+eighth added the same way is defensible; an eighth added *silently* the same way
+while the epic describes it as "acceptance-sampling math" is not — the phrase
+implies a derivation, and a reader will assume one happened.
+
+The ADR's real work is separating the three kinds above and refusing to let the
+third pretend to be the first. If expected loss cannot be stated, the queue
+ranks on leverage and sampling alone and says so, which is a smaller claim and a
+true one.
 
 Acceptance:
     make doc-refs doc-links
@@ -4579,3 +4636,141 @@ subtraction without a ratchet is a one-time cleanup that grows back.
 Acceptance:
     make lint
     make all
+### E5-T2 — The SamplingPolicy, keyed on a tuple two-thirds of which exists
+
+**Kind:** task · **Status:** pending · **Blocked by:** E5-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+
+Goal: one governed sampling policy per (tenant, action class, sensitivity tier),
+with the sampling parameters derived from a stated risk tolerance rather than
+chosen.
+
+Two of the three key components already exist and must be reused, not
+redeclared. `sensitivity.TIERS` is `("public", "internal", "confidential",
+"restricted")` and is already the source of a generated CHECK constraint in
+migration 0068 — do the same here rather than writing the four values out.
+`action_class` exists in ARC's scope vocabulary; reuse it or justify a second
+axis in the entry.
+
+E1's audit is the precedent for the unknown-value case: a host sending an
+unrecognised sensitivity tier escaped every rule that named one, and
+`_declared_sensitivity` closes it by reading unknown as *most restrictive*. A
+sampling policy keyed on a tier must fail the same way — an unknown tier gets
+the heaviest sampling, never the default.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit -q -k "sampling"
+    make all
+
+### E5-T3 — The ranked queue, and the starvation it introduces
+
+**Kind:** task · **Status:** pending · **Blocked by:** E5-T2 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the review queue orders by leverage and sampling priority instead of
+arrival time, without any item becoming unreachable.
+
+**The starvation is created by this task, not inherited.** FIFO cannot starve
+anything; a ranked queue can, and this one has a feedback loop built into it.
+Confidence decays with age, a decayed claim ranks lower, a claim that never gets
+reviewed never has its confidence refreshed, and it decays further. The item
+sinks because it sank.
+
+`DECAY_FLOOR` does not fix this and it is important to see why, because it looks
+like it should. The floor bounds the decayed *value* — `DECAY_FLOOR + (stored -
+DECAY_FLOOR) * 2^(-age/half_life)` asymptotes to 0.10 rather than to zero — so a
+claim never decays out of existence. But *rank* is relative, and an item pinned
+at the floor is below every item that has not decayed. The value is bounded and
+the position is not.
+
+Whatever fixes it — an age term in the ordering, a reserved fraction of the
+queue, a hard maximum wait — must be stated as a property with a number, and
+that number is a governed magnitude like the rest. "We also consider age" is not
+checkable.
+
+Consequence preview belongs here rather than in its own task: a rank a reviewer
+cannot interrogate is a rank they will learn to ignore, and `get_blast_radius`
+already produces the material.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "queue and (rank or starv)"
+    make all
+
+### E5-T4 — `disposition_actor`, and what changes once a policy can dispose
+
+**Kind:** task · **Status:** pending · **Blocked by:** E5-T2 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: every disposition records whether a human or a policy made it, as a first
+class field rather than something inferred from an actor id.
+
+The case machinery is most of the way there. A disposition is already a
+*proposal* rather than a write, and it already records **who may approve it, at
+disposition time rather than inferred later** — which is exactly the discipline
+this needs, applied to a different question.
+
+The part that needs care is what a policy-automated disposition means for the
+sampling math. Acceptance sampling assumes the sample is *inspected*; if a
+policy disposes of an item, that item was not inspected, and counting it as a
+reviewed sample inflates the measured quality of a queue nobody looked at.
+Either policy dispositions are excluded from the sample or they are a separate
+stream with their own acceptance criteria, and the entry should say which and
+why. This is the failure mode where the number keeps looking fine.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "disposition"
+    make all
+
+### E5-T5 — Decay as a trust-class transition, with materiality frozen
+
+**Kind:** task · **Status:** pending · **Blocked by:** E5-T4 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a claim losing trust to age is recorded as a transition between trust
+classes, at a materiality frozen when the decay happened — not as a
+supersession, and not as a number that quietly moves.
+
+Ground this before building: **decay today is applied at read, not stored.**
+`serve_confidence` computes the effective number from `stored`,
+`confidence_scored_at`, the category half-life and an optional hold. So there is
+no stored decayed value to mistake for a supersession, and half of what this
+task guards against is already structurally impossible. Check the rest of that
+claim before writing anything — the entry may shrink to the transition record
+alone.
+
+"Frozen materiality at decay time" is the part with teeth, and it is the same
+property E4-T6 wants for its deadlines: a value computed on read drifts when its
+inputs are corrected, and "what was this worth when we let it decay" is exactly
+the question a review asks afterwards. Stamp it.
+
+`NON_DECAYING_VALUE_TYPES` is `{"prose"}` today, which means prose claims never
+enter this path at all. Whether that is right is not this task's question, but
+the entry should note it so the transition record is not read as universal.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit -q -k "decay"
+    make all
+
+### E5-T6 — The reviewer cockpit
+
+**Kind:** task · **Status:** pending · **Blocked by:** E5-T3, E5-T4 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: the disposition surface a reviewer actually works in, with the rank's
+reasoning visible and the consequence of each disposition shown before it is
+taken.
+
+Blocked on T3 and T4 rather than on the whole epic: the cockpit needs an
+ordering to display and a disposition vocabulary to offer, and neither the
+sampling policy's internals nor the decay transition changes what it renders.
+
+Two things this UI must not do, both learned in this repo. It must not present a
+rank as authoritative when its expected-loss term is absent — if E5-T1 lands
+without a loss model, the cockpit says the queue is ordered by leverage and
+sampling, because a reviewer who believes a number accounts for cost will defer
+to it. And per `.develop/DESIGN.md`, client authorization shapes the UI only;
+the disposition's approver check is the service's, and the cockpit showing a
+button is not the same as the write being permitted.
+
+E19-T7's defect is the one to keep in mind while building the adapter: the
+endpoint is part of the behaviour, and a test that asserts the body and method
+but not the path will pass while the call goes somewhere that does something
+else entirely.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
