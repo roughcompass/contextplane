@@ -384,7 +384,7 @@ Answer audit questions:
 5. **Integrate your approval source** — Wire up email, Slack, or enterprise system
 6. **Monitor** — Watch approval metrics, audit logs, blocked requests
 
-See the [Approval Request Control integration guide](./arc-integration-points.md) for concrete examples.
+See the [Approval Request Control integration guide](../04-guides/06-arc-integration-guide.md) for concrete examples.
 
 ---
 
@@ -403,7 +403,6 @@ See the [Approval Request Control integration guide](./arc-integration-points.md
 
 ## More Information
 
-- **How approvals work:** See [Approval mechanics](./arc-approvals.md)
-- **How external systems integrate:** See [Integration points](./arc-integration-points.md)
+- **How external systems integrate:** See [Approval Request Control integration guide](../04-guides/06-arc-integration-guide.md)
 - **Operator procedures:** See [ARC operator runbook](../06-operations/03-arc-runbook.md)
 - **Detailed resolution model:** See [Attested context resolution](./11-attested-context-resolution.md)
