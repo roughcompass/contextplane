@@ -49,7 +49,7 @@ def test_search_response_uses_items_field() -> None:
         entity_id=uuid.uuid4(),
         name="cap",
         entity_type="capability",
-        score=0.9,
+        fused_rank_score=0.9,
         retrieval_arms={},
         citations=[],
     )
@@ -77,7 +77,7 @@ def test_a_search_result_cannot_be_built_without_its_citations() -> None:
             entity_id=uuid.uuid4(),
             name="cap",
             entity_type="capability",
-            score=0.9,
+            fused_rank_score=0.9,
             retrieval_arms={},
         )
 
@@ -90,7 +90,7 @@ def test_a_search_result_does_not_carry_the_tenant_by_default() -> None:
         entity_id=uuid.uuid4(),
         name="cap",
         entity_type="capability",
-        score=0.9,
+        fused_rank_score=0.9,
         retrieval_arms={},
         citations=[],
     )

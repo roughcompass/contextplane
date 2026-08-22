@@ -209,12 +209,21 @@ class SearchResultItem(BaseModel):
     read the one they want.
 
     ``tenant_id`` is audit-only, like everywhere else this shape appears.
+
+    ``fused_rank_score`` is the retrieval fusion's output and says so. It was
+    ``score`` -- and the service dataclass behind it was renamed for a stated
+    reason while this one was not, so the adapter spent a release writing
+    ``score=result.fused_rank_score`` and undoing the rename one layer from the
+    only place a reader sees it. Three quantities in this system share the 0..1
+    scale and mean different things; a field called ``score`` teaches the next
+    author that a bare one is acceptable, and the wire is where that lesson is
+    learned.
     """
 
     entity_id: uuid.UUID
     name: str
     entity_type: str
-    score: float
+    fused_rank_score: float
     retrieval_arms: dict[str, float]
     citations: list[CitationItem]
 
