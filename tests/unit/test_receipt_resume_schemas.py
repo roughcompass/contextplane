@@ -212,6 +212,9 @@ def test_a_receipt_without_a_task_still_serialises() -> None:
         resolved_at=_NOW,
         requested_by="agent-a",
         request_digest=None,
+        hydration_state="complete",
+        item_count=0,
+        exclusion_count=0,
     )
 
     assert body.intent_id is None

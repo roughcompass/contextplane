@@ -116,8 +116,15 @@ async def test_an_event_can_be_recorded_and_replayed(client: AsyncClient, person
 
     assert [e["body"] for e in replay.json()] == ["first turn"]
     assert one.json()["seq"] == 1
-    assert [s["session_id"] for s in sessions.json()] == ["S1"]
-    assert sessions.json()[0]["event_count"] == 1
+    # This session appears with its one event, rather than being the only one
+    # listed. The harness is module-scoped -- one app and one persona for the
+    # file -- so every test here writes into the same tenant, and asserting an
+    # exact list made this test's result depend on which tests ran before it.
+    # It passed for as long as it happened to run first and failed the night a
+    # different order put the external-origin tests ahead of it.
+    listed = {s["session_id"]: s for s in sessions.json()}
+    assert "S1" in listed
+    assert listed["S1"]["event_count"] == 1
 
 
 @pytest.mark.asyncio(loop_scope="module")

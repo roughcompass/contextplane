@@ -3775,7 +3775,7 @@ Acceptance:
 
 ### E3-T2 — The receipt says whether it is finished
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: `context_receipts` gains `hydration_state` (`pending` | `complete` |
 `failed`) plus the item and exclusion counts known at write time, the read
@@ -3798,6 +3798,28 @@ module's own standard is that a receipt which reads as complete while withholdin
 something is worse than no receipt.
 
 Every existing row is `complete`, backfilled, because it was.
+
+**The default is the refusing one, and the fixtures are what settled it.**
+Nineteen tests insert receipts as raw SQL, so NOT NULL with no default meant
+editing all nineteen -- and two attempts at scripting that produced malformed
+literals, which was the signal to stop and ask what a receipt inserted *without*
+a hydration claim actually means. It means no claim was made, and the honest
+reading of no claim is "not yet evidence". The column defaults to `pending`, and
+exactly one fixture needed changing: the one whose test reads exclusions and
+therefore does need its receipt to be evidence.
+
+Defaulting to `complete` would have been the permissive direction taken by
+omission, which is the shape of a validation status defaulting to validated.
+
+**The summary read surfaces the state; the evidence reads refuse it.** That is
+the clause "surface that state and never present a `pending` receipt as
+evidence" taken literally and split where it actually divides. `GET
+/receipts/{id}` returns 200 with the state and counts, because a caller polling
+for a resolution it triggered must be able to learn "not yet". `/exclusions` and
+`/references` return 409: both are consumed as complete answers, and an empty
+list from a half-written receipt is indistinguishable from one from a finished
+receipt. 404 still comes first, so a caller cannot learn an id exists by getting
+a different refusal.
 
 Acceptance:
     .venv/bin/python -m alembic upgrade head
@@ -3875,7 +3897,7 @@ Acceptance:
 
 ### E3-T4 — Trust and quarantine state in the vector index key
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: a quarantined or untrusted item cannot be returned by a vector scan,
 because the scan cannot see it -- not because a filter removed it afterwards.
@@ -3894,9 +3916,76 @@ Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "quarantine or vector"
     make all
 
+**Delivered, and the task's two premises were both wrong — in opposite
+directions.**
+
+**There is no quarantine state.** `quarantine` appears twice in the tree, both
+in `profile/migration.py` as a *profile migration disposition*, nothing to do
+with memory items. No claim, embedding, or workspace entry is ever quarantined.
+The word came from the epic body, not from the system.
+
+**Trust is already in the index, and more strongly than a key column.**
+`project_claim` re-derives servability on every write and **retracts the
+vectors** when a claim stops being servable — status outside
+`('staged','superseded')`, `consolidated_at` unset, `t_invalidated_at` set, or
+no owning tenant. The rows are deleted, not flagged. So an untrusted claim
+already cannot be returned by a vector scan because the scan cannot see it,
+which is exactly what this task asked for, built before the task was written.
+
+**What was actually wrong is the thing the task did not look at.**
+`ClaimServingService.retrieve` opens with the rule this task exists to enforce —
+*"Filters are applied in the query rather than to the ranked list. Filtering
+afterwards returns however many of the top k happened to survive, which is a
+shorter answer wearing the same shape as a complete one."* — and then filtered
+subject visibility on the ranked list, four lines below. So did `query` and
+`consolidated_since`.
+
+Those filters could never drop anything. All three reads select on
+`c.owning_tenant_id = :tid`, and `owning_tenant_id` is the **subject entity's**
+tenant by construction: `_resolve_subject` derives it from `entity.tenant_id` on
+both branches, `link_subject` writes the same value, and an unresolved subject
+leaves it NULL, which the equality excludes. So the subject was always the
+caller's own entity and `is_visible` was always going to say yes.
+
+They cost one entity `SELECT` plus **one ACL query per row** to reach that
+foregone conclusion. Measured on the serving path: **2N+2 queries became N+1** —
+52 → 26 at 25 rows, 22 → 11 at ten. Exactly halved, three read paths.
+
+Replaced with `_assert_owner_pinned`, which **raises rather than filters**, and
+that is the whole point. If somebody removes a tenant predicate, a post-filter
+keeps the answer correct and hides the regression — the query silently scans
+every tenant's partitions and discards what it finds, and nobody learns until a
+bill says so. The tripwire makes it a failure on the first run.
+
+`get` is deliberately untouched: `_BY_ID_SQL` carries **no** tenant predicate by
+design, because it must serve a public claim about another tenant's entity. That
+is the one path where the two visibility checks were ever load-bearing, and a
+test now pins the *absence* of the pin there as well as its presence elsewhere.
+
+**The four unit tests that proved the filter worked did so against a row the
+database cannot produce.** Each fabricated `owning_tenant_id=uuid.uuid4()` — a
+foreign-owned row — through a mock router unconstrained by any WHERE clause. The
+new tripwire caught them on the first run, which is the cleanest evidence that
+the state they tested was unreachable. The integration suite's real cross-tenant
+tests (`test_a_private_subject_never_appears_in_a_cross_tenant_query`,
+`test_retrieval_never_crosses_a_visibility_boundary`) pass unchanged against
+Postgres, which is what shows the pin — not the filter — was holding the
+boundary all along.
+
+One post-filter remains on purpose: `min_confidence` is applied to the
+read-decayed number, which exists in no column to select on, and pushing it into
+SQL would mean a second copy of the decay arithmetic. That cost is now stated in
+the docstring rather than contradicted by it.
+
+**Fourth instance of the recurring finding** — a mechanism built, correct,
+tested, and consulted by nothing. Previously `requires_validated` (E9-T3),
+`queryRelationships` (E19-T7), `resolve_weights` (E17-T4). This one is the worst
+shape of it so far: not merely unread, but paying N queries per request to
+compute an answer its own WHERE clause had already decided.
+
 ### E3-T5 — The adversarial-selectivity benchmark, and what it gates
 
-**Kind:** task · **Status:** pending · **Blocked by:** E3-T4 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E3-T4 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a benchmark measuring whether a caller can influence what the resolver
 selects, and a gate on its result.
@@ -3915,6 +4004,47 @@ discipline, and reports before it gates.
 
 Acceptance:
     make eval
+
+**Delivered, and it found what it was built to find.** The definition was most
+of the task, as the entry predicted. The one adopted is narrow and mechanical:
+*a caller escapes when a rule that applies to an honest manifest stops applying
+to a manifest the same caller could equally well have sent.*
+
+`eval/fixtures/adversarial_selectivity.json` probes every one of the six
+dimensions `rule_applies` reads, one minimal mandatory directive each so an
+outcome is attributable to the dimension rather than to interacting rules.
+**13 of 16 probe variants shed their rule.**
+
+**Two live open-vocabulary evasions, which is the next E1 hole and its twin.**
+`environment` escapes on all four variants and `domain_ids` on all three.
+Both are matched by bare set membership with no fail-closed wrapper, so
+`environment=None`, `environment="prod-ish"` and `domain_ids=[]` each shed
+every rule scoped to them. No attestation helps: the caller has not lied, it
+has declined to say, and declining to say is read as not matching.
+
+The other three — `entity_ids`, `requested_action_classes`, `intent_kind` — are
+misdeclaration, which selection cannot detect and attestation is supposed to.
+Separating the two kinds matters: reported together, this would overstate the
+defect by a factor of four.
+
+**E1's fix does not transfer, and that is why nothing is fixed here.** Reading
+an unknown sensitivity tier as most-restrictive works because sensitivity is an
+ordered scale with a maximum. Environments and domains have no ordering. The two
+candidates — apply every scoped rule when the manifest is silent, or refuse a
+manifest that omits a dimension some active rule scopes on — each cost something
+real, so this reports and ratchets rather than deciding. `eval/EVAL.md` carries
+the table and both options.
+
+What is gated: `data_sensitivity` must stay closed (parametrised, and the
+harness's anti-vacuity control — the one dimension known to be closed must
+report exactly one escape, of the kind selection cannot see), and the escaping
+set must equal what the fixture records. Equality rather than a count, so a hole
+*closing* also fails, which is when the fix gets recorded instead of absorbed.
+
+A dimension list is pinned against the matcher too: a seventh dimension added to
+`rule_applies` without a probe fails here, because an unprobed dimension is
+exactly where the next one of these would live.
+
 ## Task decomposition — eighth wave (E6 and E7, both unblocked by E1 and E2 closing)
 
 ### E6-T1 — ADR: what an external anchor buys, and what it must never be called
@@ -3993,6 +4123,34 @@ It even carries the vocabulary this entry said it would have to invent -- "it ha
 to carry what happens at the end" is `erasure_mode`, and the four values are
 `delete`, `minimize`, `minimize_and_tombstone` and `exempt`.
 
+**Sharpened by E6-T3: the gap is not structural, it is a period nobody
+enforces.** Grounding migration 0066 established that session events carry
+`expires_at`, written on every row from the tenant's `memory_retention_days`,
+and that `ix_mse_expiry` exists specifically to sweep on it — and that
+**nothing sweeps.** `RetentionExpiryWorker` iterates the twelve record classes
+in `retention_policies`; `session_event` is not one, and `retention/` does not
+reference `memory_session_events` at all. The only `DELETE` against that table
+is actor erasure.
+
+So the concrete failure is: the highest-volume record class in the system
+advertises a retention period the database CHECK-constrains to 1–180 days,
+carries a column and a purpose-built index to enforce it, and **accumulates
+forever**. A deployment reading its own configuration would believe otherwise.
+
+That changes what this task has to decide first. Not "invent a vocabulary" —
+that exists — but whether `session_event` becomes the thirteenth governed record
+class, inheriting holds, tombstones and the sweeper, or keeps its bespoke
+per-tenant period with a sweeper of its own.
+
+Prefer the first, and the reason is `legal_basis`: it is the field the framework
+is built around, and a record class outside the framework has no legal basis
+recorded anywhere. The argument against is that `memory_retention_days` is
+per-*tenant* while `retention_policies` is keyed on `(policy_version,
+record_class)` — so folding it in either drops per-tenant configurability or
+needs a tenant override the framework does not currently have. Whichever way it
+goes, say what happens to the 1–180 CHECK, because it is the only place that
+period is currently constrained at all.
+
 **What is actually missing is one record class: `session_event`.** Session events
 are governed by `tenants.memory_retention_days` -- a CHECK-constrained integer
 between 1 and 180, read per write in `session_events.py` -- and an `expires_at`
@@ -4020,7 +4178,7 @@ Acceptance:
 
 ### E6-T3 — Crypto-shredding, which a shipped decision already assumes exists
 
-**Kind:** task · **Status:** pending · **Blocked by:** E6-T2 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E6-T2 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: per-scope content keys, disposal by destroying the key, and an auditable
 deletion event recording that it happened.
@@ -4056,9 +4214,45 @@ Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "shred or disposal"
     make all && make test-integration
 
+**Delivered as a strike, not a build — and grounding it found something larger
+than the clause it was sent to fix.**
+
+*Why strike.* Crypto-shredding has no consumer. No retention class asks for
+unreadability-rather-than-absence, and adding a fifth erasure mode to a closed
+set of four that twelve record classes are already classified against is a
+vocabulary change that needs a demand first. Building it now would be another
+mechanism consulted by nothing — the exact outcome E6-T4 already produced once
+and had to revert.
+
+*The correction needed correcting.* The first replacement premise said disposal
+for this table is `expires_at` expiry, full stop. That is the **design** and it
+is not the behaviour: `expires_at` is written on every row from the tenant's
+`memory_retention_days`, `ix_mse_expiry` exists to sweep on it, and
+**nothing sweeps.** `RetentionExpiryWorker` operates on the twelve record
+classes in `retention_policies`; `session_event` is not one, and `retention/`
+does not reference the table at all.
+
+So migration 0066 carried **two** claims about a disposal that does not happen.
+The second was easy to miss: *"`expires_at` sweeps now fan out across
+partitions. Accepted: `ix_mse_expiry` is a background sweep with no latency
+budget"* — present tense, costing out a job that does not run. Both are amended;
+the second is restated conditionally, because the trade it describes is still
+the right one to have made about a sweep that will exist.
+
+*The partitioning conclusion never moved.* The hash key is a subset of
+`uq_mse_session_seq` and leads both read indexes, so range partitioning breaks
+that invariant regardless of how disposal works. Only the premise was wrong,
+twice.
+
+**This sharpens E6-T2 rather than closing it.** The finding is not a docstring
+problem: the highest-volume record class in the system advertises a retention
+period the database CHECK-constrains to 1–180 days, carries a column and a
+purpose-built index to enforce it, and accumulates forever. That is E6-T2's
+subject and it now has a concrete failure rather than a structural observation.
+
 ### E6-T4 — An undeclared stream is blocked, not merely handled carefully
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done — as an amendment · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a PII block tier that applies to content arriving from a stream nobody
 registered.
@@ -4078,8 +4272,50 @@ argument belongs in the code, and it should be checked against how the envelope
 path resolved the same tension, which was to be strict without refusing the
 write.
 
+**Resolved by measurement, and the answer is that the clause is already
+satisfied.** The task said to answer "is blocking right?" before building. The
+answer turned out to be that there is nothing left to block.
+
+`admission.blocking_field_policies()` is the cross product of every pilot field
+and every prohibited class, and `PROHIBITED_CLASSES` is read off the shipped
+detectors rather than written by hand. So admission already refuses **every class
+its scanner can detect, on every field it governs, from any source**. Content
+from an undeclared stream is held to exactly the floor content from a `public`
+one is.
+
+**This was established by building the mechanism and finding it did nothing.** A
+tier-derived floor was written -- an extra `field:*` wildcard applied when the
+resolved tier is most-restrictive, threaded from the write path through both
+guards -- and then run against the same inputs with and without it. Every outcome
+was identical, because the floor had already blocked everything the scanner
+recognises. The mechanism was reverted rather than shipped: a parameter that
+changes no outcome is the "governance object nothing consults" defect this plan
+keeps finding in other people's work, and writing a good docstring for it would
+have made it harder to notice, not better.
+
+The design it was reaching for is still recorded, because it is the right shape
+if the situation changes: **map the handling tier to the floor, not the
+registration state.** Building "undeclared streams are stricter" literally makes
+identical content admissible or not depending on a registration its author does
+not control, with the operator's remedy -- register the stream -- having nothing
+to do with the phone number in the text. An undeclared stream reaches a strict
+tier anyway, because absent already reads as most-restrictive.
+
+**One real gap surfaced and it is not about streams.**
+`security.pii_guard.scan_for_pii` builds a scanner carrying the *tenant's own*
+patterns and logs what they match. `admission._scanner` carries only the
+built-ins. So a tenant-configured pattern is detected, written to the detection
+log, and **never enforced by admission at any tier** -- a tenant that adds a
+custom detector and sets it to block gets a log entry and an admitted write. That
+deserves its own task and belongs to whoever owns the admission floor, not to
+E6.
+
+The finding is pinned by a test rather than left in this entry, so a future
+change that makes the floor non-exhaustive fails rather than silently reopening
+the hole the clause was worried about.
+
 Acceptance:
-    .venv/bin/python -m pytest tests/integration -q -k "undeclared or pii"
+    .venv/bin/python -m pytest tests/unit/test_admission.py -q
     make all
 
 ### E7-T1 — The tool registry, and what a default connection sees
@@ -4111,7 +4347,7 @@ Acceptance:
 
 ### E7-T2 — Parity, extending the gate that already half-exists
 
-**Kind:** task · **Status:** pending · **Blocked by:** E7-T1 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E7-T1 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: every registry entry names a tool that exists and a REST operation that
 exists, in both directions, plus the docs conformance half.
@@ -4130,6 +4366,70 @@ lists agree.
 
 Acceptance:
     .venv/bin/python -m pytest tests/conformance -q -k "parity"
+    make all
+
+**Delivered, and what widening the actor rule found.** Nine tests now: the
+registry↔code directions live in a `make lint` gate, and the conformance file
+carries the contract half (every REST mapping names an operation the OpenAPI
+document has), the docs half (all 8 core tools documented, nothing documented
+that was removed, and a ratchet at 20 on the undocumented extended surface), and
+the actor rule generalised from memory to every tool.
+
+Widening the actor rule surfaced two tools that take one — `grant_intent_participation`
+and `revoke_intent_participation`. **Exempted, on evidence rather than
+convenience:** the parameter is the operation's *patient*, never its principal.
+Authority comes from `ctx.actor_id`, minted from the validated JWT where no tool
+argument reaches; `_require_owner` refuses any caller whose active role on the
+task is not owner — strictly above what the grant confers; that check is in the
+service both transports call; and self-grant is refused by the contract
+dataclass and again by `ck_grant_not_self`. The exemption set is pinned for
+**equality**, so a third tool appearing and one of these disappearing both fail.
+
+The rule inverts inside the exemption, which is the part worth writing down. For
+session memory the parameter's *absence* is the control — nothing downstream
+would refuse a caller who named a colleague. For a grant, the parameter's
+*presence* is what the owner check operates on. Removing it would break REST/MCP
+parity and delete delegation, not close a hole.
+
+**A defect found next door, filed rather than fixed here.**
+`uq_task_participant_grant` is `(tenant_id, intent_id, actor_id)` with no expiry
+in the key, and `revoke` keeps the row and sets `expires_at`. So re-granting a
+previously revoked participant violates the constraint, and both adapters catch
+only `AudienceDenied` — the caller gets a 500 rather than a refusal.
+Participation is effectively one-shot per actor per task, and nothing tests
+re-grant-after-revoke. That is E7-T5, below.
+
+### E7-T5 — Participation is one-shot per actor, and fails as a 500
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: an actor who was granted, revoked, and granted again gets participation
+back, and no reachable input produces an unhandled `IntegrityError`.
+
+Found while judging E7-T2's exemption, in code that exemption did not touch.
+`uq_task_participant_grant` is `(tenant_id, intent_id, actor_id)`
+(`contextplane/workspaces/models.py:52`) and revoke is a soft delete —
+`queries_audience.py:152` sets `expires_at` and keeps the row. The second grant
+therefore collides with the first, and `routers/intent_memory.py:100` and
+`mcp/tools/intent_memory.py:150` both catch only `AudienceDenied`.
+
+Two shapes, and the choice matters more than the fix:
+
+- **Re-grant reactivates the existing row.** Keeps one row per actor per task,
+  so `fetch_actor_role` stays a single lookup — but the grant history is
+  overwritten, and who granted participation the first time stops being
+  recoverable.
+- **Expiry joins the uniqueness key**, so revoked rows accumulate and only the
+  live one is unique. Keeps history; every audience read has to learn to ignore
+  the dead rows, and a missed predicate is a revoked participant who can still
+  read.
+
+Prefer the first unless the audit trail is required, and if it is, say where
+that requirement comes from. Either way the adapters need to stop turning a
+constraint violation into a 500.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration/test_intent_memory_surfaces.py -q
     make all
 
 ### E7-T3 — The full surface is opt-in, per envelope
@@ -5203,7 +5503,7 @@ unrelated fixes.
 
 ### E3-T6 — `discard` leaves the claim's vectors in the index
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a discarded claim's vectors leave the index, as a superseded or
 unconsolidated claim's already do.
@@ -5227,9 +5527,25 @@ Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "discard or embedding"
     make all
 
+**Delivered.** One `project_claim` call in `discard`, in the same transaction as
+the status write so the row and the index cannot disagree if the request dies
+between them, and the docstring's "two places" count corrected to three.
+
+The regression test asserts against `embeddings` rather than through a search,
+because **a search returns the same answer either way** — every read filters on
+`status`, so the defect is invisible from the result set. That is why it
+survived, and it is why the test has to look at the index directly.
+
+It also asserts the `embedding_outbox` row is gone. A queued request left behind
+would be re-embedded by the next drain, putting the vector back and making the
+retraction look intermittent rather than absent — which is a worse bug to
+diagnose than the one being fixed.
+
+Mutation-checked: removing the call makes the test fail with `assert 1 == 0`.
+
 ### E3-T7 — The conformance test that holds the servability rules together does not exist
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the several spellings of "this claim is servable" are held to agreeing by
 a test rather than by a sentence claiming a test exists.
@@ -5258,6 +5574,30 @@ synchronised by prose.
 Acceptance:
     .venv/bin/python -m pytest tests/conformance -q -k "servable"
     make all
+
+**Delivered**, and the entry's warning about the third spelling held: the
+curation queue's predicate must differ, so it is asserted **negatively** with
+the reason in the failure message, rather than left out and rediscovered.
+
+The contract turned out to be **agreement on the status vocabulary, not identity
+of the predicate**. A shared constant would make one of the two wrong, because
+the read path needs `as_of`-relative terms the index path has no instant to
+compare against. So the test reads the status term *out of* `_SERVABLE_AS_OF`
+rather than restating it — a restated expectation agrees with the code only
+until somebody edits one of them.
+
+A second test pins the split ADR-0016 rests on: `status` unconditional,
+`t_invalidated_at` `as_of`-relative. That reasoning now stops being true loudly
+rather than silently.
+
+Mutation-checked rather than assumed — adding `rejected` to
+`_SERVABLE_STATUSES` fails the first test with the divergence named.
+
+One thing about the writing worth recording. The third test's first draft
+located the queue's SQL by guessing at module attribute names, found none, and
+asserted over an empty string: a test that passed while checking nothing, which
+is the exact failure this file exists to correct. It reads the module source
+now, which is less elegant and cannot do that.
 
 ### E3-T8 — A third receipt read nobody has listed, in the list's own docstring
 

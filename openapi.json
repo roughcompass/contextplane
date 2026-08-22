@@ -11284,6 +11284,14 @@
             "title": "Cacheable",
             "type": "boolean"
           },
+          "exclusion_count": {
+            "title": "Exclusion Count",
+            "type": "integer"
+          },
+          "hydration_state": {
+            "title": "Hydration State",
+            "type": "string"
+          },
           "intent_id": {
             "anyOf": [
               {
@@ -11295,6 +11303,10 @@
               }
             ],
             "title": "Intent Id"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
           },
           "receipt_id": {
             "format": "uuid",
@@ -11333,7 +11345,10 @@
           "cacheable",
           "resolved_at",
           "requested_by",
-          "request_digest"
+          "request_digest",
+          "hydration_state",
+          "item_count",
+          "exclusion_count"
         ],
         "title": "ReceiptResponse",
         "type": "object"

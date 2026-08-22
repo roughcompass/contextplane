@@ -9,6 +9,8 @@ until a query fails in production.
 
 from __future__ import annotations
 
+import pathlib
+
 from sqlalchemy import CheckConstraint, UniqueConstraint
 
 from contextplane.workspaces.models import IntentCheckpoint, IntentHead, IntentParticipantGrant
@@ -43,10 +45,45 @@ def test_a_grant_window_cannot_close_before_it_opens() -> None:
     assert "ck_grant_window" in _check_clauses(IntentParticipantGrant)
 
 
-def test_one_grant_per_actor_per_task_is_declared() -> None:
+def test_one_grant_in_force_per_actor_per_task_is_temporal_not_unique() -> None:
+    """E7-T5 replaced the unique index with a gist exclusion, and this pins both halves.
+
+    `(tenant_id, intent_id, actor_id)` must *not* be unique: participation may
+    legitimately be granted, revoked and granted again, and revoke is a soft
+    delete that keeps the row. While the uniqueness stood, the second grant
+    collided with the retained first one and the caller got a 500 — the
+    constraint and the soft delete could not both be right.
+
+    What replaces it is `ex_intent_participant_grants_no_overlap`, an exclusion
+    over `tstzrange(granted_at, expires_at)`: several rows, at most one window
+    containing any instant. It lives in migration 0070 because SQLAlchemy has no
+    exclusion-constraint construct, so this reads the migration — the only place
+    it is written down. The behaviour itself is proved against a real database in
+    `tests/integration/test_intent_memory_surfaces.py`.
+
+    `ck_grant_window` is asserted alongside because it is load-bearing for the
+    exclusion rather than decorative: a zero-width window is an *empty*
+    `tstzrange`, an empty range overlaps nothing, and a degenerate row would slip
+    past the overlap check entirely.
+    """
     unique = [c for c in IntentParticipantGrant.__table__.constraints if isinstance(c, UniqueConstraint)]
     columns = {tuple(col.name for col in c.columns) for c in unique}
-    assert ("tenant_id", "intent_id", "actor_id") in columns
+    assert ("tenant_id", "intent_id", "actor_id") not in columns, (
+        "the unique constraint is back; it contradicts the soft-delete revoke and makes "
+        "re-granting a revoked participant fail"
+    )
+    assert "ck_grant_window" in _check_clauses(IntentParticipantGrant)
+
+    migration = (
+        pathlib.Path(__file__).resolve().parents[2]
+        / "contextplane"
+        / "storage"
+        / "migrations"
+        / "versions"
+        / "0070_grant_temporal_exclusion.py"
+    ).read_text(encoding="utf-8")
+    assert "EXCLUDE USING gist" in migration
+    assert "tstzrange(granted_at, expires_at) WITH &&" in migration
 
 
 def test_temporal_evidence_is_on_the_row() -> None:

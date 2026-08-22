@@ -48,8 +48,23 @@ class IntentParticipantGrant(Base):
         # Repeated from the migration deliberately: this is the rule that makes
         # a grant a grant rather than a claim about oneself.
         CheckConstraint("actor_id <> granted_by", name="ck_grant_not_self"),
+        # Load-bearing for the temporal exclusion, not just tidiness: a
+        # zero-width window would be an *empty* tstzrange, and an empty range
+        # overlaps nothing, so a degenerate row would slip past the overlap
+        # check entirely.
         CheckConstraint("expires_at IS NULL OR expires_at > granted_at", name="ck_grant_window"),
-        UniqueConstraint("tenant_id", "intent_id", "actor_id", name="uq_task_participant_grant"),
+        # There is deliberately no unique constraint on (tenant, intent, actor).
+        # Participation may legitimately be granted, revoked and granted again;
+        # what may not exist is two grants in force at once, which is when "what
+        # role does this actor have?" acquires two answers. That is enforced by
+        # `ex_intent_participant_grants_no_overlap`, a gist exclusion over
+        # `tstzrange(granted_at, expires_at)` installed by migration 0070 -- and
+        # it is what keeps `fetch_actor_role`'s `scalar_one_or_none()` correct
+        # now that several rows may exist for one actor.
+        #
+        # It lives only in the migration because SQLAlchemy has no
+        # exclusion-constraint construct, which is the same place
+        # `relationship_metadata` keeps its equivalent.
     )
 
     grant_id: Mapped[uuid.UUID] = mapped_column(

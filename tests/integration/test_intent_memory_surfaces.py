@@ -267,6 +267,62 @@ async def test_a_revoked_grant_is_still_listed(surface: _Surface) -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_revoked_participant_can_be_granted_participation_again(surface: _Surface) -> None:
+    """E7-T5: this was a 500, and participation was one-shot per actor per task.
+
+    `uq_task_participant_grant` was `(tenant_id, intent_id, actor_id)` with no
+    temporal component, while revoke keeps the row and sets `expires_at`. The
+    second grant collided with the retained first one, and because both adapters
+    catch only `AudienceDenied`, an unhandled `IntegrityError` reached the
+    caller.
+
+    Migration 0070 replaces the unique constraint with a gist exclusion over
+    `tstzrange(granted_at, expires_at)`, so the two windows sit side by side and
+    both rows survive -- which is what `test_a_revoked_grant_is_still_listed`
+    requires of the first one.
+    """
+    headers = bearer_headers(tenant_slug=surface["slug"])
+    path = f"/v1/intents/{surface['intent_id']}/participants"
+    with _as(surface, surface["owner"]):
+        first = await surface["client"].post(path, headers=headers, json={"actor_id": "agent-f", "role": "reader"})
+        await surface["client"].delete(f"{path}/agent-f", headers=headers)
+        again = await surface["client"].post(path, headers=headers, json={"actor_id": "agent-f", "role": "contributor"})
+        listed = await surface["client"].get(path, headers=headers)
+
+    assert first.status_code == 201
+    assert again.status_code == 201, f"re-granting a revoked participant failed: {again.status_code} {again.text}"
+
+    windows = [g for g in listed.json()["grants"] if g["actor_id"] == "agent-f"]
+    assert len(windows) == 2, "the revoked grant was overwritten rather than kept beside the new one"
+    # The new role is the one in force; the closed window keeps the old one, so
+    # an audit of a read taken before the revoke still finds the grant that
+    # authorized it.
+    assert {g["role"] for g in windows} == {"reader", "contributor"}
+    assert sum(1 for g in windows if g["expires_at"] is None) == 1
+
+
+@pytest.mark.asyncio
+async def test_granting_an_actor_who_already_participates_is_a_conflict_not_a_crash(surface: _Surface) -> None:
+    """The other half of E7-T5: overlap is still refused, but cleanly.
+
+    Removing the unique constraint must not make double-granting silently
+    produce two live grants -- that is when `fetch_actor_role` acquires two
+    answers and `scalar_one_or_none()` starts raising. The exclusion still
+    refuses it; what changed is that the refusal is a 409 with a sentence rather
+    than a 500 with a stack trace.
+    """
+    headers = bearer_headers(tenant_slug=surface["slug"])
+    path = f"/v1/intents/{surface['intent_id']}/participants"
+    with _as(surface, surface["owner"]):
+        first = await surface["client"].post(path, headers=headers, json={"actor_id": "agent-g", "role": "reader"})
+        overlapping = await surface["client"].post(path, headers=headers, json={"actor_id": "agent-g", "role": "owner"})
+
+    assert first.status_code == 201
+    assert overlapping.status_code == 409, f"expected a conflict, got {overlapping.status_code}: {overlapping.text}"
+    assert overlapping.status_code != 500
+
+
+@pytest.mark.asyncio
 async def test_an_unknown_role_is_refused(surface: _Surface) -> None:
     with _as(surface, surface["owner"]):
         resp = await surface["client"].post(

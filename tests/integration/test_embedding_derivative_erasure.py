@@ -42,6 +42,7 @@ from contextplane.config import Settings
 from contextplane.embedding.stub import StubEmbedder
 from contextplane.embedding.targets import TARGET_CLAIM
 from contextplane.retention import derivatives, policies
+from contextplane.service.memory.claim_writer import ClaimService
 from contextplane.service.retrieval.derivative_handlers import retrieval_derivative_handlers
 from contextplane.service.retrieval.embedding_drain import drain_outbox
 from contextplane.service.retrieval.embedding_index import (
@@ -50,7 +51,9 @@ from contextplane.service.retrieval.embedding_index import (
     index_text,
     project_claim,
 )
+from contextplane.types import TenantContext
 from contextplane.workers.derivative_propagation import DerivativePropagationWorker
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 9, 12, 0, tzinfo=datetime.UTC)
 _CLAIM_TEXT_MARKER = "the words that must not survive"
@@ -299,6 +302,56 @@ async def test_a_registered_artefact_expires_on_the_claims_content_clock(
         ).scalar_one()
 
     assert expires_at == policies.payload_deadline(policies.RECORD_MEMORY_CLAIM, _NOW)
+
+
+@pytest.mark.asyncio
+async def test_discarding_a_claim_takes_its_vectors_out_of_the_index(corpus: _Corpus, app_settings: Settings) -> None:
+    """E3-T6: `discard` used to leave them there, and nothing noticed.
+
+    `close_superseded` and `mark_consolidated` both call `project_claim` after
+    changing whether a claim is servable. `discard` writes `status='rejected'`
+    -- "and it never serves again" -- and did not, so a staged, consolidated,
+    already-indexed claim kept its vectors after a curator refused it.
+
+    Not a correctness leak, which is why it survived: every read filters on
+    `status`, so a rejected claim cannot be served. It is the recall loss
+    retraction exists to prevent -- each dead vector occupies a candidate slot
+    in `ORDER BY vector <-> q LIMIT k` -- and it was bounded only by retention
+    expiry.
+
+    Asserted against `embeddings` rather than through a search, because a search
+    would return the same answer either way. The whole defect is invisible from
+    the result set.
+    """
+    actor = await corpus.actor()
+    claim_id = await corpus.claim(actor, await corpus.entity(), value=_CLAIM_TEXT_MARKER)
+    await _project_and_drain(corpus, claim_id, app_settings)
+
+    vectors = "SELECT count(*) FROM embeddings WHERE target_type = :kind AND target_id = :cid"
+    assert await corpus.count(vectors, {"kind": TARGET_CLAIM, "cid": claim_id}) == 1, (
+        "the claim was not indexed to begin with, so discarding it would remove nothing "
+        "and this test would pass without exercising anything"
+    )
+
+    ctx = TenantContext(
+        tenant_id=corpus.tenant_id,
+        actor_id=actor,
+        roles=["producer"],
+        oidc_subject="curator",
+    )
+    await ClaimService(corpus.factory, clock=FakeClock(_NOW)).discard(ctx, claim_id=claim_id, reason="spurious")
+
+    assert await corpus.count(vectors, {"kind": TARGET_CLAIM, "cid": claim_id}) == 0
+    # The queued request goes too. A row left in the outbox would be re-embedded
+    # by the next drain, putting the vector back and making the retraction look
+    # intermittent rather than broken.
+    assert (
+        await corpus.count(
+            "SELECT count(*) FROM embedding_outbox WHERE target_type = :kind AND target_id = :cid",
+            {"kind": TARGET_CLAIM, "cid": claim_id},
+        )
+        == 0
+    )
 
 
 @pytest.mark.asyncio

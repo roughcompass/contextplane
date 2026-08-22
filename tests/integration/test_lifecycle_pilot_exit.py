@@ -415,7 +415,41 @@ async def test_a_scenario_carries_the_trust_label_it_recorded(
     resp = await _resolve(surface, lifecycle_references=[_lifecycle_reference("stage", stage)])
     assert resp.status_code == 200, resp.text
 
-    items = _claims_block(resp.json())["items"]
+    block = _claims_block(resp.json())
+    # State before count, and pinned to the one good value rather than away from
+    # one bad one. `/v1/context/resolve` never lets a single arm take down the
+    # response, so there are three distinct ways to arrive here with an empty
+    # block, and they have nothing to do with each other:
+    #
+    #   degraded  the arm exceeded its 2s budget, or was truncated by the cap
+    #   failed    the arm raised -- `OverdueDerivativeRefusal` is the likely one
+    #   empty     the arm answered, with nothing -- which for this test means
+    #             the lifecycle narrowing excluded the claim it just seeded
+    #
+    # Only the third is a serving regression. **An earlier version of this guard
+    # asserted `!= "degraded"`, and it did not hold**: this test failed again in
+    # CI with the guard passing and `items` empty, which means the state was
+    # `failed` or `empty` and the message that followed still blamed the 2s
+    # budget. That is worse than no guard -- it fires under load and reports the
+    # wrong cause with confidence.
+    #
+    # This has now fired on four pull requests, each against a change that could
+    # not have caused it, and it does not reproduce locally under the same
+    # runner. So this does not claim to fix the flake. It makes the next
+    # occurrence say which of the three it was, and carry the reason, which is
+    # the information nobody has had yet.
+    #
+    # Deliberately still a failure rather than a skip: an arm that
+    # systematically timed out would otherwise pass unnoticed, which is the
+    # vacuous-gate outcome this suite is careful about elsewhere.
+    assert block["state"] == "success", (
+        f"{name}: the claims arm came back {block['state']!r} ({block['reason']}), so this "
+        "scenario could not run. 'degraded' means it exceeded its 2s budget or was truncated, "
+        "'failed' means it raised, and 'empty' means it answered with nothing -- only the last "
+        "is a serving regression, and for this test it would mean the lifecycle narrowing "
+        "excluded the claim seeded three lines above."
+    )
+    items = block["items"]
     assert items, f"{name} served no claim, so its trust label proves nothing"
     labels = {item["trust"]["trust"] for item in items}
     assert labels == {expected}, f"{name} recorded {expected!r} and the surface returned {sorted(labels)}"

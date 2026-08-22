@@ -34,12 +34,13 @@ import asyncio
 import dataclasses
 import datetime
 import uuid
+from collections.abc import Sequence
 from typing import Any, Final
 
 from sqlalchemy import RowMapping, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from contextplane.exceptions import ValidationError
+from contextplane.exceptions import TenantIsolationError, ValidationError
 from contextplane.profile.scoring import resolve_weights
 from contextplane.service.memory.confidence_decay import half_life_days
 from contextplane.service.memory.confidence_read import serve as serve_confidence
@@ -228,11 +229,9 @@ class ClaimServingService:
                 .all()
             )
 
-            visible = await self._visible_subjects(session, ctx, [r["subject_entity_id"] for r in rows])
+            self._assert_owner_pinned(ctx, rows, read="query")
             served: list[ServedClaim] = []
             for row in rows:
-                if row["subject_entity_id"] not in visible:
-                    continue
                 claim = await self._to_served(session, row, as_of=as_of, persona=spec.persona, now=now)
                 if spec.min_confidence is not None and claim.confidence < spec.min_confidence:
                     continue
@@ -296,14 +295,8 @@ class ClaimServingService:
                 .all()
             )
 
-            visible = await self._visible_subjects(session, ctx, [r["subject_entity_id"] for r in rows])
-            return tuple(
-                [
-                    await self._to_served(session, row, as_of=as_of, persona=persona, now=now)
-                    for row in rows
-                    if row["subject_entity_id"] in visible
-                ]
-            )
+            self._assert_owner_pinned(ctx, rows, read="consolidated_since")
+            return tuple([await self._to_served(session, row, as_of=as_of, persona=persona, now=now) for row in rows])
 
     async def get(self, ctx: TenantContext, claim_id: uuid.UUID, *, persona: str = PERSONA_AGENT) -> ServedClaim | None:
         """One claim by id, or None if the caller may not see it.
@@ -322,6 +315,45 @@ class ClaimServingService:
             if not await self._visible_subjects(session, ctx, [row["subject_entity_id"]]):
                 return None
             return await self._to_served(session, row, as_of=now, persona=persona, now=now)
+
+    @staticmethod
+    def _assert_owner_pinned(ctx: TenantContext, rows: Sequence[RowMapping], *, read: str) -> None:
+        """The tenant pin held. Cheap, and it raises rather than filters.
+
+        Three reads here select on `c.owning_tenant_id = :tid`, and
+        `owning_tenant_id` is by definition the *subject entity's* tenant --
+        `_resolve_subject` derives it from `entity.tenant_id` on both the
+        entity-id and external-id branches, `link_subject` writes the same
+        value, and an unresolved subject leaves it NULL, which the equality
+        excludes. So on those reads the subject is always the caller's own
+        entity and `is_visible` returns True at its owning-tenant branch,
+        every row, every time.
+
+        They used to run the full subject-visibility read anyway: one entity
+        select plus one ACL query *per row*, to compute an answer the WHERE
+        clause had already decided. This replaces that with the check that can
+        actually fail.
+
+        **Raising, not dropping, and that is the whole point.** If somebody
+        removes the pin from a WHERE clause, a post-filter keeps the result
+        correct and hides the regression -- the query silently scans every
+        tenant's partitions and discards what it finds, and nobody learns until
+        a bill or a profile says so. The failure this guards against is not a
+        row slipping through; it is the pin going missing. So the invariant is
+        asserted where it is relied on, and a breach refuses the read instead of
+        quietly absorbing it.
+
+        `get` is deliberately not a caller: `_BY_ID_SQL` has no tenant
+        predicate, by design -- it must serve a public claim about another
+        tenant's entity. That path keeps the full check, which is where the
+        check was always load-bearing.
+        """
+        foreign = {row["owning_tenant_id"] for row in rows} - {ctx.tenant_id}
+        if foreign:
+            raise TenantIsolationError(
+                f"{read} returned {len(foreign)} row(s) owned by another tenant; "
+                f"its tenant predicate is missing or wrong, and serving them would be a cross-tenant read"
+            )
 
     @staticmethod
     def _claim_visible(ctx: TenantContext, row: RowMapping) -> bool:
@@ -363,6 +395,21 @@ class ClaimServingService:
         Filters are applied in the query rather than to the ranked list. Filtering
         afterwards returns however many of the top *k* happened to survive, which is
         a shorter answer wearing the same shape as a complete one.
+
+        That was written as a principle while a subject-visibility filter ran on
+        the ranked list four lines below it. The filter could never drop
+        anything -- see `_assert_owner_pinned` -- so the answers were right and
+        the rule was still broken, which is the shape of thing that stops being
+        harmless the moment somebody edits the WHERE clause.
+
+        **One post-filter remains, deliberately: `min_confidence`.** Confidence
+        is decayed at read against a per-category half-life and an optional
+        hold, so the served number does not exist in any column to select on,
+        and pushing the bound into SQL would mean a second copy of the decay
+        arithmetic that would eventually disagree with `confidence_read`. The
+        cost is the one described above -- a caller asking for ten with a floor
+        can get fewer -- and it is a real cost, paid because one decay
+        implementation is worth more than a full page.
         """
         if persona not in PERSONAS:
             raise ValidationError(f"unknown persona {persona!r}")
@@ -387,11 +434,9 @@ class ClaimServingService:
                 top_k=top_k,
             )
 
-            visible = await self._visible_subjects(session, ctx, [r["subject_entity_id"] for r in rows])
+            self._assert_owner_pinned(ctx, rows, read="retrieve")
             served: list[ServedClaim] = []
             for row in rows:
-                if row["subject_entity_id"] not in visible or not self._claim_visible(ctx, row):
-                    continue
                 claim = await self._to_served(session, row, as_of=now, persona=persona, now=now)
                 if min_confidence is not None and claim.confidence < min_confidence:
                     continue
