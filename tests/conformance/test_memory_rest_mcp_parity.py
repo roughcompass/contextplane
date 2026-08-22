@@ -156,9 +156,7 @@ def test_every_registry_rest_mapping_names_an_operation_the_contract_has() -> No
 #:
 #: The four conditions a tool must meet to be added here are in the test's
 #: docstring. Read them before editing this set.
-_ACTOR_PARAMETER_IS_A_PATIENT: frozenset[str] = frozenset(
-    {"grant_intent_participation", "revoke_intent_participation"}
-)
+_ACTOR_PARAMETER_IS_A_PATIENT: frozenset[str] = frozenset({"grant_intent_participation", "revoke_intent_participation"})
 
 
 def test_no_tool_on_any_surface_accepts_an_actor_identifier(mcp_tools: dict[str, object]) -> None:
