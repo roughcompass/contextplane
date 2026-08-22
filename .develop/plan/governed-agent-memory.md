@@ -4193,3 +4193,606 @@ Acceptance:
     make eval
     .venv/bin/python -m pytest tests/integration -q -k "two_call or quickstart"
     make all
+
+## Task decomposition — ninth wave (E4, whose central noun does not exist yet)
+
+Grounded before decomposing, and the grounding moves most of the epic. E3-T4
+established that **`quarantine` appears twice in the whole tree**, both in
+`profile/migration.py` as a profile-migration disposition. No claim, embedding,
+receipt or workspace entry has ever been quarantined. So E4 is not wiring an
+existing mechanism to DORA — it is building the mechanism, and the wiring is the
+smaller half.
+
+What E4 *can* build on, all of it already shipped:
+
+- **`get_blast_radius`** — a real graph traversal with a service method, a REST
+  route (`routers/graph.py`) and an MCP tool. E4's "dry-run blast-radius
+  preview" is this function applied to a quarantine predicate, not a second
+  traversal.
+- **`PromotionPolicy.blast_radius_threshold`** — per-tenant, `DEFAULT 5`,
+  `CHECK >= 0`, already consulted by `promotion_eligibility`. Blast radius is
+  *already* a governance trigger in this system; E4 adds a second consumer, not
+  a new concept.
+- **`IMPACT_*`** — a closed vocabulary of reasons a claim needs review, with
+  `IMPACT_BLAST_RADIUS` among them and an honest note that "narrows a surface"
+  is only decidable for a listed subset of predicates.
+- **Curation cases** — `CASE_OPEN`/`CASE_ROUTED`/`CASE_RESOLVED`, where a
+  disposition is a *proposal* and its approver is recorded at disposition time
+  rather than inferred later. E4's "auto-created incident case" is a case.
+- **Bitemporal invalidation** — `t_invalidated_at` plus the derivative
+  propagation and erasure machinery that already reaches embeddings.
+
+What does not exist at all: quarantine, bulk revert, and every DORA noun —
+materiality, regulatory clock, report windows, at-risk escalation. Searched for
+`dora`, `DORA`, `materiality`, `regulatory`, `notification_clock`: **zero hits
+each**.
+
+**A naming trap, flagged before somebody walks into it.** `severity` is already
+taken. It is the PII scanner's `advisory < warn < block` ordering, in
+`types.py`, `admission.py` and `pii_scanner.py`. DORA materiality is a different
+axis measured against different thresholds, and a field called `severity` on an
+incident case will be read as the scanner's by anyone who has seen the scanner
+first. Name it `materiality` and keep them apart.
+
+### E4-T1 — ADR: is quarantine a state, or a predicate evaluated at read?
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: decide the shape before anything is built, because the two shapes have
+different failure modes and only one of them matches what this system already
+does.
+
+The epic says "quarantine by provenance predicate", which reads as a rule
+evaluated per read: *anything from this connector run, this extractor version,
+this source namespace*. The alternative is a state materialised onto each
+affected row when the predicate is applied.
+
+The argument for materialising, and it is the same argument E3-T4 landed on:
+**this codebase already knows how to make something unservable, and it does it
+by removing the row from the index rather than by filtering at read.**
+`project_claim` retracts a claim's vectors the moment it stops being servable.
+A read-time provenance predicate would be a second, weaker mechanism — every
+future scan path would have to remember it, and the first one that forgets is a
+quarantined claim served with a straight face.
+
+The argument against, which the ADR has to answer honestly: a predicate is
+revocable in one statement and a materialised state is a bulk write over an
+unbounded set, which is exactly why E4 also asks for bulk revert. And a
+predicate can be *evaluated* against rows that arrive after it was written,
+where a materialised state cannot — a connector still emitting bad claims keeps
+producing servable ones until somebody re-runs the sweep.
+
+Prefer materialised state with a **standing predicate that re-applies on
+write**, if that can be built without a second admission path; say so explicitly
+if it cannot, because then the choice is genuinely between the two failure
+modes and the ADR should pick one and name what it is giving up.
+
+Whichever is chosen, it must answer: does a quarantined claim disappear from the
+index (E3-T4's retraction), or stay indexed and get filtered? Answering
+"filtered" contradicts a decision made two tasks ago and needs to say why.
+## Task decomposition — tenth wave (E5, and the E9 rule that governs all of it)
+
+E5 asks for numbers that decide what a human reviewer looks at first. E9's
+property applies to every one of them — *no ungoverned score orders anything a
+user sees* — and a review queue is the most literal case of that rule in the
+product. So the constraint is not a footnote here; it is the frame.
+
+**What the registry looks like today, which decides what E5 can honestly
+claim.** `ranking_registry.json` holds **seven** governed magnitudes and **all
+seven are `grandfathered`** — none validated. The recorded reasons are
+consistent and worth reading before adding an eighth: most say the label a
+validation would rest on (*whether a claim was later retrieved and cited on a
+succeeding turn*) needs a citation-to-outcome join that does not exist.
+
+E5's numbers are not all the same kind, and lumping them together is the
+mistake to avoid:
+
+- **Acceptance-sampling parameters are *derived*, not fitted.** They follow
+  from a stated risk tolerance — what fraction of bad dispositions is
+  acceptable, and with what confidence. That is an argument, not a
+  measurement, and it can be recorded as a *complete* one. This is the first
+  magnitude in this registry that could be governed without being
+  grandfathered, and that is worth doing deliberately.
+- **Leverage is measurable today.** `get_blast_radius` already answers "how
+  much depends on this", and `promotion_eligibility` already treats the answer
+  as a governance trigger against a per-tenant threshold. Leverage is a read,
+  not a new model.
+- **Expected loss is neither, and this is the honest gap.** It needs a loss
+  model — what a wrong disposition actually costs — and nobody has stated one.
+  The same missing outcome join that grandfathered the other seven blocks it.
+
+**The queue is FIFO today.** `curation_queue.py` orders by `created_at` at both
+its listing sites. There is no ranking to fix, which means E5 does not improve a
+ranking — it *introduces* one, and introduces its failure modes with it.
+
+**`action_class` already exists**, in ARC's scope vocabulary
+(`lower_scope_action_class`). E5 must reuse it or state why a review action
+class is a different axis. Two vocabularies spelled the same way is how a
+reviewer's policy ends up keyed on the wrong one.
+
+### E5-T1 — ADR: which of E5's numbers can be governed, and which cannot yet
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: decide, before any of them is written, which E5 magnitudes enter the
+registry validated, which enter grandfathered, and which do not enter because
+they cannot yet be stated.
+
+All seven existing entries are grandfathered and each says honestly why. An
+eighth added the same way is defensible; an eighth added *silently* the same way
+while the epic describes it as "acceptance-sampling math" is not — the phrase
+implies a derivation, and a reader will assume one happened.
+
+The ADR's real work is separating the three kinds above and refusing to let the
+third pretend to be the first. If expected loss cannot be stated, the queue
+ranks on leverage and sampling alone and says so, which is a smaller claim and a
+true one.
+
+Acceptance:
+    make doc-refs doc-links
+    make all
+
+### E4-T2 — The quarantine state, and the revert that makes it usable
+
+**Kind:** task · **Status:** pending · **Blocked by:** E4-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+
+Goal: a provenance predicate quarantines the claims it matches, and one
+statement puts them back.
+
+Bulk revert is not a convenience feature here and should not be scheduled as
+one. An operator who cannot undo a quarantine will not run it on a real
+incident, so the mechanism that has no revert is a mechanism nobody uses under
+the conditions it was built for.
+
+Bitemporal is the shipped idiom: `t_invalidated_at` closes a row without
+destroying it, which is what makes revert expressible at all. Reuse it rather
+than adding a `quarantined` boolean — a boolean records that something is
+quarantined and forgets when, by whom, and under which predicate, and all three
+are what an incident review asks for first.
+
+Reuse the erasure/derivative propagation path for reaching embeddings. That path
+already exists, already reaches the index, and already has a story for what
+happens when propagation is late (`pending_overdue`, and the arms refuse to
+serve rather than serving stale). A second propagation path for quarantine would
+have to relearn all of it.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "quarantine"
+    make all
+
+### E4-T3 — The preview is `get_blast_radius`, not a second traversal
+
+**Kind:** task · **Status:** pending · **Blocked by:** E4-T2 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: before applying a quarantine, an operator sees what it would reach — using
+the traversal that already exists.
+
+`get_blast_radius` ships with a service method, a REST route and an MCP tool,
+and `promotion_eligibility` already treats its result as a governance trigger
+against a per-tenant threshold. The preview is that traversal seeded from the
+predicate's match set.
+
+Writing a second traversal is the failure mode to avoid, and it is a likely one
+because the shapes differ slightly: promotion asks about one claim, quarantine
+asks about a set. Widen the existing one; two graph walks that disagree about
+what "downstream" means is a worse outcome than a slightly awkward signature.
+
+The dry run must be honestly labelled as a *point-in-time* answer. The graph
+moves; a preview taken and acted on ten minutes later reached a different set,
+and an operator who believes otherwise will under-quarantine and not know it.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "blast_radius or quarantine"
+    make all
+
+### E4-T4 — Pre-quarantine of downstream receipts
+
+**Kind:** task · **Status:** pending · **Blocked by:** E4-T2 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a receipt whose inputs are being quarantined stops being servable before
+the sweep reaches it, not after.
+
+The ordering is the whole task. A quarantine that walks its blast radius one row
+at a time serves the last unreached receipt right up until it arrives, which is
+the window an incident response exists to close. Marking the downstream set
+first and reconciling afterwards inverts that: the cost of being wrong becomes a
+withheld receipt that should have been served, and withholding is the safe
+direction.
+
+E3-T2 built the vocabulary this needs. `hydration_state` already gates
+`/exclusions` and `/references` behind a 409 `receipt_not_hydrated`, and
+`HYDRATION_SERVABLE` is the frozenset deciding it. Whether pre-quarantine is a
+fourth hydration state or a separate column is a real question — a receipt that
+is fully hydrated but provisionally withheld is not the same thing as one that
+was never hydrated, and collapsing them loses the difference an operator needs.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "receipt and quarantine"
+    make all
+
+### E4-T5 — ADR: materiality is not severity, and the word is already taken
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: decide what makes an incident *major*, on what evidence, and who can say
+so — before a clock depends on the answer.
+
+This is first among the DORA tasks because everything else keys off it. The
+classification starts a regulatory clock with legal deadlines; a threshold
+picked to make the demo work is a threshold that either starts clocks nobody can
+meet or fails to start one that was required.
+
+Three things the ADR must settle:
+
+1. **The name.** `severity` is taken — it is the PII scanner's
+   `advisory < warn < block`, in `types.py`, `admission.py` and
+   `pii_scanner.py`. Use `materiality`. Two different orderings sharing one
+   field name is a defect waiting for a reader who has only seen the other one.
+2. **Who classifies.** Automatic classification from blast radius is
+   attractive and dangerous: it means a graph traversal starts a legal clock. If
+   it is automatic, the ADR states the threshold and where it is governed; if it
+   is human, it states what happens between detection and classification,
+   because that gap is unbounded and is itself the reportable delay.
+3. **What "major" means here specifically.** DORA's thresholds are external
+   and this service does not get to invent them. Cite them or state plainly
+   that the mapping is a placeholder pending legal input — an invented threshold
+   presented as a compliance feature is worse than an absent one.
+
+Acceptance:
+    make doc-refs doc-links
+    make all
+
+### E4-T6 — The notification clock, and why a missed deadline must be loud
+
+**Kind:** task · **Status:** pending · **Blocked by:** E4-T5 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: classification-as-major stamps initial, intermediate and final deadlines
+on the incident case, and their approach and breach are visible without anybody
+asking.
+
+Three deadlines, stamped as distinct instants at classification time rather than
+computed on read. Computed deadlines drift when the classification timestamp is
+corrected, and "when was this due" is precisely the question an audit asks.
+
+The case machinery exists: `CASE_OPEN`/`CASE_ROUTED`/`CASE_RESOLVED`, with a
+disposition recording its approver at disposition time — the same discipline
+this needs.
+
+**At-risk escalation is a gauge, not a log line**, and ADR-0012's assumption 2
+is the precedent: a scheduled job that silently stops turns a deadline into
+"whenever somebody looks". Anchor age was the analogous case there. Deadline
+state must be observable when nothing is happening, because nothing happening is
+the failure.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "incident or deadline"
+    make all
+
+### E4-T7 — Evidence-bundle export, scoped to one case
+
+**Kind:** task · **Status:** pending · **Blocked by:** E4-T6 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: everything a regulator asks for about one incident, exported as one
+bundle, with the scope enforced rather than described.
+
+`arc_get_review_package` is the closest shipped thing and is worth reading
+before designing this, but it is not the same: a review package supports a
+decision that is about to be made, and an evidence bundle documents one already
+taken. The audiences differ and so does what may be included.
+
+The scoping is the hard part and it cuts both ways. A bundle that quietly
+includes rows outside the case is a disclosure; one that quietly omits rows
+inside it is an incomplete regulatory filing. Neither can be checked by reading
+the output, so the scope predicate belongs in the query and the test belongs on
+the boundary — a second case's rows seeded alongside, and asserted absent.
+
+Note what the digest chains do and do not offer here. ADR-0012 is explicit that
+an internal chain proves nothing against the party holding the storage, and that
+the honest phrase is bounded-exposure tamper-evidence. An evidence bundle must
+not imply more than that, and must never use the word non-repudiation — the ADR
+says why, and says it expecting this task to be where somebody is tempted.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "evidence_bundle"
+## Task decomposition — eleventh wave (E13, whose headline target E7 already met)
+
+E13 is measured against three tracked metrics, and grounding them first changes
+what the epic is for. Two are now measurable exactly, because E7-T1 committed
+the registry that measures them.
+
+**Default-profile tool count, target ≤ 8: already met, at exactly 8.**
+`tool_registry.json` records `core_count: 8` against `tool_count: 67`, and
+`install_surface_filter` makes a default connection expose only the core tier.
+E13 does not have to shrink this. It has to keep it shrunk, which is a gate
+rather than a project — and the gate exists, since the registry is checked
+against the code in both directions by `make lint`.
+
+**REST endpoints an agent integration must know, target ≤ 6: currently 8.** The
+eight core tools map to eight distinct operations, one each. Two over, and the
+pairs worth examining are visible: `search_capabilities` (`GET /v1/search`)
+beside `get_capability` (`GET /v1/capabilities/{id}`), and `resume_context`
+beside `registry_resolve_context`. Each pair is a search-and-read or a
+resolve-and-resume over one subject. Whether either collapses is a real
+question; the point is that the gap is two and both candidates are nameable, so
+this is a decision rather than a search.
+
+For scale: the full REST surface is **191 paths, 243 operations**. The target
+was never about that number — it is about how much an *agent integration* must
+learn, and the core tier is what defines that.
+
+**Deprecated-surface count trending to zero: this metric cannot start.** Two
+findings, and both are amendments rather than work.
+
+*First, the dual-alias window contradicts a standing project constraint.* This
+is a greenfield repository with no released version and no external consumers.
+A dual-alias window exists to protect integrations that already exist, and there
+are none. Building one would be building a compatibility mechanism for a
+compatibility problem the project has decided it does not have. **The clause is
+struck**: surfaces that consolidate are replaced, not aliased. If that ever
+becomes wrong, it becomes wrong on the day something ships, and that is when the
+window gets designed against real consumers.
+
+*Second, "retire MCP tools that the registry shows unused" has no data source.*
+The registry's tool records carry `name`, `module`, `tier`, `rest` — and no
+usage field. `install_tool_metrics` does instrument every tool, by rebinding the
+decorator factory so that instrumentation cannot be forgotten per tool, but that
+is a Prometheus counter: ephemeral, scraped, and explicitly not something a
+browser may read. More fundamentally, E7-T1 already recorded why this corpus
+does not exist — *"this service has never been released, and the receipts in a
+development tree are the test suite's."* Retiring tools on usage evidence is
+blocked on the same missing corpus that made E7-T1 derive its core set from a
+stated rule instead of a measurement.
+
+### E13-T1 — The two REST operations over budget, decided rather than searched
+
+**Kind:** task · **Status:** pending · **Blocked by:** E7-T2 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: get the agent-facing REST surface from eight operations to six, or record
+why one of the pairs must stay two.
+
+Both candidates are already named above. Take each on its merits:
+
+`search_capabilities` and `get_capability` are a search and a read over the same
+subject. Collapsing them means a search that can return one fully-hydrated
+result, which is a real API design and also a way to make the common read pay
+for the search path.
+
+`registry_resolve_context` and `resume_context` are closer to genuinely
+different: one assembles context for a new question, the other continues an
+established one. If they stay two, the entry says so and the target moves to
+seven with a reason, rather than the target quietly not being met.
+
+**Do not collapse by adding a mode parameter.** Two operations behind one path
+with a discriminator is the same two operations plus a branch, and it makes the
+count look met while the thing an integrator must learn is unchanged — which is
+what the metric was measuring.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/conformance -q -k "parity"
+    make all
+
+### E13-T2 — The five observational write verbs, and what they actually share
+
+**Kind:** task · **Status:** pending · **Blocked by:** E13-T1 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: decide which of the five write verbs overlap enough to consolidate, on
+evidence rather than on the fact that they are all writes.
+
+They are `assert_claim` (memory_curation), `record_session_event` (memory),
+`add_workspace_entry` (workspace), `append_intent_checkpoint` (intent_memory),
+`ingest_signal` (signals) — five verbs in five modules, which is itself a
+signal that they were built as five domains rather than one path with five
+shapes.
+
+**The rule from ADR-0011 applies here almost verbatim, and it is the reason this
+task is not obviously a good idea.** That decision refused to fuse the context
+envelope's blocks because they are four *authority classes*, and the rule it
+left was: *fuse within an authority class, never across one*. A session event, a
+staged claim, and a workspace note are not the same authority class either — one
+is an observation, one is an assertion entering a governed lifecycle, one is
+somebody's note. A single write verb over all three either loses that
+distinction or carries a discriminator that reintroduces it, and the second is
+five verbs wearing one name.
+
+So the honest output may be that two of the five consolidate and three do not.
+The epic's own rule — *no consolidation may drop a governance property* — is the
+test, and provenance completeness is the property most at risk: `assert_claim`
+enters the derivation and confidence machinery, `record_session_event` does not.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/conformance -q
+    make all
+
+### E13-T3 — A usage signal that could justify retiring anything
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: decide what evidence would justify retiring a tool, and either build the
+thing that produces it or record that retirement waits for a release.
+
+This is the task the epic assumed away. `install_tool_metrics` gives a per-tool
+Prometheus counter, which answers "was this called in the current scrape window"
+and not "has any agent ever needed this". The registry carries no usage field.
+And E7-T1 already established that the corpus does not exist because nothing has
+shipped.
+
+Three options, and picking one is the deliverable:
+
+- **Wait for a release.** Honest, and it makes E13's third metric explicitly
+  blocked rather than quietly unmeasured. Cheapest, and probably right.
+- **Persist per-tool call counts** beyond the scrape window, tenant-scoped.
+  Real data, but it is a new retention question about a new record class —
+  E6-T2 established that retention is keyed on record class with a legal basis,
+  so this is not a free table.
+- **Derive from receipts.** Receipts record what a resolution served, not which
+  tool the caller invoked, so this measures something adjacent and would need to
+  say so.
+
+Whichever is chosen, the anti-pattern to refuse is retiring on *absence of
+evidence* — a tool nobody called during a development tree's test runs is not a
+tool nobody needs, and the registry comment already says why.
+
+Acceptance:
+    make all
+
+### E13-T4 — The consolidation gate, so the counts cannot drift back
+
+**Kind:** task · **Status:** pending · **Blocked by:** E13-T1 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the two metrics that are now measurable become gates, at the numbers
+actually achieved.
+
+E7-T1's registry gate already holds the tool list against the code in both
+directions. This adds the budgets: core tier at most 8, and the distinct REST
+operations the core tier maps to at most whatever T1 lands on.
+
+Ratchet, not a fixed target — the same shape as the undocumented-extended-tools
+ratchet E7-T2 landed. A number that can only go down is a gate somebody has to
+argue with to weaken; a target in a document is a number that drifts and is
+noticed a year later.
+
+The value of this task is entirely in it existing before the counts are hit,
+rather than after. E13's stated purpose is that *simplicity is subtraction*, and
+subtraction without a ratchet is a one-time cleanup that grows back.
+
+Acceptance:
+    make lint
+    make all
+### E5-T2 — The SamplingPolicy, keyed on a tuple two-thirds of which exists
+
+**Kind:** task · **Status:** pending · **Blocked by:** E5-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+
+Goal: one governed sampling policy per (tenant, action class, sensitivity tier),
+with the sampling parameters derived from a stated risk tolerance rather than
+chosen.
+
+Two of the three key components already exist and must be reused, not
+redeclared. `sensitivity.TIERS` is `("public", "internal", "confidential",
+"restricted")` and is already the source of a generated CHECK constraint in
+migration 0068 — do the same here rather than writing the four values out.
+`action_class` exists in ARC's scope vocabulary; reuse it or justify a second
+axis in the entry.
+
+E1's audit is the precedent for the unknown-value case: a host sending an
+unrecognised sensitivity tier escaped every rule that named one, and
+`_declared_sensitivity` closes it by reading unknown as *most restrictive*. A
+sampling policy keyed on a tier must fail the same way — an unknown tier gets
+the heaviest sampling, never the default.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit -q -k "sampling"
+    make all
+
+### E5-T3 — The ranked queue, and the starvation it introduces
+
+**Kind:** task · **Status:** pending · **Blocked by:** E5-T2 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the review queue orders by leverage and sampling priority instead of
+arrival time, without any item becoming unreachable.
+
+**The starvation is created by this task, not inherited.** FIFO cannot starve
+anything; a ranked queue can, and this one has a feedback loop built into it.
+Confidence decays with age, a decayed claim ranks lower, a claim that never gets
+reviewed never has its confidence refreshed, and it decays further. The item
+sinks because it sank.
+
+`DECAY_FLOOR` does not fix this and it is important to see why, because it looks
+like it should. The floor bounds the decayed *value* — `DECAY_FLOOR + (stored -
+DECAY_FLOOR) * 2^(-age/half_life)` asymptotes to 0.10 rather than to zero — so a
+claim never decays out of existence. But *rank* is relative, and an item pinned
+at the floor is below every item that has not decayed. The value is bounded and
+the position is not.
+
+Whatever fixes it — an age term in the ordering, a reserved fraction of the
+queue, a hard maximum wait — must be stated as a property with a number, and
+that number is a governed magnitude like the rest. "We also consider age" is not
+checkable.
+
+Consequence preview belongs here rather than in its own task: a rank a reviewer
+cannot interrogate is a rank they will learn to ignore, and `get_blast_radius`
+already produces the material.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "queue and (rank or starv)"
+    make all
+
+### E5-T4 — `disposition_actor`, and what changes once a policy can dispose
+
+**Kind:** task · **Status:** pending · **Blocked by:** E5-T2 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: every disposition records whether a human or a policy made it, as a first
+class field rather than something inferred from an actor id.
+
+The case machinery is most of the way there. A disposition is already a
+*proposal* rather than a write, and it already records **who may approve it, at
+disposition time rather than inferred later** — which is exactly the discipline
+this needs, applied to a different question.
+
+The part that needs care is what a policy-automated disposition means for the
+sampling math. Acceptance sampling assumes the sample is *inspected*; if a
+policy disposes of an item, that item was not inspected, and counting it as a
+reviewed sample inflates the measured quality of a queue nobody looked at.
+Either policy dispositions are excluded from the sample or they are a separate
+stream with their own acceptance criteria, and the entry should say which and
+why. This is the failure mode where the number keeps looking fine.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "disposition"
+    make all
+
+### E5-T5 — Decay as a trust-class transition, with materiality frozen
+
+**Kind:** task · **Status:** pending · **Blocked by:** E5-T4 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a claim losing trust to age is recorded as a transition between trust
+classes, at a materiality frozen when the decay happened — not as a
+supersession, and not as a number that quietly moves.
+
+Ground this before building: **decay today is applied at read, not stored.**
+`serve_confidence` computes the effective number from `stored`,
+`confidence_scored_at`, the category half-life and an optional hold. So there is
+no stored decayed value to mistake for a supersession, and half of what this
+task guards against is already structurally impossible. Check the rest of that
+claim before writing anything — the entry may shrink to the transition record
+alone.
+
+"Frozen materiality at decay time" is the part with teeth, and it is the same
+property E4-T6 wants for its deadlines: a value computed on read drifts when its
+inputs are corrected, and "what was this worth when we let it decay" is exactly
+the question a review asks afterwards. Stamp it.
+
+`NON_DECAYING_VALUE_TYPES` is `{"prose"}` today, which means prose claims never
+enter this path at all. Whether that is right is not this task's question, but
+the entry should note it so the transition record is not read as universal.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit -q -k "decay"
+    make all
+
+### E5-T6 — The reviewer cockpit
+
+**Kind:** task · **Status:** pending · **Blocked by:** E5-T3, E5-T4 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: the disposition surface a reviewer actually works in, with the rank's
+reasoning visible and the consequence of each disposition shown before it is
+taken.
+
+Blocked on T3 and T4 rather than on the whole epic: the cockpit needs an
+ordering to display and a disposition vocabulary to offer, and neither the
+sampling policy's internals nor the decay transition changes what it renders.
+
+Two things this UI must not do, both learned in this repo. It must not present a
+rank as authoritative when its expected-loss term is absent — if E5-T1 lands
+without a loss model, the cockpit says the queue is ordered by leverage and
+sampling, because a reviewer who believes a number accounts for cost will defer
+to it. And per `.develop/DESIGN.md`, client authorization shapes the UI only;
+the disposition's approver check is the service's, and the cockpit showing a
+button is not the same as the write being permitted.
+
+E19-T7's defect is the one to keep in mind while building the adapter: the
+endpoint is part of the behaviour, and a test that asserts the body and method
+but not the path will pass while the call goes somewhere that does something
+else entirely.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
