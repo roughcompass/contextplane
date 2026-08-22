@@ -5142,7 +5142,7 @@ data at all.
 
 ### E13-T4 — The consolidation gate, so the counts cannot drift back
 
-**Kind:** task · **Status:** pending · **Blocked by:** E13-T1 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E13-T1 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the two metrics that are now measurable become gates, at the numbers
 actually achieved.
@@ -5162,7 +5162,27 @@ subtraction without a ratchet is a one-time cleanup that grows back.
 
 Acceptance:
     make lint
-    make all
+
+**Delivered as two ratchets inside the existing registry gate**, not a second
+script. That gate already knows what the core tier is; a separate check would be
+a second place the definition lives.
+
+`_CORE_TOOL_CEILING = 8` and `_CORE_PATH_CEILING = 7`. Both set at what is
+*achieved* — the tool count met its target, and the path count is E13-T1's floor
+rather than E13's unreachable six. A ratchet holding an aspiration nothing can
+satisfy is a failing build, not a gate.
+
+**Paths, not operations**, per E13-T1, and mutation-testing confirmed the
+distinction is real rather than pedantic. Promoting an extended tool that
+introduces a new path trips *both* ratchets. Promoting one that adds a method to
+a path already in the set trips only the tool ratchet — which is correct: an
+integrator learning `/v1/memory/sessions/{id}/events` learns it once whether it
+carries one method or three. An operation ratchet would have flagged that as
+surface growth and missed nothing an integrator feels.
+
+The failure message says "lower the ratchet when the count drops — never raise
+it to fit", because the one way this gate becomes decoration is somebody
+adjusting the number instead of the surface.    make all
 ### E5-T2 — The SamplingPolicy, keyed on a tuple two-thirds of which exists
 
 **Kind:** task · **Status:** pending · **Blocked by:** E5-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane

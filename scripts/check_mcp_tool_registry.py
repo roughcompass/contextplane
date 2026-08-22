@@ -19,6 +19,25 @@ run in the lint job. Each `tools/*.py` exposes a `register()` that calls
 fact about that function's body -- which is exactly the kind of fact a gate can
 hold to.
 
+**The two budgets are ratchets, not targets** (E13-T4). A number in a document
+drifts and is noticed a year later; a number that can only go down is one
+somebody has to argue with to weaken. E13's stated purpose is that simplicity is
+subtraction, and subtraction without a ratchet is a one-time cleanup that grows
+back.
+
+They are set at what is *achieved*, not at what was wished for. The core tier is
+8 and its target was 8. The REST budget is **7 paths** and its target was 6 --
+E13-T1 decided that 7 is the floor without dropping a capability, and recorded
+why, so the ratchet holds the real number rather than an aspiration nothing can
+satisfy.
+
+**Paths, not operations**, and that distinction is the whole of E13-T1.
+`record_session_event` and `list_session_events` are POST and GET on one path,
+so the core tier is 8 operations over 7 paths. The metric measures what an
+integrator has to learn, and a path with two methods is one thing to learn. An
+operation ratchet would also pass while somebody added a third method to an
+existing path, which is exactly the growth an integrator feels.
+
 Anti-vacuity: an empty registry, or a source tree that appears to register
 nothing, fails rather than passing. A check that scans zero tools and prints a
 tick is the failure mode every script in this directory is written against.
@@ -40,6 +59,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from checklib import repo_root, run_guard
 
 _REGISTRY = Path("contextplane/api/mcp/tool_registry.json")
+#: The most tools a default connection may expose. Achieved, not aspired to:
+#: E7-T1 chose eight by a stated rule -- a verb is core if an agent needs it to
+#: complete one turn of the two-call loop without reaching for a second surface.
+_CORE_TOOL_CEILING = 8
+
+#: The most distinct REST paths that core tier may span. Seven, which E13-T1
+#: established is the floor without dropping a capability -- E13's own target of
+#: six is unreachable, and the entry says why rather than leaving it unmet.
+_CORE_PATH_CEILING = 7
+
 _TOOLS_DIR = Path("contextplane/api/mcp/tools")
 
 #: The tiers a tool may be in. `core` reaches a default connection; `extended`
@@ -126,8 +155,30 @@ def main() -> int:
         if name not in registered:
             problems.append(f"{name}: in the registry and registered nowhere -- a promise the server does not keep")
 
-    core = sum(1 for e in listed if e.get("tier") == "core")
-    print(f"mcp-tool-registry gate: {len(registered)} registered, {len(by_name)} listed, {core} core")
+    core_entries = [e for e in listed if e.get("tier") == "core"]
+    core = len(core_entries)
+    # The REST surface an agent integration must learn: distinct *paths* the core
+    # tier maps to, with the method dropped. See the module docstring.
+    core_paths = {
+        str(e.get("rest") or "").split(" ", 1)[-1].strip() for e in core_entries if str(e.get("rest") or "").strip()
+    }
+    if core > _CORE_TOOL_CEILING:
+        problems.append(
+            f"the core tier is {core} tools, above the ratchet of {_CORE_TOOL_CEILING}. A default "
+            "connection is what an agent meets first; widening it is a decision, not a side effect "
+            "of adding a verb. Lower the ratchet when the count drops -- never raise it to fit."
+        )
+    if len(core_paths) > _CORE_PATH_CEILING:
+        problems.append(
+            f"the core tier spans {len(core_paths)} REST paths, above the ratchet of "
+            f"{_CORE_PATH_CEILING}: {sorted(core_paths)}. That number is what an integrator has to "
+            "learn. Adding a method to a path already in the set costs nothing here, which is "
+            "deliberate; adding a path does."
+        )
+    print(
+        f"mcp-tool-registry gate: {len(registered)} registered, {len(by_name)} listed, "
+        f"{core} core over {len(core_paths)} REST path(s)"
+    )
 
     if problems:
         for line in problems:
