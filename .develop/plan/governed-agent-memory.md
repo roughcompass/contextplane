@@ -4851,7 +4851,7 @@ for, and in two cases makes it smaller.
 
 ### E11-T1 — ADR: an explorer that recomputes is the differencing attack
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: decide whether E11's aggregates read a stored series or compute live —
 before any screen is built, because the two have different disclosure
@@ -4889,6 +4889,28 @@ particular reads cannot participate in a difference. Prefer the first.
 Acceptance:
     make doc-refs doc-links
     make all
+
+**Delivered as [ADR-0013](../adr/0013-an-explorer-that-recomputes-is-the-attack.md).**
+The aggregates read the stored series; they do not compute live.
+
+Two refinements the writing produced. **The receipts half is unaffected and
+stays live** — a receipt records one resolution rather than an aggregate over a
+population, so reading it twice discloses nothing that reading it once did not.
+Folding it into this decision would have made E11-T2 harder for no gain.
+
+And **a metric E11 wants that is not in `AGGREGATE_METRICS` is a writer change,
+not a reader change.** That set is closed so a metric cannot be computed by one
+pass and forgotten by the next, and adding a live computation beside the stored
+series to cover a gap would reintroduce the recompute while looking like a small
+convenience. It also inherits a retention question, since `_SOURCE_CLASS_FOR`
+makes an aggregate carry its source's record class — friction in the right
+place, because an aggregate outliving its sources is a breach no floor detects.
+
+The dissent is worth reading before E11-T2 starts: this generalises from one
+writer to a whole epic, and a metric with no per-actor contribution arguably
+cannot leak by subtraction at all. The honest fix is a per-metric analysis
+nobody has done; the ADR takes the conservative line because being wrong in the
+permissive direction is silent.
 
 ### E11-T2 — The receipts explorer, over endpoints that already exist
 
