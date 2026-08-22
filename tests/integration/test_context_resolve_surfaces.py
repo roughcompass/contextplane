@@ -581,22 +581,28 @@ async def test_without_a_profile_both_claims_are_served(surface: _Surface) -> No
 
     block = _claims_block((await _resolve(surface)).json())
 
-    # State before count. `/v1/context/resolve` runs its arms under a 2s
-    # per-arm timeout (`assembler.DEFAULT_ARM_TIMEOUT_S`) and a timeout degrades
-    # the block rather than failing the response -- by design, so one slow arm
-    # cannot take down the other three. The consequence for a test is that an
-    # arm which never answered and an arm which answered wrongly both surface as
-    # a short `items` list, and `0 == 2` says nothing about which.
+    # State before count, and the state has to be pinned to the one good value
+    # rather than away from one bad one. `/v1/context/resolve` runs its arms
+    # under a 2s per-arm timeout (`assembler.DEFAULT_ARM_TIMEOUT_S`) and never
+    # lets one arm take down the response, so there are three distinct ways to
+    # arrive here with an empty block: `degraded` (timed out or truncated),
+    # `failed` (the arm raised), and `empty` (the arm answered, with nothing).
+    # All three produce `0 == 2`, and they have nothing to do with each other.
     #
-    # This has fired in CI under eight parallel workers while passing locally.
-    # Asserting the state first makes that failure name itself as load rather
-    # than as a serving regression. It is deliberately still a failure: a skip
-    # here would let a systematically timing-out arm pass unnoticed, which is
-    # the vacuous-gate failure this suite is careful about elsewhere.
-    assert block["state"] != "degraded", (
-        f"the claims arm did not answer ({block['reason']}), so this control could not run. "
-        "That is an infrastructure signal -- the arm exceeded its 2s budget -- not a serving "
-        "regression."
+    # An earlier version asserted `!= "degraded"`, which let `failed` and
+    # `empty` through to a count assertion whose message then blamed the 2s
+    # budget. That is worse than no guard: it fires in CI under eight parallel
+    # workers and confidently reports the wrong cause. Naming the expected state
+    # makes each of the three say what it was.
+    #
+    # Deliberately still a failure rather than a skip -- a systematically
+    # timing-out arm passing unnoticed is the vacuous-gate outcome this suite is
+    # careful about elsewhere.
+    assert block["state"] == "success", (
+        f"the claims arm came back {block['state']!r} ({block['reason']}), so this control "
+        "could not run. 'degraded' means it exceeded its 2s budget or was truncated, 'failed' "
+        "means it raised, and 'empty' means it answered with nothing -- only the last is a "
+        "serving regression."
     )
     assert len(block["items"]) == 2
 
