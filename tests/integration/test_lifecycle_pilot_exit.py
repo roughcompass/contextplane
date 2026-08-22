@@ -415,7 +415,26 @@ async def test_a_scenario_carries_the_trust_label_it_recorded(
     resp = await _resolve(surface, lifecycle_references=[_lifecycle_reference("stage", stage)])
     assert resp.status_code == 200, resp.text
 
-    items = _claims_block(resp.json())["items"]
+    block = _claims_block(resp.json())
+    # State before count, the same order `test_context_resolve_surfaces.py`
+    # settled on and for the same reason. `/v1/context/resolve` runs its arms
+    # under a 2s per-arm timeout and a timeout *degrades* the block rather than
+    # failing the response -- so an arm that never answered and an arm that
+    # answered wrongly both arrive as an empty `items`, and "served no claim"
+    # says nothing about which.
+    #
+    # This has now fired in CI under eight parallel workers on three separate
+    # pull requests, each time against a change that could not have caused it.
+    # Asserting the state first makes the next occurrence name itself as load.
+    # Still a failure and not a skip: an arm that systematically timed out would
+    # otherwise pass unnoticed, which is the vacuous-gate failure this suite is
+    # careful about elsewhere.
+    assert block["state"] != "degraded", (
+        f"{name}: the claims arm did not answer ({block['reason']}), so this scenario could not "
+        "run. That is an infrastructure signal -- the arm exceeded its 2s budget -- not a "
+        "serving regression."
+    )
+    items = block["items"]
     assert items, f"{name} served no claim, so its trust label proves nothing"
     labels = {item["trust"]["trust"] for item in items}
     assert labels == {expected}, f"{name} recorded {expected!r} and the surface returned {sorted(labels)}"
