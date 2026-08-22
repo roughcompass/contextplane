@@ -69,6 +69,17 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         "service/memory/claim_curator_actions.py",
         "service/memory/claim_authority.py",
         "service/memory/claim_erasure_writes.py",
+        # Per-author accuracy. Reads `memory_claims` to join adjudications to
+        # the actor that wrote the claim, and reads nothing else from it.
+        #
+        # On this list on the narrowest ground available: it serves *counts*.
+        # Its entire output is four integers per group and a label that is a
+        # category or a predicate name -- never a claim's value, subject,
+        # confidence or provenance. The risk this gate exists for is a staged
+        # claim acquiring canonical authority by leaking through a capability
+        # read, and a count of how many claims were judged incorrect cannot
+        # carry a claim.
+        "service/memory/agent_accuracy.py",
         # Provenance-scoped quarantine. Reads both tables to decide which
         # claims a predicate reaches -- `memory_claim_provenance` is where a
         # connector run is recorded, so selecting by provenance is not possible

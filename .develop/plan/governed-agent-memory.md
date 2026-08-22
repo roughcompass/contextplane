@@ -5773,7 +5773,7 @@ is named but absent. E20's later tasks should not treat that as settled.
 
 ### E20-T3 — Migration: accuracy index and three new tables
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: one Alembic revision, `contextplane/storage/migrations/versions/0073_agent_accuracy_and_instructions.py` (`down_revision = "0072_drop_the_aggregate_actor_floor"`), that:
 
@@ -5797,7 +5797,7 @@ Acceptance:
 
 ### E20-T4 — `AgentAccuracyService`: per-author accuracy, on read
 
-**Kind:** task · **Status:** pending · **Blocked by:** E20-T2, E20-T3 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E20-T2, E20-T3 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `contextplane/service/memory/agent_accuracy.py`, structurally parallel to `calibration.py` (frozen dataclasses + pure aggregation + a thin service over `session_factory`), not to `learning_reads.py` (no `Floors` — none apply after E20-T1/T2).
 
@@ -5807,6 +5807,37 @@ Acceptance:
     .venv/bin/python -m pytest tests/unit -q -k "agent_accuracy"
     .venv/bin/python -m pytest tests/integration -q -k "agent_accuracy"
     make test-unit && make lint && make typecheck
+
+**Delivered.** One statement, grouped or not, with the `undecidable` split done
+in `AccuracyGroup` rather than in SQL — one pass, and the arithmetic where a
+reader can see it.
+
+**The scoping decision is proved by exactly one test, deliberately.**
+`test_accuracy_is_scoped_to_the_tenant_that_ran_the_agent` seeds two claims by
+the same agent in the same window, one about this tenant's subject and one about
+another tenant's. Both were written by this tenant's agent, so both belong in
+its figure. Mutation-checked: swapping to `owning_tenant_id` fails that test and
+**passes the other seven** — including the cross-tenant isolation test, which is
+why "another tenant's agent does not appear" is not sufficient evidence that the
+scoping is right.
+
+Two shapes worth carrying into E20-T5 and T6:
+
+- **`rate` is `None`, never `0.0`, when nothing was decided.** A window whose
+  every verdict was undecidable has an *unknown* accuracy, and zero is a
+  specific and wrong claim a caller would act on. Being wrong every time is
+  `0.0`; the two are different facts.
+- **`overall` is summed from the groups, not queried separately.** Two
+  statements over one window would eventually differ by a filter added to one of
+  them, so disagreement is made unrepresentable rather than tested for.
+
+**No confidence interval, deliberately.** Four of five is 80% and so is eight
+hundred of a thousand. `n_decided` travels with every rate so the difference is
+visible — weaker than an interval, and what can be justified without deciding
+what a "reliable" rate means, which this module has no basis to answer.
+
+E20-T3's migration is 0073 rather than the 0071 the entry named; both earlier
+numbers were taken while E20 was being decomposed.
 
 ### E20-T5 — `AgentAutonomyService`: intervention-rate from session events
 
