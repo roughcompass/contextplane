@@ -36,18 +36,11 @@ from contextplane.arc import (
     AuditDrainWorker,
     ChallengeCleanupWorker,
     CheckpointExporterWorker,
-    CheckpointExportResult,
     CheckpointExportService,
-    CleanupResult,
-    DrainResult,
-    ObservationFingerprintReaperResult,
     ObservationFingerprintReaperWorker,
-    ObservationWindowEvaluatorResult,
     ObservationWindowEvaluatorWorker,
     OperationalChainService,
-    ReviewExpiryResult,
     ReviewExpiryWorker,
-    SourceStatusRefreshResult,
     SourceStatusRefreshWorker,
     SourceStatusService,
 )
@@ -57,6 +50,7 @@ from contextplane.extraction.service import ExtractionService
 from contextplane.ingest.runner import create_scheduler, register_sync_jobs
 from contextplane.retention.tombstones import KeyedTenantSalt
 from contextplane.service.catalog.core import CatalogService
+from contextplane.service.governance.wiring import register_governance_jobs
 from contextplane.service.memory.calibration import CalibrationService
 from contextplane.service.memory.claim_writer import ClaimService
 from contextplane.service.memory.consolidation import ConsolidationService
@@ -65,23 +59,39 @@ from contextplane.service.memory.promotion_guardrails import GuardrailService
 from contextplane.service.memory.source_governance import SourceGovernanceService
 from contextplane.service.memory.source_ingest import SourceIngestService
 from contextplane.service.retrieval.embedding_drain import drain_outbox
-from contextplane.signals.aggregates import PrivacyAggregateReport, PrivacyAggregateWriter
+from contextplane.signals.aggregates import PrivacyAggregateWriter
 from contextplane.types import Clock, Embedder
 from contextplane.wiring.derivatives import build_propagation_worker, build_retention_expiry_worker
+from contextplane.wiring.job_summaries import (
+    _describe_arc_audit_drain,
+    _describe_arc_challenge_cleanup,
+    _describe_arc_checkpoint_exporter,
+    _describe_arc_observation_fingerprint_reaper,
+    _describe_arc_observation_window_evaluator,
+    _describe_arc_review_expiry,
+    _describe_arc_source_status_refresh,
+    _describe_calibration_refit,
+    _describe_consolidation_sweep,
+    _describe_derivative_propagation,
+    _describe_extraction_drain,
+    _describe_memory_expiry,
+    _describe_privacy_aggregates,
+    _describe_promotion_sweep,
+    _describe_retention_expiry,
+    _describe_usage_expiry,
+    _describe_workspace_expiry,
+)
 from contextplane.workers.base import register_periodic
-from contextplane.workers.calibration_refit import CalibrationRefitReport, CalibrationRefitWorker
+from contextplane.workers.calibration_refit import CalibrationRefitWorker
 from contextplane.workers.closure_refresh import ClosureRefreshWorker
-from contextplane.workers.consolidation_sweep import ConsolidationSweepWorker, SweepReport
-from contextplane.workers.derivative_propagation import PropagationReport
-from contextplane.workers.extraction_drain import DrainReport, ExtractionDrainWorker
-from contextplane.workers.memory_expiry import MemoryExpiryResult, MemoryExpiryWorker
+from contextplane.workers.consolidation_sweep import ConsolidationSweepWorker
+from contextplane.workers.extraction_drain import ExtractionDrainWorker
+from contextplane.workers.memory_expiry import MemoryExpiryWorker
 from contextplane.workers.promotion_sweep import PromotionSweepWorker
-from contextplane.workers.promotion_sweep import SweepReport as PromotionSweepReport
-from contextplane.workers.retention_expiry import RetentionExpiryReport
-from contextplane.workers.usage_expiry import UsageExpiryResult, UsageExpiryWorker
+from contextplane.workers.usage_expiry import UsageExpiryWorker
 from contextplane.workers.usage_rollup import UsageRollupWorker
 from contextplane.workers.webhook_delivery import WebhookDeliveryWorker
-from contextplane.workers.workspace_expiry import ExpiryResult, WorkspaceExpiryWorker
+from contextplane.workers.workspace_expiry import WorkspaceExpiryWorker
 
 _log = logging.getLogger(__name__)
 
@@ -207,150 +217,6 @@ async def check_audit_partition_ages(session_factory: object) -> None:
 # so the conversion needs to happen somewhere, and one named constant reads
 # better at each call site than a bare `3600`.
 _HOUR_S: int = 3600
-
-
-def _describe_workspace_expiry(result: ExpiryResult) -> str | None:
-    # Unconditional: this line is the audit trail's own summary, not just a
-    # "there was work" signal, so it is logged whether or not anything expired.
-    return f"workspace_expiry.run: expired={result.expired_count} batch_ts={result.batch_ts}"
-
-
-def _describe_memory_expiry(result: MemoryExpiryResult) -> str | None:
-    if not result.expired_count:
-        return None
-    return f"memory_expiry.run: expired={result.expired_count} batches={result.batches} truncated={result.truncated}"
-
-
-def _describe_usage_expiry(result: UsageExpiryResult) -> str | None:
-    if not result.deleted_count:
-        return None
-    return (
-        f"usage_expiry.run: deleted={result.deleted_count} batches={result.batches} "
-        f"truncated={result.truncated} cutoff={result.cutoff.isoformat()}"
-    )
-
-
-def _describe_derivative_propagation(report: PropagationReport) -> str | None:
-    # `failed` is called out separately because it is the only field here that is
-    # an incident: an item nobody will retry means erased content is still in the
-    # artefact it was scheduled to be removed from.
-    if not report.had_work:
-        return None
-    return (
-        f"derivative_propagation.run: claimed={report.claimed} applied={report.applied} "
-        f"artefacts={report.artefacts} retried={report.retried} failed={report.failed}"
-    )
-
-
-def _describe_retention_expiry(report: RetentionExpiryReport) -> str | None:
-    # `held` is logged even on an otherwise empty tick: records past their period
-    # that a hold is keeping are the state an operator has to be able to see, and
-    # a tick that reported nothing would hide exactly that.
-    if not report.had_work and not report.held:
-        return None
-    return (
-        f"retention_expiry.run: tenants={report.tenants} minimized={report.minimized} "
-        f"enqueued={report.enqueued} held={report.held} truncated={report.truncated}"
-    )
-
-
-def _describe_privacy_aggregates(report: PrivacyAggregateReport) -> str | None:
-    # `withheld` is called out because it is the differencing defence firing: a
-    # cell whose recompute disagreed with the published figure. An operator seeing
-    # that number move should be able to attribute it to the erasure behind it.
-    if not report.had_work:
-        return None
-    return (
-        f"privacy_aggregates.run: tenants={report.tenants} written={report.written} "
-        f"withheld={report.withheld} recomputed={report.recomputed}"
-    )
-
-
-def _describe_consolidation_sweep(report: SweepReport) -> str | None:
-    if not report.had_work:
-        return None
-    return (
-        f"consolidation_sweep.run: considered={report.considered} decided={report.decided} "
-        f"already_settled={report.already_settled} failed={report.failed}"
-    )
-
-
-def _describe_promotion_sweep(report: PromotionSweepReport) -> str | None:
-    if not report.had_work:
-        return None
-    return (
-        f"promotion_sweep.run: considered={report.considered} auto_promoted={report.auto_promoted} "
-        f"awaiting_review={report.awaiting_review} not_eligible={report.not_eligible} failed={report.failed}"
-    )
-
-
-def _describe_calibration_refit(report: CalibrationRefitReport) -> str | None:
-    if not report.had_work:
-        return None
-    return (
-        f"calibration_refit.run: considered={report.considered} activated={report.activated} "
-        f"stored_failed={report.stored_failed} below_minimum={report.below_minimum} failed={report.failed}"
-    )
-
-
-def _describe_extraction_drain(report: DrainReport) -> str | None:
-    if not report.had_work:
-        return None
-    return (
-        f"extraction_drain.run: claimed={report.claimed} staged_claims={report.staged_claims} "
-        f"retried={report.retried} dead_lettered={report.dead_lettered} refusals={report.refusals}"
-    )
-
-
-def _describe_arc_audit_drain(result: DrainResult) -> str | None:
-    if not result.claimed:
-        return None
-    return f"arc_audit_drain.run: claimed={result.claimed} drained={result.drained} failed={result.failed}"
-
-
-def _describe_arc_challenge_cleanup(result: CleanupResult) -> str | None:
-    if not result.deleted:
-        return None
-    return f"arc_challenge_cleanup.run: deleted={result.deleted}"
-
-
-def _describe_arc_review_expiry(result: ReviewExpiryResult) -> str | None:
-    if not result.expired_revisions:
-        return None
-    return (
-        f"arc_review_expiry.run: expired={result.expired_revisions} "
-        f"obligations_tombstoned={result.tombstoned_obligations}"
-    )
-
-
-def _describe_arc_source_status_refresh(result: SourceStatusRefreshResult) -> str | None:
-    if not result.due:
-        return None
-    return (
-        f"arc_source_status_refresh.run: due={result.due} refreshed={result.refreshed} "
-        f"integrity_pending={result.integrity_pending} failed={result.failed}"
-    )
-
-
-def _describe_arc_checkpoint_exporter(result: CheckpointExportResult) -> str | None:
-    if not result.due:
-        return None
-    return (
-        f"arc_checkpoint_exporter.run: due={result.due} exported={result.exported} "
-        f"sink_unavailable={result.sink_unavailable} integrity_failed={result.integrity_failed}"
-    )
-
-
-def _describe_arc_observation_window_evaluator(result: ObservationWindowEvaluatorResult) -> str | None:
-    if not result.checked:
-        return None
-    return f"arc_observation_window_evaluator.run: checked={result.checked} closed={result.closed}"
-
-
-def _describe_arc_observation_fingerprint_reaper(result: ObservationFingerprintReaperResult) -> str | None:
-    if not result.reaped:
-        return None
-    return f"arc_observation_fingerprint_reaper.run: reaped={result.reaped}"
 
 
 def build_scheduler(
@@ -502,6 +368,12 @@ def build_scheduler(
     # that already owns its own try/except and gauge update, and needs
     # `kwargs=` to pass session_factory through — so it keeps calling
     # `add_job()` directly.
+    # Governance's own periodic work, registered by the area rather than here.
+    # This file is at its line ceiling, and the ceiling's purpose is that adding
+    # a job touches the area's wiring and not the composition root -- see
+    # `register_governance_jobs` for what it registers and why.
+    register_governance_jobs(scheduler, session_factory=session_factory, clock=clock)
+
     scheduler.add_job(
         check_audit_partition_ages,
         trigger="interval",

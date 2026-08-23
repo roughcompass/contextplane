@@ -30,12 +30,18 @@ building it twice or reaching for a half-built graph.
 
 from __future__ import annotations
 
+import datetime
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from contextplane.service.governance.obligations import ReportingObligationService
 from contextplane.service.governance.visibility import VisibilityService
 from contextplane.types import Clock
+
+if TYPE_CHECKING:
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
 
 
 @dataclass(frozen=True)
@@ -49,6 +55,10 @@ class GovernanceServices:
     """
 
     visibility: VisibilityService
+    #: Nominating and classifying a reporting obligation. Takes no `visibility`
+    #: collaborator: an obligation is owned by exactly one tenant and is never
+    #: cross-tenant readable, so there is no decision for one to make.
+    reporting_obligations: ReportingObligationService
 
 
 def build_governance_services(
@@ -56,4 +66,47 @@ def build_governance_services(
     clock: Clock,
 ) -> GovernanceServices:
     """Construct the governance area's services."""
-    return GovernanceServices(visibility=VisibilityService(session_factory, clock))
+    return GovernanceServices(
+        reporting_obligations=ReportingObligationService(session_factory, clock=clock),
+        visibility=VisibilityService(session_factory, clock),
+    )
+
+
+def register_governance_jobs(
+    scheduler: AsyncIOScheduler,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    clock: Clock,
+) -> None:
+    """Register this area's periodic work on the shared scheduler.
+
+    Here rather than in `wiring/jobs.py` for the reason that file's own ceiling
+    encodes: adding a job to an area should touch the area's wiring and nothing
+    in the composition root.
+
+    **The obligation backlog is published on an interval, not computed on read.**
+    Both gauges are deployment-wide and carry no tenant label -- one would turn
+    each into a series per tenant -- so a per-tenant read cannot fill them
+    without reporting whichever tenant happened to ask most recently.
+
+    Hourly, because a reporting backlog moves in hours and a tighter interval
+    would buy load rather than resolution. It fires once at startup so an
+    operator sees a real number without waiting an hour for the first one.
+
+    **A scheduled observer that silently stops is the known risk**, and it is
+    worse for a gauge than for a worker: the value sits at its last reading,
+    looking healthy. The age gauge is the defence -- a stalled job freezes the
+    age, and an age that stops advancing while the count is non-zero is itself
+    the signal that the observer, not the backlog, is the problem.
+    """
+    obligations = ReportingObligationService(session_factory, clock=clock)
+    scheduler.add_job(
+        obligations.observe_backlog,
+        trigger="interval",
+        hours=1,
+        max_instances=1,
+        coalesce=True,
+        id="reporting_obligation_backlog",
+        replace_existing=True,
+        next_run_time=datetime.datetime.now(tz=datetime.UTC),
+    )

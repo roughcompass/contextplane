@@ -107,6 +107,7 @@ from contextplane.service.catalog.projections import ProjectionService
 from contextplane.service.catalog.schema import SchemaService
 from contextplane.service.catalog.vocabulary import VocabularyService
 from contextplane.service.governance.erasure import ErasureRegistry
+from contextplane.service.governance.obligations import ReportingObligationService
 from contextplane.service.governance.visibility import VisibilityService
 from contextplane.service.memory.agent_accuracy import AgentAccuracyService
 from contextplane.service.memory.agent_autonomy import AgentAutonomyService
@@ -167,6 +168,7 @@ class Services:
     vocabulary: VocabularyService
     schema: SchemaService
     visibility: VisibilityService
+    reporting_obligations: ReportingObligationService
     catalog: CatalogService
     lifecycle: LifecycleService
     retrieval: RetrievalService
