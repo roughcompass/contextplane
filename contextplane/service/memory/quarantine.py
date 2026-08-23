@@ -127,6 +127,34 @@ class QuarantinePreview:
         return self.seeds_traversed < self.seeds_total
 
 
+class ReceiptWithholding(Protocol):
+    """Withholding receipts that quoted a quarantined claim, and releasing them.
+
+    A `Protocol` because `contextplane.service` may not import
+    `contextplane.context`, and both the receipt tables and the
+    `observed_claims` block name live there. Inlining the block name here would
+    be a second source of truth for a vocabulary value -- the failure this
+    codebase refuses in `PROHIBITED_CLASSES` and in the governed-magnitude
+    registry.
+
+    Both methods take the caller's `session`: the writes belong in the
+    quarantine's own transaction, so claims and the receipts that quoted them
+    become withheld at one instant and no reader sees one without the other.
+    """
+
+    async def withhold_for_claims(
+        self,
+        session: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        claims: tuple[uuid.UUID, ...],
+        quarantine_id: uuid.UUID,
+        now: datetime.datetime,
+    ) -> None: ...
+
+    async def release(self, session: AsyncSession, *, quarantine_id: uuid.UUID) -> None: ...
+
+
 @dataclasses.dataclass(frozen=True)
 class Quarantine:
     """One applied quarantine, and what it reached."""
@@ -152,10 +180,12 @@ class QuarantineService:
         *,
         clock: Clock,
         blast_radius: BlastRadius | None = None,
+        receipts: ReceiptWithholding | None = None,
     ) -> None:
         self._factory = session_factory
         self._clock = clock
         self._blast_radius = blast_radius
+        self._receipts = receipts
 
     # -- preview -----------------------------------------------------------
 
@@ -300,6 +330,7 @@ class QuarantineService:
                 ),
                 {"now": now, "claims": list(matched)},
             )
+            await self._withhold_receipts(session, ctx, matched, quarantine_id=quarantine_id, now=now)
             await self._propagate(session, ctx, matched, now=now)
 
         return Quarantine(quarantine_id=quarantine_id, selector=selector, value=value, matched=matched, applied_at=now)
@@ -361,6 +392,7 @@ class QuarantineService:
                 .scalars()
                 .all()
             )
+            await self._release_receipts(session, quarantine_id=quarantine_id)
             await self._propagate(session, ctx, tuple(restored), now=now)
         return len(restored)
 
@@ -389,6 +421,53 @@ class QuarantineService:
         # once per piece of evidence, and a membership insert would then refuse
         # the duplicate. Sorting makes the recorded set reproducible.
         return tuple(sorted(set(rows.scalars().all())))
+
+    async def _withhold_receipts(
+        self,
+        session: AsyncSession,
+        ctx: TenantContext,
+        claims: tuple[uuid.UUID, ...],
+        *,
+        quarantine_id: uuid.UUID,
+        now: datetime.datetime,
+    ) -> None:
+        """Withhold every receipt that served one of these claims. E4-T4.
+
+        **In the same transaction as the claim write, which is stronger than
+        what the task asked for.** The entry prescribes marking the downstream
+        set first and reconciling afterwards, to close the window in which a
+        row-at-a-time sweep still serves the receipts it has not reached yet.
+        There is no such window here: `apply` is one transaction, so the claims
+        and the receipts that quoted them become withheld at the same instant
+        and no reader observes one without the other. "Mark first" is a remedy
+        for an incremental sweep, and ordering statements inside a transaction
+        nothing outside can see part-way would buy nothing while adding a
+        marked-but-unreconciled state to reason about. The session is handed
+        across so the collaborator writes inside that transaction rather than
+        opening one of its own.
+
+        **The residual race, stated rather than papered over.** A resolution
+        already in flight can commit a receipt citing a claim this transaction
+        withholds, a moment after it commits. Serving refuses the claim itself
+        from that instant, so no *new* resolution can cite it -- but a receipt
+        recording a true past serving is not reached by this write. That is a
+        reconciliation sweep's job, and this task does not build one.
+
+        A deployment with no withholding collaborator wired quarantines claims
+        and leaves receipts alone, which is the behaviour before this task
+        rather than a silent half-application.
+        """
+        if not claims or self._receipts is None:
+            return
+        await self._receipts.withhold_for_claims(
+            session, tenant_id=ctx.tenant_id, claims=claims, quarantine_id=quarantine_id, now=now
+        )
+
+    async def _release_receipts(self, session: AsyncSession, *, quarantine_id: uuid.UUID) -> None:
+        """Serve again every receipt this quarantine withheld, and only those."""
+        if self._receipts is None:
+            return
+        await self._receipts.release(session, quarantine_id=quarantine_id)
 
     @staticmethod
     async def _propagate(

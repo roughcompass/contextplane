@@ -52,6 +52,14 @@ class ContextReceipt(Base):
     #: schema addition.
     hydration_state: Mapped[str] = mapped_column(Text, nullable=False)
 
+    #: When an incident withheld this receipt, and which quarantine did it.
+    #: Separate from `hydration_state` because they answer different questions --
+    #: "has this finished recording what it served" against "may this be shown
+    #: right now" -- and because reconciliation needs the hydration value it
+    #: would otherwise have overwritten. See migration 0074.
+    withheld_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    withheld_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
     #: What hydration is expected to have written, known at intent time. A
     #: `complete` receipt whose stored rows do not match these finished wrongly,
     #: and nothing else would notice.

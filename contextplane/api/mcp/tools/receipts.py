@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.api.mcp import context
 from contextplane.api.routers.receipts import compose_resume_response
+from contextplane.context.receipts import refuse_if_unservable
 from contextplane.context.resume import ResumeRequest
 from contextplane.types import Clock
 
@@ -57,6 +58,13 @@ def _receipt_json(row: ContextReceipt) -> dict[str, Any]:
         "resolved_at": row.resolved_at.isoformat(),
         "requested_by": row.requested_by,
         "request_digest": row.request_digest,
+        # The two states the evidence reads refuse on. Published here for the
+        # reason the REST summary publishes them: this is the surface a caller
+        # polls to learn to wait, and an operator reads to learn why the reads
+        # below are refusing. Without them an agent sees a refusal and has
+        # nowhere to find out which of the two it is.
+        "hydration_state": row.hydration_state,
+        "withheld_at": row.withheld_at.isoformat() if row.withheld_at else None,
     }
 
 
@@ -145,6 +153,13 @@ async def get_receipt_references(
         source_namespace, kind, external_id and classification.
     """
     ctx = await context._resolve_tenant(session_factory, clock)
+    # Through the index rather than through `ContextReceiptService`, so the
+    # service-level refusal does not cover this one and the rule is applied
+    # here -- the same shared predicate the REST route calls, not a copy of it.
+    header = await _receipts().get(ctx, receipt_id=uuid.UUID(receipt_id))
+    if header is None:
+        raise ToolError(f"no receipt {receipt_id}")
+    refuse_if_unservable(header)
     found = await _index().references_for_receipt(ctx, receipt_id=uuid.UUID(receipt_id))
     return json.dumps(
         {
