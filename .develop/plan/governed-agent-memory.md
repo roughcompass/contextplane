@@ -3501,7 +3501,14 @@ Acceptance:
 
 ### E15-T7 — The contract pin bump for the second rename
 
-**Kind:** task · **Status:** pending · **Blocked by:** E15-T6 · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E15-T6 · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
+
+**Landed in contextplane-ui#21.** The vendored contract carries
+`SearchResultItem.fused_rank_score` and no `score`, the generated client follows
+it, and `ContextLabPage.test.tsx`'s fixture names the new field. The short window
+this entry worried about — the dashboard's pin disagreeing with the service about
+a response field — is closed. The pin has since moved again, to `0277c66` with
+E20-T10.
 
 Goal: vendor the contract E15-T6 exported, regenerate the client, and fix the one
 fixture that names the old field.
@@ -6386,11 +6393,6 @@ while E20 was being decomposed — 0071 by E4-T2's quarantine column and ledger,
 0072 by E20-T2's drop of the aggregate actor floor, which turned out to be a
 database CHECK as well as application code. The head moves; the entry's content
 does not.
-### E20-T3 — Migration: accuracy index and three new tables
-
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
-
-Goal: one Alembic revision, `contextplane/storage/migrations/versions/0071_agent_accuracy_and_instructions.py` (`down_revision = "0070_grant_temporal_exclusion"`), that:
 
 1. Adds `CREATE INDEX ix_memory_claims_author_created ON memory_claims (author_actor_id, created_at) WHERE author_actor_id IS NOT NULL` — lets `AgentAccuracyService`'s join drive from `memory_claims` on actor+window and complete via the existing `ix_memory_adjudication_claim`, instead of scanning `memory_claim_adjudication` per candidate row. The existing lone `ix_memory_claims_author` stays (other readers key on author without a time bound).
 2. Creates `agent_failure_pattern_report` table with columns: `report_id UUID PK, tenant_id, author_actor_id, window_start, window_end, n_adjudicated, n_incorrect, n_intervention_sessions, n_sessions, groups JSONB, generated_at, generated_by`. `groups` is a JSONB snapshot storing `[{claim_category, predicate, incorrect_count, total_count, rate, example_claim_ids}]`, matching `memory_calibration_mapping.bins`' precedent of storing a fitted aggregate as an inspectable blob rather than a normalized child table. `CHECK (window_end > window_start)`, `CHECK (n_incorrect <= n_adjudicated)`.
