@@ -61,9 +61,12 @@ from contextplane.types import Clock
 #: bucket added there orders itself here.
 _RANK: Final[dict[str, int]] = {name: index for index, (name, _) in enumerate(BUCKET_LOWER_BOUNDS)}
 
-#: How many claims one pass will look at. A sweep that tried to scan the whole
-#: store in one transaction would hold a snapshot open for as long as that takes;
-#: the next pass picks up where this one stopped because the ordering is stable.
+#: How many claims one *transaction* looks at, not how many a pass does. A sweep
+#: that scanned the whole store in one transaction would hold a snapshot open for
+#: as long as that takes; a sweep that stopped after one batch would examine the
+#: same first 500 claim ids forever and never reach the rest, because nothing in
+#: the predicate excludes a claim it already looked at. So the batch bounds the
+#: transaction and the keyset walks past it.
 DEFAULT_BATCH: Final[int] = 500
 
 TRANSITIONS_RECORDED = Counter(
@@ -111,33 +114,61 @@ class TrustTransitionSweep:
         self._batch = batch
 
     async def run_once(self) -> SweepReport:
-        """One pass. Reports what it examined and what it recorded."""
-        now = self._clock.now()
-        async with self._session_factory() as session, session.begin():
-            rows = (
-                await session.execute(
-                    text(
-                        "SELECT c.claim_id, c.owning_tenant_id, c.author_tenant_id, c.confidence, "
-                        "       c.confidence_scored_at, c.decay_half_life_days, c.value_type, "
-                        "       c.confidence_inputs, "
-                        "       (SELECT t.to_bucket FROM claim_trust_transitions t "
-                        "         WHERE t.claim_id = c.claim_id "
-                        "         ORDER BY t.observed_at DESC LIMIT 1) AS last_seen "
-                        "  FROM memory_claims c "
-                        " WHERE c.confidence IS NOT NULL "
-                        "   AND c.confidence_scored_at IS NOT NULL "
-                        "   AND c.decay_half_life_days IS NOT NULL "
-                        "   AND c.t_invalidated_at IS NULL "
-                        " ORDER BY c.claim_id "
-                        " LIMIT :batch"
-                    ),
-                    {"batch": self._batch},
-                )
-            ).mappings()
+        """Every eligible claim, in keyset batches. Reports the totals.
 
-            examined = recorded = 0
+        The keyset is what makes this a sweep rather than a sample. Nothing in
+        the predicate excludes a claim that has already been examined -- a claim
+        with a transition recorded is still eligible for the next one -- so a
+        single `LIMIT` with no cursor would re-examine the same first page on
+        every pass and never reach anything beyond it.
+        """
+        now = self._clock.now()
+        examined = recorded = 0
+        after: uuid.UUID | None = None
+
+        while True:
+            page_examined, page_recorded, after = await self._page(now=now, after=after)
+            examined += page_examined
+            recorded += page_recorded
+            if after is None:
+                break
+
+        return SweepReport(examined=examined, recorded=recorded)
+
+    async def _page(
+        self,
+        *,
+        now: datetime.datetime,
+        after: uuid.UUID | None,
+    ) -> tuple[int, int, uuid.UUID | None]:
+        """One transaction's worth. Returns the cursor, or None when exhausted."""
+        async with self._session_factory() as session, session.begin():
+            rows = list(
+                (
+                    await session.execute(
+                        text(
+                            "SELECT c.claim_id, c.owning_tenant_id, c.author_tenant_id, c.confidence, "
+                            "       c.confidence_scored_at, c.decay_half_life_days, c.value_type, "
+                            "       c.confidence_inputs, "
+                            "       (SELECT t.to_bucket FROM claim_trust_transitions t "
+                            "         WHERE t.claim_id = c.claim_id "
+                            "         ORDER BY t.observed_at DESC LIMIT 1) AS last_seen "
+                            "  FROM memory_claims c "
+                            " WHERE c.confidence IS NOT NULL "
+                            "   AND c.confidence_scored_at IS NOT NULL "
+                            "   AND c.decay_half_life_days IS NOT NULL "
+                            "   AND c.t_invalidated_at IS NULL "
+                            "   AND (CAST(:after AS UUID) IS NULL OR c.claim_id > CAST(:after AS UUID)) "
+                            " ORDER BY c.claim_id "
+                            " LIMIT :batch"
+                        ),
+                        {"after": after, "batch": self._batch},
+                    )
+                ).mappings()
+            )
+
+            recorded = 0
             for row in rows:
-                examined += 1
                 stored = float(row["confidence"])
                 # Seeded from the stored score when the claim has never been
                 # seen: that is the bucket it started in, before any decay.
@@ -181,7 +212,10 @@ class TrustTransitionSweep:
                 TRANSITIONS_RECORDED.labels(to_bucket=served.bucket).inc()
                 recorded += 1
 
-        return SweepReport(examined=examined, recorded=recorded)
+        # A short page is the last one. Exactly-full pages ask again, which costs
+        # one empty query at the end and never stops early.
+        cursor = rows[-1]["claim_id"] if len(rows) == self._batch else None
+        return len(rows), recorded, cursor
 
 
 async def transitions_for(

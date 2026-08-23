@@ -267,3 +267,33 @@ async def test_the_database_refuses_a_transition_that_did_not_move(
                 ),
                 {"i": uuid.uuid4(), "t": tid, "c": cid, "n": _SCORED},
             )
+
+
+@pytest.mark.asyncio
+async def test_a_claim_past_the_first_batch_is_still_examined(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The defect a two-worker run surfaced, pinned behaviourally.
+
+    The sweep read `ORDER BY claim_id LIMIT 500` with no cursor, and nothing in
+    its predicate excludes a claim it has already looked at — a claim with a
+    transition recorded is still eligible for the next one. So it examined the
+    same first page on every pass, forever, and **every claim beyond it decayed
+    unobserved.** The test that caught it looked like flakiness because the
+    failure depended on how many other claims the run happened to have seeded.
+
+    `batch=1` over three claims is the smallest arrangement that tells the two
+    apart: a sweep that stops at its first page records one, and a sweep that
+    walks records all three.
+    """
+    seeded = []
+    for _ in range(3):
+        _tid, cid = await _seed_claim(factory, confidence=0.90, half_life_days=30.0)
+        seeded.append(cid)
+
+    later = _SCORED + datetime.timedelta(days=30)
+    await TrustTransitionSweep(factory, clock=FakeClock(later), batch=1).run_once()
+
+    async with factory() as session:
+        for cid in seeded:
+            assert await transitions_for(session, claim_id=cid), "a claim past the first batch must still be examined"
