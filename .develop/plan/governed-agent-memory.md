@@ -5942,7 +5942,7 @@ behaviour.
 
 ### E10-T11 — Three modules still carry their own copies of the validators
 
-**Kind:** task · **Status:** pending · **Blocked by:** E10-T5 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — for the three named; the rest is E10-T12 · **Blocked by:** E10-T5 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: `parse.ts` is the only definition of the response validators.
 
@@ -5962,6 +5962,56 @@ Settle one thing while doing it: whether the divergent messages are *only*
 wording. `arcAuthoring`'s `requiredRecord` takes a label and produces a
 different sentence shape, so a caller matching on the message — if any does —
 breaks differently from one matching the others.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**Landed in contextplane-ui#26, and the answer to this entry's question was "no,
+not only wording."**
+
+- `arcAuthoring.stringArray` took `(record, key)` where every other copy takes
+  `(value, label)` — **a different function wearing the same name**. Its two
+  call sites were converted rather than the shared one bent to fit.
+- `admin.stringArray` returned a mutable `string[]`, and three of its fields
+  come from *generated* contract types that declare `string[]`. Those sites copy
+  the readonly result rather than cast it: the shared validator returns
+  `readonly` so a parsed response cannot be edited in place, and a cast keeps
+  the annotation while dropping the guarantee.
+- One test asserted `"entity_id is not a string"` verbatim. That is the
+  behaviour change this task was cut from E10-T5 to make reviewable, arriving
+  exactly where the entry predicted it.
+
+### E10-T12 — The other five modules, and the convention question underneath them
+
+**Kind:** task · **Status:** pending · **Blocked by:** E10-T11 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: `parse.ts` is the only definition, across the whole API layer.
+
+E10-T11 was filed against three modules. Measured after converting them, **five
+more** carry copies — and the reason they were not swept in with the rest is
+that they do not agree on a calling convention:
+
+| convention | modules |
+|---|---|
+| `(value, field)` | `agents.ts`, `audit.ts` |
+| `(record, key)` | `contextplane.ts`, `entityWrites.ts`, `relationships.ts` |
+
+`parse.ts` uses `(record, key)` for field readers and `(value, label)` for
+container checks. So converting the first group rewrites every call site rather
+than an import, and that is a decision about which shape is right — not a move.
+
+**Settle the convention before touching a line.** `(record, key)` reads the key
+off the record and can name the field in its own refusal without the caller
+repeating it; `(value, field)` lets a caller validate something that is not a
+record field at all. Both are defensible and the codebase currently asserts
+both. Whichever wins, the other's call sites change, so picking after starting
+is how this becomes two rewrites.
+
+`agents.ts` was added by E20-T10 with its own copies — the duplication was still
+growing while the task to stop it was open, which is the argument for a lint
+rule over a sweep. Consider whether one is cheap here: a `no-restricted-syntax`
+forbidding a top-level `function requiredString` outside `parse.ts` would have
+caught it at the point it was written.
 
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
