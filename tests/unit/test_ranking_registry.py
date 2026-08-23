@@ -416,21 +416,53 @@ def test_the_registry_is_read_at_import_so_a_refusal_stops_the_process() -> None
     )
 
 
+#: The shipped magnitudes that are *not* in-production behaviour brought under
+#: governance, and why each is not.
+#:
+#: Written out by id rather than folded into the assertion below, because that
+#: assertion's own instruction was "delete the assertion for that id and record
+#: the evidence -- not to relax the rule". Widening it to accept any non-
+#: `grandfathered` status would let the next entry claim one without anybody
+#: deciding, which is the thing the rule exists to prevent.
+_NOT_GRANDFATHERED: dict[str, str] = {
+    "review-sampling-unconfigured-floor@1": (
+        "Derived, not grandfathered: it follows by arithmetic from a stated defect tolerance "
+        "and consumer's risk, so `grandfathered` would assert nobody checked when the "
+        "derivation *is* the check. E5-T1b added the status for exactly this entry."
+    ),
+}
+
+
 def test_every_shipped_magnitude_declares_a_validation_status() -> None:
     """The committed artifact, which the synthetic tests above cannot cover."""
     for model_id in ranking.model_ids():
-        assert ranking.validation_status(model_id) in {"validated", "grandfathered"}
+        assert ranking.validation_status(model_id) in {"validated", "derived", "grandfathered"}
 
 
 def test_nothing_shipped_claims_validation_it_has_not_had() -> None:
-    """Every magnitude here is in-production behaviour brought under governance.
+    """Every magnitude here is in-production behaviour brought under governance,
+    except the ones named above with their reason.
 
     Marking one `validated` would assert a check nobody ran. If this test ever
     fails because a magnitude was genuinely validated, the fix is to delete the
     assertion for that id and record the evidence -- not to relax the rule.
     """
     for model_id in ranking.model_ids():
+        if model_id in _NOT_GRANDFATHERED:
+            continue
         assert ranking.validation_status(model_id) == "grandfathered", (
             f"{model_id} claims validation; if a check really happened, record its "
             "evidence and remove it from this assertion"
         )
+
+
+def test_every_named_exception_is_still_in_the_registry_and_still_not_grandfathered() -> None:
+    """The exception list is a claim about specific entries, and a stale one
+    reads as a live waiver. An id that left the registry, or that fell back to
+    `grandfathered`, must not keep an exemption written for it."""
+    for model_id, reason in _NOT_GRANDFATHERED.items():
+        assert model_id in ranking.model_ids(), f"{model_id} is exempted here and not in the registry"
+        assert (
+            ranking.validation_status(model_id) != "grandfathered"
+        ), f"{model_id} is grandfathered after all; remove its exemption"
+        assert len(reason.strip()) >= 40, f"{model_id}'s exemption states no usable reason"
