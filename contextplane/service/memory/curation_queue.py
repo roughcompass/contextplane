@@ -40,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from contextplane.audit import actions
 from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.service.memory.curation_ranking import (
+    _RANK_COLUMNS,
     _RANK_JOIN,
     _RANK_ORDER,
     ESCALATION_AGE_DAYS,
@@ -327,7 +328,8 @@ class CurationQueueService:
         }
         # A CTE, so the cursor can compare the *computed* sort columns rather
         # than recomputing a correlated subquery inside its own predicate.
-        sql = f"WITH ranked AS ({_QUEUE_BASE}{_RANK_JOIN}\n) SELECT * FROM ranked"  # noqa: S608 - fixed module constants; every value is bound
+        ranked = _QUEUE_SELECT + _RANK_COLUMNS + backlog_predicate(tenant_filter=True, extra_joins=_RANK_JOIN)
+        sql = f"WITH ranked AS ({ranked}\n) SELECT * FROM ranked"  # noqa: S608 - fixed module constants; every value is bound
         if cursor is not None:
             sql += (
                 " WHERE (escalation_rank, neg_dependants, neg_sampling, created_at, claim_id)"
@@ -773,7 +775,7 @@ _CASE_COLUMNS: Final[str] = (
 )
 
 
-def backlog_predicate(*, tenant_filter: bool) -> str:
+def backlog_predicate(*, tenant_filter: bool, extra_joins: str = "") -> str:
     """The FROM/JOIN/WHERE that decides whether a claim is in the curation backlog.
 
     A claim is backlogged for the first reason that applies -- unlinked, contested,
@@ -785,6 +787,12 @@ def backlog_predicate(*, tenant_filter: bool) -> str:
     logic. One function both callers run through means a change to what counts
     as "backlog" cannot update one and silently leave the other disagreeing --
     the failure mode a hand-copied second query invites by construction.
+
+    `extra_joins` splices in after the standing joins and **before** `WHERE`,
+    which is the only place another join can legally go. The ranked queue needs
+    one, and appending it to the finished string put a `LEFT JOIN` after the
+    predicate -- valid-looking text and a syntax error, which is why the join is
+    a parameter here rather than concatenation at the call site.
     """
     tenant_clause = "COALESCE(c.owning_tenant_id, c.author_tenant_id) = :tid\n   AND " if tenant_filter else ""
     return f"""
@@ -793,7 +801,7 @@ def backlog_predicate(*, tenant_filter: bool) -> str:
          ON p.claim_id = c.claim_id AND p.state = 'open'
         AND p.high_impact_reasons <> '[]'::JSONB
   LEFT JOIN memory_promotion_policy pol
-         ON pol.tenant_id = COALESCE(c.owning_tenant_id, c.author_tenant_id)
+         ON pol.tenant_id = COALESCE(c.owning_tenant_id, c.author_tenant_id){extra_joins}
  WHERE {tenant_clause}c.t_invalidated_at IS NULL
    AND c.status <> 'superseded'
    AND (
@@ -809,7 +817,10 @@ def backlog_predicate(*, tenant_filter: bool) -> str:
 # appears twice under different headings. The order runs from "we do not know what this
 # is about" outward, because an unlinked claim cannot be usefully judged on any of the
 # later grounds anyway.
-_QUEUE_BASE = """
+#: The select list alone. Separate from the predicate so the ranked query can
+#: add columns to one and a join to the other -- both of which have exactly one
+#: legal position, and neither of which is "the end of the finished string".
+_QUEUE_SELECT = """
 SELECT c.claim_id,
        CASE
            WHEN c.status = 'unlinked' THEN 'unlinked'
@@ -825,4 +836,6 @@ SELECT c.claim_id,
        c.created_at,
        (c.source_authority IN ('owner_human', 'observer_human')
         OR c.confirms_claim_id IS NOT NULL) AS human_backed,
-       p.proposal_id""" + backlog_predicate(tenant_filter=True)
+       p.proposal_id"""
+
+_QUEUE_BASE = _QUEUE_SELECT + backlog_predicate(tenant_filter=True)

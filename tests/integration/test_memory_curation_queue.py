@@ -221,6 +221,48 @@ async def test_queue_pagination_advances_the_cursor_without_duplicates(
 
 
 @pytest.mark.asyncio(loop_scope="module")
+async def test_the_queue_actually_orders_by_consequence(harness: EntitlementAuthHarness, pg_container: str) -> None:
+    """The ranked order runs against a real database, and puts the escalated first.
+
+    This test exists because nothing did. The ranking shipped with two defects
+    that only a database could see -- a `LEFT JOIN` concatenated after the
+    `WHERE` it had to precede, and a set of sort columns the `SELECT` never
+    produced -- and every unit test passed, because none of them executes SQL.
+    An ordering the queue claims and never demonstrates is an ordering nobody
+    has checked.
+    """
+    persona = harness.add_persona(f"curq-rank-{uuid.uuid4().hex[:8]}")
+    tenant_id = await _materialise_persona(harness, persona)
+    actor_id = await _seed_actor(pg_container, tenant_id)
+    ctx = TenantContext(tenant_id=tenant_id, actor_id=actor_id, roles=["producer"])
+
+    claims = harness.app.state.services.claims
+    recent = await claims.stage_claim(
+        ctx, subject_reference="github:acme/recent", predicate="owned_by_team", value="a", evidence=_EV
+    )
+    stale = await claims.stage_claim(
+        ctx, subject_reference="github:acme/stale", predicate="owned_by_team", value="b", evidence=_EV
+    )
+    # Aged past the escalation cutoff directly, because staging cannot backdate.
+    engine = create_async_engine(pg_container, connect_args={"prepared_statement_cache_size": 0})
+    try:
+        async with async_sessionmaker(engine)() as session, session.begin():
+            await session.execute(
+                text("UPDATE memory_claims SET created_at = now() - INTERVAL '400 days' " "WHERE claim_id = :cid"),
+                {"cid": stale.claim_id},
+            )
+    finally:
+        await engine.dispose()
+
+    async with _client(harness) as client:
+        with patch_validator_for_actor(persona):
+            resp = await client.get("/v1/memory/curation-queue", headers=bearer_headers(tenant_slug=persona.slug))
+    assert resp.status_code == 200, resp.text
+    ordered = [item["claim_id"] for item in resp.json()["items"]]
+    assert ordered == [str(stale.claim_id), str(recent.claim_id)]
+
+
+@pytest.mark.asyncio(loop_scope="module")
 async def test_link_gives_an_unlinked_claim_a_subject(harness: EntitlementAuthHarness, pg_container: str) -> None:
     persona = harness.add_persona(f"link-{uuid.uuid4().hex[:8]}")
     tenant_id = await _materialise_persona(harness, persona)
