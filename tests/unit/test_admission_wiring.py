@@ -124,10 +124,21 @@ def test_some_modules_are_found_at_all() -> None:
 
 def test_every_module_naming_a_pilot_field_reaches_admission() -> None:
     """The contract. A module that names a pilot field type either goes through
-    admission or is one of the two modules that define it."""
+    admission, defines the vocabulary, or governs it without writing content."""
     defining = {
         "contextplane/context/admission.py",  # the floor itself
         "contextplane/api/pii_guard.py",  # the adapter that runs it
+        # Names the field types to *govern* them, not to write content
+        # classified by one. E10-T6 published the vocabulary on this surface's
+        # request schema so a client can offer a correct picker instead of
+        # duplicating nine strings -- and the same task made this route refuse a
+        # field type outside the pilot set, because a policy written for one
+        # would store, list, and be resolved against nothing.
+        #
+        # Third category rather than a fourth entry in `defining`: this module
+        # does not define the vocabulary, it configures policy over it. Calling
+        # `admit` here would scan a policy row, which carries no content.
+        "contextplane/api/routers/admin_pii.py",
     }
 
     bypasses = {

@@ -422,17 +422,39 @@ async def test_create_pii_field_policy_happy_path() -> None:
 
 @pytest.mark.asyncio
 async def test_create_pii_field_policy_invalid_policy() -> None:
-    from contextplane.api.routers.admin_pii import PiiFieldPolicyCreate, create_pii_field_policy
+    """Now refused by the schema, before the handler runs.
 
-    ctx = _admin_ctx()
-    factory = _make_session()
-    request = _make_request(factory)
+    `policy` is a published `Literal` rather than a bare string, so an
+    unrecognised value never reaches the route's own check — and over HTTP
+    FastAPI answers the same 422 it did before. The route keeps its check
+    anyway, because the schema's list is hand-written and the scanner's is the
+    one that governs; `tests/conformance/test_pii_vocabularies_published.py`
+    holds the two in agreement.
+    """
+    from pydantic import ValidationError
 
-    body = PiiFieldPolicyCreate(field_type="workspace_entry.body", policy="ignore")
-    with pytest.raises(HTTPException) as exc_info:
-        await create_pii_field_policy(body, request, _inert_idem(), ctx)
-    assert exc_info.value.status_code == 422
-    assert "policy" in exc_info.value.detail
+    from contextplane.api.routers.admin_pii import PiiFieldPolicyCreate
+
+    with pytest.raises(ValidationError, match="policy"):
+        PiiFieldPolicyCreate(field_type="workspace_entry.body", policy="ignore")
+
+
+@pytest.mark.asyncio
+async def test_create_pii_field_policy_refuses_a_field_type_nothing_scans() -> None:
+    """The defect this task was filed over.
+
+    `field_type` was never validated on this path: `body.field_type` went
+    straight into the insert, so one wrong character stored a policy that
+    listed back and governed nothing — resolution matches the field type as an
+    exact string. An operator reading their own policy list saw a control they
+    never had.
+    """
+    from pydantic import ValidationError
+
+    from contextplane.api.routers.admin_pii import PiiFieldPolicyCreate
+
+    with pytest.raises(ValidationError, match="field_type"):
+        PiiFieldPolicyCreate(field_type="workspace_entry.bodies", policy="warn")
 
 
 @pytest.mark.asyncio
