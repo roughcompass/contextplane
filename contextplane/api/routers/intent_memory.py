@@ -166,6 +166,13 @@ async def append_checkpoint(
         )
     except AudienceDenied:
         return _denied()
+    except ValidationError as exc:
+        # Admission refuses here: the service scans the content before storing
+        # it, and a prohibited class comes back as this repo's own refusal
+        # rather than the scanner's type. Mapped to the same 422 the keyless
+        # append above produces, since both are "this request cannot be stored
+        # as written".
+        raise map_catalog_error(exc) from exc
 
     # 201 for a checkpoint this call created, 200 for one it found. A client
     # retrying a dropped response can tell which happened.

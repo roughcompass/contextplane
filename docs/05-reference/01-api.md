@@ -511,9 +511,11 @@ returns a transcript** -- there is no parameter that can ask for one.
 
 ### Prohibited content
 
-Five field types carry a handling classification: `memory_session_event.body`,
-`artifact.body`, `claim_value`, `workspace_entry.body` and
-`workspace_entry.references`. Content written to one of them is checked before
+Nine field types carry a handling classification: `memory_session_event.body`,
+`artifact.body`, `claim_value`, `workspace_entry.body`,
+`workspace_entry.references`, `intent_checkpoint.body`,
+`intent_checkpoint.references`, `external_signal.payload` and
+`external_signal.references`. Content written to one of them is checked before
 storage against the shipped detectors -- SSNs, payment cards, email addresses,
 telephone numbers, AWS access keys, AWS secret keys, and three-segment JWTs.
 

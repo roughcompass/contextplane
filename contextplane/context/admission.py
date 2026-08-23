@@ -61,6 +61,19 @@ FIELD_CLAIM_VALUE = "claim_value"
 FIELD_WORKSPACE_ENTRY_BODY = "workspace_entry.body"
 FIELD_WORKSPACE_ENTRY_REFERENCES = "workspace_entry.references"
 
+#: A task checkpoint's content: every client-supplied field, serialized
+#: canonically. One field type rather than one per field, because they are the
+#: same thing to a policy -- what an agent says about its own work -- and
+#: splitting them would let a deployment block a credential pasted into `goal`
+#: and admit the identical string in `next_action`. A checkpoint has no
+#: counterpart to a session event's deliberately-unscanned `metadata`: the
+#: shape is closed to content fields, so "every field" needs no exceptions.
+FIELD_INTENT_CHECKPOINT_BODY = "intent_checkpoint.body"
+#: The evidence a checkpoint cites, serialized canonically. Separate from the
+#: body for the reason signal references are separate from their payload: they
+#: are separately authored, and `authorized_uri` is a real token channel.
+FIELD_INTENT_CHECKPOINT_REFERENCES = "intent_checkpoint.references"
+
 #: The observation a signal carries, in whichever form it arrives. One field
 #: type covers both the canonical serialization of the payload mapping *and* the
 #: evidence-handle URI, because they are the same thing to a policy: what the
@@ -80,6 +93,8 @@ PILOT_FIELD_TYPES: frozenset[str] = frozenset(
         FIELD_CLAIM_VALUE,
         FIELD_WORKSPACE_ENTRY_BODY,
         FIELD_WORKSPACE_ENTRY_REFERENCES,
+        FIELD_INTENT_CHECKPOINT_BODY,
+        FIELD_INTENT_CHECKPOINT_REFERENCES,
         FIELD_EXTERNAL_SIGNAL_PAYLOAD,
         FIELD_EXTERNAL_SIGNAL_REFERENCES,
     }

@@ -2,8 +2,26 @@
   "artifact_version": 1,
   "_comment": "Every tool the MCP server registers, and which surface tier it belongs to. Committed rather than generated: a list computed from the code agrees with the code by construction and so cannot catch the code being wrong -- the same reason ranking_registry.json is an artifact. `scripts/check_mcp_tool_registry.py` holds the two in agreement in both directions. TIERS: `core` is what a default connection exposes; `extended` requires an autonomy envelope that names it, which E7-T3 wires. HOW CORE WAS CHOSEN, and what could not be derived: E7-T1 asks for the set to come from what receipts show agents actually call. No such corpus exists -- this service has never been released, and the receipts in a development tree are the test suite's. So the set is derived from a stated rule instead: a verb is core if an agent needs it to complete one turn of the two-call loop without reaching for a second surface. That is `whoami` to know who it is, record and list session events for the loop itself, search over claims and over the catalog to find what it already knows, resolve and resume for context, and one entity read. Eight. When a real corpus exists, replace the rule with the measurement rather than arguing about the list.",
   "core_count": 8,
-  "tool_count": 67,
+  "tool_count": 70,
   "tools": [
+    {
+      "name": "add_workspace_entry",
+      "module": "contextplane/api/mcp/tools/workspace.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "adjudicate_claim",
+      "module": "contextplane/api/mcp/tools/memory_curation.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "append_intent_checkpoint",
+      "module": "contextplane/api/mcp/tools/intent_memory.py",
+      "tier": "extended",
+      "rest": null
+    },
     {
       "name": "arc_complete_preflight",
       "module": "contextplane/api/mcp/tools/arc.py",
@@ -59,32 +77,8 @@
       "rest": null
     },
     {
-      "name": "get_capability",
-      "module": "contextplane/api/mcp/tools/catalog.py",
-      "tier": "core",
-      "rest": "GET /v1/capabilities/{entity_id}"
-    },
-    {
-      "name": "lookup_by_external_id",
-      "module": "contextplane/api/mcp/tools/catalog.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "whoami",
-      "module": "contextplane/api/mcp/tools/catalog.py",
-      "tier": "core",
-      "rest": "GET /v1/whoami"
-    },
-    {
-      "name": "registry_resolve_context",
-      "module": "contextplane/api/mcp/tools/context.py",
-      "tier": "core",
-      "rest": "POST /v1/context/resolve"
-    },
-    {
-      "name": "record_context_feedback",
-      "module": "contextplane/api/mcp/tools/context_feedback.py",
+      "name": "assert_claim",
+      "module": "contextplane/api/mcp/tools/memory_curation.py",
       "tier": "extended",
       "rest": null
     },
@@ -95,8 +89,86 @@
       "rest": null
     },
     {
-      "name": "append_intent_checkpoint",
-      "module": "contextplane/api/mcp/tools/intent_memory.py",
+      "name": "assert_relationship",
+      "module": "contextplane/api/mcp/tools/relationships.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "confirm_claim",
+      "module": "contextplane/api/mcp/tools/memory_curation.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "create_workspace",
+      "module": "contextplane/api/mcp/tools/workspace.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "delete_session_event",
+      "module": "contextplane/api/mcp/tools/memory.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "discard_claim",
+      "module": "contextplane/api/mcp/tools/memory_curation.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "find_receipts_by_reference",
+      "module": "contextplane/api/mcp/tools/receipts.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "get_blast_radius",
+      "module": "contextplane/api/mcp/tools/retrieval.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "get_capability",
+      "module": "contextplane/api/mcp/tools/catalog.py",
+      "tier": "core",
+      "rest": "GET /v1/capabilities/{entity_id}"
+    },
+    {
+      "name": "get_claim",
+      "module": "contextplane/api/mcp/tools/memory.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "get_claim_history",
+      "module": "contextplane/api/mcp/tools/memory_curation.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "get_context_receipt",
+      "module": "contextplane/api/mcp/tools/receipts.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "get_curation_case",
+      "module": "contextplane/api/mcp/tools/memory_curation.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "get_dependencies",
+      "module": "contextplane/api/mcp/tools/retrieval.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "get_dependents",
+      "module": "contextplane/api/mcp/tools/retrieval.py",
       "tier": "extended",
       "rest": null
     },
@@ -113,32 +185,32 @@
       "rest": null
     },
     {
-      "name": "grant_intent_participation",
-      "module": "contextplane/api/mcp/tools/intent_memory.py",
+      "name": "get_my_accuracy",
+      "module": "contextplane/api/mcp/tools/memory_curation.py",
+      "tier": "extended",
+      "rest": "GET /v1/agents/{actor_id}/accuracy"
+    },
+    {
+      "name": "get_my_autonomy",
+      "module": "contextplane/api/mcp/tools/memory_curation.py",
+      "tier": "extended",
+      "rest": "GET /v1/agents/{actor_id}/autonomy"
+    },
+    {
+      "name": "get_my_failure_patterns",
+      "module": "contextplane/api/mcp/tools/memory_curation.py",
+      "tier": "extended",
+      "rest": "GET /v1/agents/{actor_id}/failure-patterns"
+    },
+    {
+      "name": "get_receipt_exclusions",
+      "module": "contextplane/api/mcp/tools/receipts.py",
       "tier": "extended",
       "rest": null
     },
     {
-      "name": "list_intent_participants",
-      "module": "contextplane/api/mcp/tools/intent_memory.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "revoke_intent_participation",
-      "module": "contextplane/api/mcp/tools/intent_memory.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "delete_session_event",
-      "module": "contextplane/api/mcp/tools/memory.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "get_claim",
-      "module": "contextplane/api/mcp/tools/memory.py",
+      "name": "get_receipt_references",
+      "module": "contextplane/api/mcp/tools/receipts.py",
       "tier": "extended",
       "rest": null
     },
@@ -149,74 +221,32 @@
       "rest": null
     },
     {
-      "name": "list_session_events",
-      "module": "contextplane/api/mcp/tools/memory.py",
-      "tier": "core",
-      "rest": "GET /v1/memory/sessions/{session_id}/events"
-    },
-    {
-      "name": "list_sessions",
-      "module": "contextplane/api/mcp/tools/memory.py",
+      "name": "get_workspace",
+      "module": "contextplane/api/mcp/tools/workspace.py",
       "tier": "extended",
       "rest": null
     },
     {
-      "name": "query_claims",
-      "module": "contextplane/api/mcp/tools/memory.py",
+      "name": "grant_intent_participation",
+      "module": "contextplane/api/mcp/tools/intent_memory.py",
       "tier": "extended",
       "rest": null
     },
     {
-      "name": "record_session_event",
-      "module": "contextplane/api/mcp/tools/memory.py",
-      "tier": "core",
-      "rest": "POST /v1/memory/sessions/{session_id}/events"
-    },
-    {
-      "name": "search_claims",
-      "module": "contextplane/api/mcp/tools/memory.py",
-      "tier": "core",
-      "rest": "GET /v1/memory/claims/search"
-    },
-    {
-      "name": "adjudicate_claim",
-      "module": "contextplane/api/mcp/tools/memory_curation.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "assert_claim",
-      "module": "contextplane/api/mcp/tools/memory_curation.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "confirm_claim",
-      "module": "contextplane/api/mcp/tools/memory_curation.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "discard_claim",
-      "module": "contextplane/api/mcp/tools/memory_curation.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "get_claim_history",
-      "module": "contextplane/api/mcp/tools/memory_curation.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "get_curation_case",
-      "module": "contextplane/api/mcp/tools/memory_curation.py",
+      "name": "ingest_signal",
+      "module": "contextplane/api/mcp/tools/signals.py",
       "tier": "extended",
       "rest": null
     },
     {
       "name": "link_claim_subject",
       "module": "contextplane/api/mcp/tools/memory_curation.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "list_capabilities",
+      "module": "contextplane/api/mcp/tools/retrieval.py",
       "tier": "extended",
       "rest": null
     },
@@ -245,14 +275,56 @@
       "rest": null
     },
     {
+      "name": "list_intent_participants",
+      "module": "contextplane/api/mcp/tools/intent_memory.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "list_notifications",
+      "module": "contextplane/api/mcp/tools/notifications.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
       "name": "list_promotion_proposals",
       "module": "contextplane/api/mcp/tools/memory_curation.py",
       "tier": "extended",
       "rest": null
     },
     {
+      "name": "list_session_events",
+      "module": "contextplane/api/mcp/tools/memory.py",
+      "tier": "core",
+      "rest": "GET /v1/memory/sessions/{session_id}/events"
+    },
+    {
+      "name": "list_sessions",
+      "module": "contextplane/api/mcp/tools/memory.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "list_workspaces",
+      "module": "contextplane/api/mcp/tools/workspace.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "lookup_by_external_id",
+      "module": "contextplane/api/mcp/tools/catalog.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
       "name": "open_curation_case",
       "module": "contextplane/api/mcp/tools/memory_curation.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "query_claims",
+      "module": "contextplane/api/mcp/tools/memory.py",
       "tier": "extended",
       "rest": null
     },
@@ -269,6 +341,30 @@
       "rest": null
     },
     {
+      "name": "record_context_feedback",
+      "module": "contextplane/api/mcp/tools/context_feedback.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
+      "name": "record_session_event",
+      "module": "contextplane/api/mcp/tools/memory.py",
+      "tier": "core",
+      "rest": "POST /v1/memory/sessions/{session_id}/events"
+    },
+    {
+      "name": "registry_resolve_context",
+      "module": "contextplane/api/mcp/tools/context.py",
+      "tier": "core",
+      "rest": "POST /v1/context/resolve"
+    },
+    {
+      "name": "resume_context",
+      "module": "contextplane/api/mcp/tools/receipts.py",
+      "tier": "core",
+      "rest": "POST /v1/context/resume"
+    },
+    {
       "name": "reverse_promotion",
       "module": "contextplane/api/mcp/tools/memory_curation.py",
       "tier": "extended",
@@ -281,80 +377,14 @@
       "rest": null
     },
     {
+      "name": "revoke_intent_participation",
+      "module": "contextplane/api/mcp/tools/intent_memory.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
       "name": "route_curation_case",
       "module": "contextplane/api/mcp/tools/memory_curation.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "triage_capability_request",
-      "module": "contextplane/api/mcp/tools/memory_curation.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "list_notifications",
-      "module": "contextplane/api/mcp/tools/notifications.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "find_receipts_by_reference",
-      "module": "contextplane/api/mcp/tools/receipts.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "get_context_receipt",
-      "module": "contextplane/api/mcp/tools/receipts.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "get_receipt_exclusions",
-      "module": "contextplane/api/mcp/tools/receipts.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "get_receipt_references",
-      "module": "contextplane/api/mcp/tools/receipts.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "resume_context",
-      "module": "contextplane/api/mcp/tools/receipts.py",
-      "tier": "core",
-      "rest": "POST /v1/context/resume"
-    },
-    {
-      "name": "assert_relationship",
-      "module": "contextplane/api/mcp/tools/relationships.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "get_blast_radius",
-      "module": "contextplane/api/mcp/tools/retrieval.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "get_dependencies",
-      "module": "contextplane/api/mcp/tools/retrieval.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "get_dependents",
-      "module": "contextplane/api/mcp/tools/retrieval.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "list_capabilities",
-      "module": "contextplane/api/mcp/tools/retrieval.py",
       "tier": "extended",
       "rest": null
     },
@@ -365,34 +395,10 @@
       "rest": "GET /v1/search"
     },
     {
-      "name": "ingest_signal",
-      "module": "contextplane/api/mcp/tools/signals.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "add_workspace_entry",
-      "module": "contextplane/api/mcp/tools/workspace.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "create_workspace",
-      "module": "contextplane/api/mcp/tools/workspace.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "get_workspace",
-      "module": "contextplane/api/mcp/tools/workspace.py",
-      "tier": "extended",
-      "rest": null
-    },
-    {
-      "name": "list_workspaces",
-      "module": "contextplane/api/mcp/tools/workspace.py",
-      "tier": "extended",
-      "rest": null
+      "name": "search_claims",
+      "module": "contextplane/api/mcp/tools/memory.py",
+      "tier": "core",
+      "rest": "GET /v1/memory/claims/search"
     },
     {
       "name": "search_workspace_entries",
@@ -401,10 +407,22 @@
       "rest": null
     },
     {
+      "name": "triage_capability_request",
+      "module": "contextplane/api/mcp/tools/memory_curation.py",
+      "tier": "extended",
+      "rest": null
+    },
+    {
       "name": "update_workspace_entry",
       "module": "contextplane/api/mcp/tools/workspace.py",
       "tier": "extended",
       "rest": null
+    },
+    {
+      "name": "whoami",
+      "module": "contextplane/api/mcp/tools/catalog.py",
+      "tier": "core",
+      "rest": "GET /v1/whoami"
     }
   ]
 }

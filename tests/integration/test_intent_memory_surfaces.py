@@ -439,6 +439,86 @@ async def test_a_checkpoint_id_from_another_task_is_not_found(surface: _Surface)
     assert resp.status_code in (403, 404), "either refusal is fine; returning the checkpoint is not"
 
 
+# --- Admission ----------------------------------------------------------------
+#
+# The other four observational write verbs scan before storage. This one did
+# not, so a checkpoint was the one place an agent could put a credential into
+# governed memory and have it stored. The scan lives in the service rather than
+# in either route, which is what the last of these three asserts.
+
+# Visa test number -- passes Luhn, well-known in PCI test suites.
+_VISA_TEST_CC = "4111111111111111"
+
+
+@pytest.mark.asyncio
+async def test_a_checkpoint_carrying_a_prohibited_class_is_refused(surface: _Surface) -> None:
+    """And the chain does not advance: a refused append must leave no step."""
+    headers = {**bearer_headers(tenant_slug=surface["slug"]), "Idempotency-Key": "k-pii"}
+    with _as(surface, surface["owner"]):
+        refused = await surface["client"].post(
+            f"/v1/intents/{surface['intent_id']}/checkpoints",
+            headers=headers,
+            json={"goal": "bill it", "next_action": f"charge card {_VISA_TEST_CC}"},
+        )
+        after = await surface["client"].post(
+            f"/v1/intents/{surface['intent_id']}/checkpoints",
+            headers={**bearer_headers(tenant_slug=surface["slug"]), "Idempotency-Key": "k-pii-after"},
+            json={"goal": "a clean one"},
+        )
+
+    assert refused.status_code == 422, refused.text
+    assert "prohibited class" in refused.text
+    assert after.status_code == 201, after.text
+    assert after.json()["sequence"] == 1, "the refused append must not have consumed a sequence number"
+
+
+@pytest.mark.asyncio
+async def test_evidence_is_scanned_even_though_the_digest_omits_the_uri(surface: _Surface) -> None:
+    """`authorized_uri` is left out of the digest material deliberately -- it names
+    where a thing is, not what it means. That is exactly why it needs its own
+    scan: a credential in a query string is a credential in storage."""
+    headers = {**bearer_headers(tenant_slug=surface["slug"]), "Idempotency-Key": "k-pii-uri"}
+    with _as(surface, surface["owner"]):
+        refused = await surface["client"].post(
+            f"/v1/intents/{surface['intent_id']}/checkpoints",
+            headers=headers,
+            json={
+                "goal": "a clean goal",
+                "evidence": [
+                    {
+                        "source_system": "github",
+                        "source_namespace": "roughcompass/contextplane",
+                        "kind": "issue",
+                        "external_id": "42",
+                        "classification": "internal",
+                        "external_authority": "repo-admin",
+                        "authorized_uri": f"https://example.test/x?card={_VISA_TEST_CC}",
+                    }
+                ],
+            },
+        )
+
+    assert refused.status_code == 422, refused.text
+    assert "intent_checkpoint.references" in refused.text
+
+
+@pytest.mark.asyncio
+async def test_the_scan_is_in_the_service_not_the_route(surface: _Surface) -> None:
+    """Called directly, past both transports. A transport-level scan is one a
+    second transport can be written without -- which is how this write path went
+    four verbs without one, since the MCP tool never had the route's guard."""
+    from contextplane.exceptions import ValidationError
+
+    container = surface["harness"].app.state.services
+    with pytest.raises(ValidationError, match="prohibited class"):
+        await container.intent_checkpoints.append_checkpoint(
+            await _ctx_for(surface),
+            intent_id=surface["intent_id"],
+            payload={"goal": f"card {_VISA_TEST_CC}"},
+            idempotency_key="k-pii-service",
+        )
+
+
 # --- The two transports agree -------------------------------------------------
 
 

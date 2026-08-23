@@ -1030,3 +1030,91 @@ bounded checkpoint window, open questions, the next action, which arms were
 truncated, and `ambiguous_intent_ids` when the references name more than one task.
 
 **Never returns a transcript.** There is no parameter that can ask for one.
+
+## Your own performance
+
+Three read-only tools that answer how you have been doing. **None of them takes
+an actor identifier**, and that is the control rather than an oversight: each
+reads the actor on your credential, so asking about a colleague is not refused —
+it cannot be expressed.
+
+There is deliberately **no tool for changing an instruction**. Proposing,
+activating and rolling back a version live on the admin surface with a human in
+the loop. An agent that could activate its own instruction would be authoring
+its own behaviour change with nobody else involved, which is a different trust
+boundary from adjudicating a claim.
+
+### get_my_accuracy
+
+How often your own claims were judged correct over a window.
+
+**When to use:** Before proposing a change to how you work, or to check whether
+a change already made has moved anything.
+
+**Inputs:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `window_start` | string (ISO-8601) | yes | Start of the window, inclusive |
+| `window_end` | string (ISO-8601) | yes | End of the window, exclusive |
+| `breakdown` | string | no | `overall` (default), `claim_category`, or `predicate` |
+
+**Reading the result.** `undecidable` verdicts count toward `n_adjudicated` and
+are excluded from `rate`'s denominator — a reviewer's uncertainty is information
+about the reviewer, not about the claim. `rate` is `null` when nothing was
+decided, which is **not** the same as a rate of zero: the first means unknown,
+the second means wrong every time. `n_decided` travels with every rate because
+four correct out of five and eight hundred out of a thousand are both 80%.
+
+### get_my_autonomy
+
+How many of your own sessions ran without a human stepping in.
+
+**When to use:** Alongside accuracy, because they fail differently. An agent can
+be accurate and need constant steering, or autonomous and often wrong, and those
+need different fixes.
+
+**Inputs:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `window_start` | string (ISO-8601) | yes | Start of the window, inclusive |
+| `window_end` | string (ISO-8601) | yes | End of the window, exclusive |
+
+**What counts as an intervention.** A `user_message` that arrives *after* your
+first `agent_action`. The opening message is the brief, not a correction — every
+session has one, so counting it would mark every session intervened. Sessions in
+which you never acted are excluded entirely: nothing ran and nothing was
+corrected, so they are not evidence either way.
+
+This does not distinguish a correction from an unrelated follow-up question.
+Both are post-kickoff messages, and telling them apart would mean classifying
+free text.
+
+### get_my_failure_patterns
+
+What you kept getting wrong over a window, grouped by category and predicate,
+with examples.
+
+**When to use:** When accuracy has told you *that* something is wrong and you
+need to know *what*.
+
+**Inputs:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `window_start` | string (ISO-8601) | yes | Start of the window, inclusive |
+| `window_end` | string (ISO-8601) | yes | End of the window, exclusive |
+
+**Read both counts, not just the first.** `incorrect_count` says how often a
+group appears among your failures; `total_count` says how often it was judged at
+all. A predicate you use constantly and mostly get right will top the first list
+by volume alone. The one worth changing something over is the one with a high
+`rate`.
+
+Each group carries up to five example claims with the adjudicator's own note,
+because a rate nobody can check is a lead nobody follows.
+
+**This writes.** It stores a report and returns `report_id`. That is not
+bookkeeping: an instruction change has to cite a stored report, so a report
+nobody kept could justify nothing.

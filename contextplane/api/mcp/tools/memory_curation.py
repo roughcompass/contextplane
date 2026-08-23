@@ -44,6 +44,9 @@ from contextplane.exceptions import CatalogError, ConflictError, NotFoundError, 
 from contextplane.extraction.containment import CandidateRefused
 from contextplane.pagination import InvalidCursorError, decode_cursor, encode_cursor
 from contextplane.service.governance.visibility import VisibilityService
+from contextplane.service.memory.agent_accuracy import AccuracyGroup, AgentAccuracyService
+from contextplane.service.memory.agent_autonomy import AgentAutonomyService
+from contextplane.service.memory.agent_failure_patterns import AgentFailurePatternService
 from contextplane.service.memory.capability_requests import CapabilityRequestService
 from contextplane.service.memory.claim_assertion import ClaimPiiBlocked, stage_claim_defended
 from contextplane.service.memory.claim_authority import Evidence
@@ -1186,6 +1189,201 @@ async def record_case_disposition(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Tools: an agent's own performance
+#
+# **None of these takes an actor identifier, and that is the control.** Each
+# reads `ctx.actor_id`, so asking about a colleague is not refused -- it is
+# unsayable. The same shape the session-memory tools use, and the same reasoning
+# the conformance gate applies to every tool on this surface: where the credential
+# is the only thing scoping a read, the omission *is* the protection.
+#
+# There is deliberately no MCP tool for proposing, activating or rolling back an
+# instruction. Those change what an agent does next, and an agent that could
+# activate its own instruction would be authoring its own behaviour change with
+# no human in the loop -- a materially different trust boundary from adjudicating
+# a claim, which this surface already allows.
+# ---------------------------------------------------------------------------
+
+
+def _accuracy() -> AgentAccuracyService:
+    return cast(AgentAccuracyService, _service("agent_accuracy", label="agent accuracy"))
+
+
+def _autonomy() -> AgentAutonomyService:
+    return cast(AgentAutonomyService, _service("agent_autonomy", label="agent autonomy"))
+
+
+def _failure_patterns() -> AgentFailurePatternService:
+    return cast(AgentFailurePatternService, _service("agent_failure_patterns", label="agent failure patterns"))
+
+
+def _window(window_start: str, window_end: str) -> tuple[datetime.datetime, datetime.datetime]:
+    """Parse the window, refusing anything a service would only refuse later."""
+    try:
+        start = datetime.datetime.fromisoformat(window_start)
+        end = datetime.datetime.fromisoformat(window_end)
+    except ValueError as exc:
+        raise ToolError("window_start and window_end must be ISO-8601 timestamps") from exc
+    return start, end
+
+
+async def get_my_accuracy(
+    window_start: str,
+    window_end: str,
+    breakdown: str = "overall",
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    clock: Clock,
+) -> str:
+    """How often your own claims were judged correct over a window.
+
+    Reports your accuracy and nobody else's: there is no parameter for naming
+    another actor, so the question cannot be asked.
+
+    `undecidable` verdicts count toward `n_adjudicated` and are excluded from
+    `rate`'s denominator -- a reviewer's uncertainty is not evidence about the
+    claim. `rate` is null when nothing was decided, which is different from a
+    rate of zero.
+
+    Args:
+        window_start: ISO-8601 start of the window, inclusive.
+        window_end: ISO-8601 end of the window, exclusive.
+        breakdown: One of overall, claim_category, predicate.
+
+    Returns:
+        `{"breakdown": ..., "overall": {...}, "groups": [...]}`.
+    """
+    ctx = await context._resolve_tenant(session_factory, clock)
+    start, end = _window(window_start, window_end)
+    try:
+        accuracy = await _accuracy().accuracy_for(
+            ctx, author_actor_id=ctx.actor_id, window_start=start, window_end=end, breakdown=breakdown
+        )
+    except ValidationError as exc:
+        raise _map_error(exc) from exc
+    return json.dumps(
+        context._serialize(
+            {
+                "breakdown": accuracy.breakdown,
+                "overall": _group_json(accuracy.overall),
+                "groups": [_group_json(group) for group in accuracy.groups],
+            }
+        )
+    )
+
+
+def _group_json(group: AccuracyGroup) -> dict[str, object]:
+    return {
+        "label": group.label,
+        "n_correct": group.n_correct,
+        "n_incorrect": group.n_incorrect,
+        "n_undecidable": group.n_undecidable,
+        "n_decided": group.n_decided,
+        "n_adjudicated": group.n_adjudicated,
+        "rate": group.rate,
+    }
+
+
+async def get_my_autonomy(
+    window_start: str,
+    window_end: str,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    clock: Clock,
+) -> str:
+    """How many of your own sessions ran without a human stepping in.
+
+    A session counts as intervened when a `user_message` arrives *after* your
+    first `agent_action` -- the opening message is the brief, not a correction.
+    Sessions in which you never acted are excluded: they are not evidence either
+    way.
+
+    Args:
+        window_start: ISO-8601 start of the window, inclusive.
+        window_end: ISO-8601 end of the window, exclusive.
+
+    Returns:
+        `{"n_sessions": ..., "n_intervened": ..., "autonomy_rate": ...}`.
+    """
+    ctx = await context._resolve_tenant(session_factory, clock)
+    start, end = _window(window_start, window_end)
+    try:
+        autonomy = await _autonomy().autonomy_for(ctx, author_actor_id=ctx.actor_id, window_start=start, window_end=end)
+    except ValidationError as exc:
+        raise _map_error(exc) from exc
+    return json.dumps(
+        context._serialize(
+            {
+                "n_sessions": autonomy.n_sessions,
+                "n_intervened": autonomy.n_intervened,
+                "n_autonomous": autonomy.n_autonomous,
+                "intervention_rate": autonomy.intervention_rate,
+                "autonomy_rate": autonomy.autonomy_rate,
+            }
+        )
+    )
+
+
+async def get_my_failure_patterns(
+    window_start: str,
+    window_end: str,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    clock: Clock,
+) -> str:
+    """What you kept getting wrong over a window, grouped and with examples.
+
+    Each group carries both counts: how often it appears among your failures,
+    and how often it fails when it comes up at all. The second is the one worth
+    acting on -- a predicate you use constantly and mostly get right will
+    dominate the first by volume alone.
+
+    This writes a stored report and returns its id, because an instruction
+    change has to cite one.
+
+    Args:
+        window_start: ISO-8601 start of the window, inclusive.
+        window_end: ISO-8601 end of the window, exclusive.
+
+    Returns:
+        `{"report_id": ..., "groups": [...], "n_sessions": ...}`.
+    """
+    ctx = await context._resolve_tenant(session_factory, clock)
+    start, end = _window(window_start, window_end)
+    try:
+        report = await _failure_patterns().build_report(
+            ctx, author_actor_id=ctx.actor_id, window_start=start, window_end=end
+        )
+    except ValidationError as exc:
+        raise _map_error(exc) from exc
+    return json.dumps(
+        context._serialize(
+            {
+                "report_id": report.report_id,
+                "n_adjudicated": report.n_adjudicated,
+                "n_incorrect": report.n_incorrect,
+                "n_sessions": report.n_sessions,
+                "n_intervention_sessions": report.n_intervention_sessions,
+                "groups": [
+                    {
+                        "claim_category": group.claim_category,
+                        "predicate": group.predicate,
+                        "incorrect_count": group.incorrect_count,
+                        "total_count": group.total_count,
+                        "rate": group.rate,
+                        "examples": [
+                            {"claim_id": example.claim_id, "value": example.value, "note": example.note}
+                            for example in group.examples
+                        ],
+                    }
+                    for group in report.groups
+                ],
+            }
+        )
+    )
+
+
 def register(
     mcp_server: FastMCP,
     *,
@@ -1219,10 +1417,16 @@ def register(
     mcp_server.tool()(context._bind_tool(get_curation_case, **deps))
     mcp_server.tool()(context._bind_tool(route_curation_case, **deps))
     mcp_server.tool()(context._bind_tool(record_case_disposition, **deps))
+    mcp_server.tool()(context._bind_tool(get_my_accuracy, **deps))
+    mcp_server.tool()(context._bind_tool(get_my_autonomy, **deps))
+    mcp_server.tool()(context._bind_tool(get_my_failure_patterns, **deps))
 
 
 __all__: list[str] = [
     "assert_claim",
+    "get_my_accuracy",
+    "get_my_autonomy",
+    "get_my_failure_patterns",
     "list_curation_queue",
     "link_claim_subject",
     "discard_claim",

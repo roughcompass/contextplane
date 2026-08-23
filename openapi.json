@@ -1,6 +1,106 @@
 {
   "components": {
     "schemas": {
+      "AccuracyGroupOut": {
+        "additionalProperties": false,
+        "description": "One row of an accuracy breakdown.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "n_adjudicated": {
+            "description": "Every verdict recorded, including the ones that decided nothing.",
+            "title": "N Adjudicated",
+            "type": "integer"
+          },
+          "n_correct": {
+            "title": "N Correct",
+            "type": "integer"
+          },
+          "n_decided": {
+            "description": "The denominator `rate` is over: correct plus incorrect.",
+            "title": "N Decided",
+            "type": "integer"
+          },
+          "n_incorrect": {
+            "title": "N Incorrect",
+            "type": "integer"
+          },
+          "n_undecidable": {
+            "title": "N Undecidable",
+            "type": "integer"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Correct as a fraction of decided, or null when nothing was decided. Null is not zero: the first means unknown, the second means wrong every time.",
+            "title": "Rate"
+          }
+        },
+        "required": [
+          "label",
+          "n_correct",
+          "n_incorrect",
+          "n_undecidable",
+          "n_decided",
+          "n_adjudicated",
+          "rate"
+        ],
+        "title": "AccuracyGroupOut",
+        "type": "object"
+      },
+      "AccuracyOut": {
+        "additionalProperties": false,
+        "description": "One agent's accuracy over one window.",
+        "properties": {
+          "author_actor_id": {
+            "format": "uuid",
+            "title": "Author Actor Id",
+            "type": "string"
+          },
+          "breakdown": {
+            "title": "Breakdown",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/AccuracyGroupOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "overall": {
+            "$ref": "#/components/schemas/AccuracyGroupOut"
+          },
+          "window_end": {
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "author_actor_id",
+          "window_start",
+          "window_end",
+          "breakdown",
+          "overall",
+          "groups"
+        ],
+        "title": "AccuracyOut",
+        "type": "object"
+      },
       "ActivateRequest": {
         "additionalProperties": false,
         "description": "Body for `POST /v1/arc/revisions/{id}/activate`. `qualification_id`\nis required when the risk classification demands observation and\nforbidden otherwise (Appendix A.6).",
@@ -2538,6 +2638,74 @@
           "error_code"
         ],
         "title": "AuditRow",
+        "type": "object"
+      },
+      "AutonomyOut": {
+        "additionalProperties": false,
+        "description": "How many of an agent's sessions ran without a human stepping in.",
+        "properties": {
+          "author_actor_id": {
+            "format": "uuid",
+            "title": "Author Actor Id",
+            "type": "string"
+          },
+          "autonomy_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when the agent ran no sessions \u2014 an unknown rate rather than a perfect one.",
+            "title": "Autonomy Rate"
+          },
+          "intervention_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intervention Rate"
+          },
+          "n_autonomous": {
+            "title": "N Autonomous",
+            "type": "integer"
+          },
+          "n_intervened": {
+            "title": "N Intervened",
+            "type": "integer"
+          },
+          "n_sessions": {
+            "title": "N Sessions",
+            "type": "integer"
+          },
+          "window_end": {
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "author_actor_id",
+          "window_start",
+          "window_end",
+          "n_sessions",
+          "n_intervened",
+          "n_autonomous",
+          "intervention_rate",
+          "autonomy_rate"
+        ],
+        "title": "AutonomyOut",
         "type": "object"
       },
       "AvailableAction": {
@@ -7232,6 +7400,143 @@
         "title": "ExternalSystemResponse",
         "type": "object"
       },
+      "FailureExampleOut": {
+        "additionalProperties": false,
+        "properties": {
+          "claim_id": {
+            "format": "uuid",
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "claim_id",
+          "value",
+          "note"
+        ],
+        "title": "FailureExampleOut",
+        "type": "object"
+      },
+      "FailureGroupOut": {
+        "additionalProperties": false,
+        "properties": {
+          "claim_category": {
+            "title": "Claim Category",
+            "type": "string"
+          },
+          "examples": {
+            "items": {
+              "$ref": "#/components/schemas/FailureExampleOut"
+            },
+            "title": "Examples",
+            "type": "array"
+          },
+          "incorrect_count": {
+            "description": "How often this group appears among the failures.",
+            "title": "Incorrect Count",
+            "type": "integer"
+          },
+          "predicate": {
+            "title": "Predicate",
+            "type": "string"
+          },
+          "rate": {
+            "description": "Incorrect over judged. The figure to act on: a predicate used constantly and mostly got right will lead on `incorrect_count` by volume alone.",
+            "title": "Rate",
+            "type": "number"
+          },
+          "total_count": {
+            "description": "How often this group was judged at all.",
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "claim_category",
+          "predicate",
+          "incorrect_count",
+          "total_count",
+          "rate",
+          "examples"
+        ],
+        "title": "FailureGroupOut",
+        "type": "object"
+      },
+      "FailurePatternsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "author_actor_id": {
+            "format": "uuid",
+            "title": "Author Actor Id",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/FailureGroupOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "n_adjudicated": {
+            "title": "N Adjudicated",
+            "type": "integer"
+          },
+          "n_incorrect": {
+            "title": "N Incorrect",
+            "type": "integer"
+          },
+          "n_intervention_sessions": {
+            "title": "N Intervention Sessions",
+            "type": "integer"
+          },
+          "n_sessions": {
+            "title": "N Sessions",
+            "type": "integer"
+          },
+          "report_id": {
+            "format": "uuid",
+            "title": "Report Id",
+            "type": "string"
+          },
+          "window_end": {
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "report_id",
+          "author_actor_id",
+          "window_start",
+          "window_end",
+          "n_adjudicated",
+          "n_incorrect",
+          "n_sessions",
+          "n_intervention_sessions",
+          "groups"
+        ],
+        "title": "FailurePatternsOut",
+        "type": "object"
+      },
       "FieldProvenance": {
         "additionalProperties": false,
         "description": "Response projection of `FieldProvenanceInput` that adds the recorded\nauthor. Appears only in read models -- never accepted as input.",
@@ -7600,6 +7905,81 @@
           "attributes"
         ],
         "title": "IncludedEntityItem",
+        "type": "object"
+      },
+      "InstructionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "activated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated At"
+          },
+          "author_actor_id": {
+            "format": "uuid",
+            "title": "Author Actor Id",
+            "type": "string"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "instruction_id": {
+            "format": "uuid",
+            "title": "Instruction Id",
+            "type": "string"
+          },
+          "motivated_by_report_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivated By Report Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "superseded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded At"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "instruction_id",
+          "author_actor_id",
+          "version",
+          "content",
+          "motivated_by_report_id",
+          "status",
+          "activated_at",
+          "superseded_at"
+        ],
+        "title": "InstructionOut",
         "type": "object"
       },
       "IntegrationListResponse": {
@@ -10425,6 +10805,49 @@
         "title": "ProposalVersionResponse",
         "type": "object"
       },
+      "ProposeInstructionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "motivated_by_report_id": {
+            "description": "The failure-pattern report this version answers. Required: an instruction in force has to say what evidence justified it, and the database refuses an active version that cites none.",
+            "format": "uuid",
+            "title": "Motivated By Report Id",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "content",
+          "motivated_by_report_id"
+        ],
+        "title": "ProposeInstructionRequest",
+        "type": "object"
+      },
+      "ProposedInstructionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "instruction_id": {
+            "format": "uuid",
+            "title": "Instruction Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instruction_id"
+        ],
+        "title": "ProposedInstructionResponse",
+        "type": "object"
+      },
       "ProvenanceClass": {
         "description": "The three mutually exclusive ways a semantic field can be justified.",
         "enum": [
@@ -12747,6 +13170,29 @@
         ],
         "title": "RiskClassification",
         "type": "string"
+      },
+      "RollbackResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "restored_instruction_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when there was no predecessor \u2014 an agent's first version has nothing behind it.",
+            "title": "Restored Instruction Id"
+          }
+        },
+        "required": [
+          "restored_instruction_id"
+        ],
+        "title": "RollbackResponse",
+        "type": "object"
       },
       "RouteCurationCaseRequest": {
         "additionalProperties": false,
@@ -18896,6 +19342,406 @@
         "summary": "Patch Vocabulary Value",
         "tags": [
           "admin: vocabulary"
+        ]
+      }
+    },
+    "/v1/agents/{actor_id}/accuracy": {
+      "get": {
+        "description": "How often this agent's claims were judged correct.",
+        "operationId": "get_agent_accuracy_v1_agents__actor_id__accuracy_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "actor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Actor Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window_start",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Window Start",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window_end",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Window End",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "breakdown",
+            "required": false,
+            "schema": {
+              "default": "overall",
+              "title": "Breakdown",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccuracyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Accuracy",
+        "tags": [
+          "admin: agents"
+        ]
+      }
+    },
+    "/v1/agents/{actor_id}/autonomy": {
+      "get": {
+        "description": "How often this agent finished a session without being steered.",
+        "operationId": "get_agent_autonomy_v1_agents__actor_id__autonomy_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "actor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Actor Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window_start",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Window Start",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window_end",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Window End",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Autonomy",
+        "tags": [
+          "admin: agents"
+        ]
+      }
+    },
+    "/v1/agents/{actor_id}/failure-patterns": {
+      "get": {
+        "description": "What this agent kept getting wrong, grouped and with examples.\n\nA `GET` that writes, which is worth flagging rather than hiding: it stores\nthe report and returns its id, because an instruction change has to cite a\nstored one. Idempotent in the sense that matters \u2014 repeating it over the\nsame window produces the same figures \u2014 but each call is a new report row,\nwhich is the record of when somebody looked.",
+        "operationId": "get_agent_failure_patterns_v1_agents__actor_id__failure_patterns_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "actor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Actor Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window_start",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Window Start",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window_end",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Window End",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FailurePatternsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Failure Patterns",
+        "tags": [
+          "admin: agents"
+        ]
+      }
+    },
+    "/v1/agents/{actor_id}/instructions": {
+      "get": {
+        "description": "Every version of this agent's instructions, newest first.",
+        "operationId": "list_agent_instructions_v1_agents__actor_id__instructions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "actor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Actor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InstructionOut"
+                  },
+                  "title": "Response List Agent Instructions V1 Agents  Actor Id  Instructions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Agent Instructions",
+        "tags": [
+          "admin: agents"
+        ]
+      },
+      "post": {
+        "description": "Record a candidate version. It does not take effect until activated.",
+        "operationId": "propose_agent_instruction_v1_agents__actor_id__instructions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "actor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Actor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeInstructionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposedInstructionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Propose Agent Instruction",
+        "tags": [
+          "admin: agents"
+        ]
+      }
+    },
+    "/v1/agents/{actor_id}/instructions/{instruction_id}:activate": {
+      "post": {
+        "description": "Put this version in force, superseding whichever held it.",
+        "operationId": "activate_agent_instruction_v1_agents__actor_id__instructions__instruction_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "actor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Actor Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "instruction_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Instruction Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstructionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activate Agent Instruction",
+        "tags": [
+          "admin: agents"
+        ]
+      }
+    },
+    "/v1/agents/{actor_id}/instructions:rollback": {
+      "post": {
+        "description": "Return to the version that was in force before the current one.\n\nReturns null rather than erroring when there is no predecessor: \"there is\nnothing to roll back to\" is a fact the caller acts on, and the incumbent is\nleft in force rather than demoted into a gap.",
+        "operationId": "rollback_agent_instruction_v1_agents__actor_id__instructions_rollback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "actor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Actor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollbackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rollback Agent Instruction",
+        "tags": [
+          "admin: agents"
         ]
       }
     },

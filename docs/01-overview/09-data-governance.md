@@ -87,6 +87,10 @@ the write path.
 | Direct REST or MCP claim assertion | String claim value and evidence excerpts | `claim_value` |
 | Session extraction | Generated string value and excerpt | `claim_value` |
 | Artifact write | Artifact body | `artifact.body` |
+| Task checkpoint append (REST or MCP) | Every client-supplied content field, serialized canonically | `intent_checkpoint.body` |
+| Task checkpoint append (REST or MCP) | The evidence array rendered as text, including `authorized_uri`, which the checkpoint digest omits | `intent_checkpoint.references` |
+| External signal ingest | The observation, in whichever form it arrived | `external_signal.payload` |
+| External signal ingest | The normalized references rendered as text | `external_signal.references` |
 | Claim promotion | String value crossing into a canonical attribute or edge | `memory_claim.<predicate>`; the current application composition supplies the built-in advisory scanner |
 
 Structured identifiers, workspace `reference_ids`, and session-event metadata

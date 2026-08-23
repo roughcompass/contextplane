@@ -21,7 +21,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.api.mcp import context
-from contextplane.exceptions import ConflictError, NotFoundError
+from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.types import Clock
 from contextplane.workspaces.audience import AudienceDenied
 from contextplane.workspaces.schemas.intent_memory import (
@@ -237,6 +237,12 @@ async def append_intent_checkpoint(
         )
     except AudienceDenied:
         return json.dumps({"error": _DENIED})
+    except ValidationError as exc:
+        # Admission refused the content. Returned as an error string rather
+        # than raised, because that is how this surface reports every other
+        # refusal -- an exception here reaches the agent as a transport fault
+        # it cannot act on, when the thing to do is edit the text and retry.
+        return json.dumps({"error": str(exc)})
     return json.dumps({**_checkpoint_json(result.checkpoint), "created": result.created})
 
 
