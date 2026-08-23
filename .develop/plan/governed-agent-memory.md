@@ -6757,6 +6757,71 @@ author is the person most likely to reach for the stronger word.
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
 
+## Task decomposition — fifteenth wave (CI is the bottleneck, measured)
+
+One task, filed against the standing instruction that CI must not become a
+bottleneck. It is not a guess: the numbers are below.
+
+### E15b-T1 — The critical path is twice what it needs to be, and one tier runs twice
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a PR's checks finish in about the time the slowest tier takes, not the sum
+of two of them.
+
+**Measured, from `.github/workflows/ci.yml` and the run history:**
+
+| job | duration | depends on |
+|---|---|---|
+| `unit` (`make test-coverage`) | 8.5–11.5 min | `changes` |
+| `integration` (`make test-integration`) | ~8 min | **`unit`** |
+| `conformance` (`make test-conformance`) | ~4 min | **`unit`** |
+| `image` | — | **`unit`** |
+
+So the critical path is `unit` **then** `integration`: **17–20 minutes**, on
+every code PR.
+
+**Nothing is passed between those jobs.** Each does its own `actions/checkout`
+and its own `make install-dev`. `needs: unit` buys fail-fast — do not spend an
+integration runner if unit is already broken — and costs eight minutes of
+wall-clock on every PR that passes, which is nearly all of them.
+
+**The repository has already accepted this argument once**, one level down. The
+`conformance` job carries this comment:
+
+> *Depends on unit, not integration. There is no artifact passing between the
+> two and conformance does not consume anything integration produces, so
+> chaining them only serialized two independent jobs and put the slowest tier in
+> front of a contract-drift gate that would have failed in a fraction of the
+> time.*
+
+Every clause of that applies again with `unit` in place of `integration`.
+Fanning all three out from `changes` puts the path at `max(unit, integration)`
+≈ **11.5 minutes**.
+
+**Second finding, independent of the first: the conformance tier runs twice.**
+`unit` runs `make test-coverage`, which is
+`pytest tests/unit tests/conformance --cov ...`. The `conformance` job runs
+`make test-conformance`, which is `pytest tests/conformance -v`. Same directory,
+no marker filter, no file list — the second adds `-v` and a shorter timeout and
+nothing else. That is a whole tier of duplicated work on every PR, on a job that
+is *also* serialized behind the job that already ran it.
+
+Deciding which of the two should keep the tier is the real content of this task
+and is not obvious: the coverage run needs conformance included to hit its
+ratchet, and the separate job exists so a conformance failure is legible rather
+than buried in a coverage summary. Both are good reasons; they just do not both
+need to execute it.
+
+**What this task must not do:** trade correctness for speed. No tier is dropped,
+no test is deselected, no timeout is loosened. The whole change is topology and
+one duplication.
+
+Acceptance:
+    make all
+    # and: a PR's `gate` job completes in materially less wall-clock than
+    # the 17-20 minutes measured above, with the same set of checks reported.
+
 ## Task decomposition — fourteenth wave (ARC's admin surface has no read side)
 
 Found by building E10-T7 and then checking E10-T9's premise. Not a defect in
