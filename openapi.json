@@ -5178,6 +5178,17 @@
             ],
             "title": "Disposition"
           },
+          "disposition_actor_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disposition Actor Kind"
+          },
           "evidence_threshold": {
             "anyOf": [
               {
@@ -5276,6 +5287,7 @@
           "owner_id",
           "routed_at",
           "disposition",
+          "disposition_actor_kind",
           "approval_authority",
           "evidence_threshold",
           "resolved_at",

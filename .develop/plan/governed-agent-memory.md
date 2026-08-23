@@ -5914,7 +5914,7 @@ transport does and not which service held the method.
 
 ### E5-T4 — `disposition_actor`, and what changes once a policy can dispose
 
-**Kind:** task · **Status:** pending · **Blocked by:** E5-T2 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E5-T2 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: every disposition records whether a human or a policy made it, as a first
 class field rather than something inferred from an actor id.
@@ -5935,6 +5935,29 @@ why. This is the failure mode where the number keeps looking fine.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "disposition"
     make all
+
+**The entry asked which of two sampling treatments, and why. Policy dispositions
+are excluded from the sample.**
+
+The alternative — a separate stream with its own acceptance criteria — needs a
+defect tolerance and a consumer's risk *for automated disposal*, and nobody has
+measured either. Writing them would be inventing a governance fact to make an
+automated path look governed, which is the thing E5-T2's own entry refused when
+it declined to key a policy on a tier no claim can reach.
+
+Excluding has one property that decided it: **the human sample requirement is
+unchanged by automation.** A more aggressive policy cannot shrink what a person
+still has to review, so automating disposal can never improve the measured
+figure by reducing the evidence behind it. That is exactly the failure the entry
+named — the number that keeps looking fine.
+
+`disposition_actor_kind` is a column and not an inference. Telling a policy's
+actor from a person's means knowing which service accounts are automation, which
+lives outside this table, changes without a migration, and is wrong for the
+deployment that just added one. A CHECK ties it to the disposition so a row can
+never be resolved without saying who decided, and the backfill is `human` on
+proof rather than assumption: until this migration there was no policy path at
+all.
 
 ### E5-T5 — Decay as a trust-class transition, with materiality frozen
 

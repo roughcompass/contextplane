@@ -686,3 +686,74 @@ async def test_the_database_refuses_a_routed_case_with_no_owner(
                 )
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_a_policy_disposition_does_not_count_toward_the_review_sample(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    """The decision E5-T4 had to make, checked against a real database.
+
+    Acceptance sampling assumes the sampled item was *inspected*. A policy
+    disposed of nothing it looked at, so counting an automated disposal toward a
+    reviewer's sample would raise the measured quality of a queue nobody read.
+
+    The property this pins is the reason for excluding rather than giving
+    automation its own criteria: the human sample requirement is **unchanged by
+    automation**. Disposing of a second case by policy leaves the inspected count
+    exactly where it was, so a more aggressive policy can never shrink what a
+    person still has to review.
+    """
+    persona = harness.add_persona(f"curq-sample-{uuid.uuid4().hex[:8]}")
+    tenant_id = await _materialise_persona(harness, persona)
+    actor_id = await _seed_actor(pg_container, tenant_id)
+    ctx = TenantContext(tenant_id=tenant_id, actor_id=actor_id, roles=["producer"])
+
+    cases = harness.app.state.services.curation_cases
+    before = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+
+    async def _decided(kind: str) -> None:
+        case = await cases.open_case(
+            ctx, subject_reference=f"svc:{uuid.uuid4().hex[:6]}", predicate="owned_by_team", now=_NOW
+        )
+        await cases.route_case(ctx, case_id=case.case_id, owner_id=str(actor_id), now=_NOW)
+        await cases.record_disposition(ctx, case_id=case.case_id, disposition="confirm", now=_NOW, actor_kind=kind)
+
+    await _decided("human")
+    assert await cases.inspected_dispositions(ctx, since=before) == 1
+
+    await _decided("policy")
+    assert (
+        await cases.inspected_dispositions(ctx, since=before) == 1
+    ), "an automated disposal must not count as an inspected sample"
+
+    await _decided("human")
+    assert await cases.inspected_dispositions(ctx, since=before) == 2
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_the_database_refuses_a_disposition_that_does_not_say_who_decided(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    """A disposition whose actor kind is null is one the sampling read cannot
+    classify, and a null the read has to guess about is the inference the column
+    exists to remove. Written directly, because the point is that the constraint
+    holds against a writer bypassing the service."""
+    persona = harness.add_persona(f"curq-ck-{uuid.uuid4().hex[:8]}")
+    tenant_id = await _materialise_persona(harness, persona)
+
+    engine = create_async_engine(pg_container, connect_args={"prepared_statement_cache_size": 0})
+    try:
+        with pytest.raises(Exception, match="ck_case_disposition_says_who_decided"):
+            async with async_sessionmaker(engine)() as session, session.begin():
+                await session.execute(
+                    text(
+                        "INSERT INTO curation_cases "
+                        "  (case_id, tenant_id, subject_reference, predicate, status, "
+                        "   disposition, approval_authority, evidence_threshold) "
+                        "VALUES (:cid, :tid, 's', 'p', 'resolved', 'confirm', 'a', 'b')"
+                    ),
+                    {"cid": uuid.uuid4(), "tid": tenant_id},
+                )
+    finally:
+        await engine.dispose()

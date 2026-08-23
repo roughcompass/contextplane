@@ -40,6 +40,14 @@ CASE_OPEN: Final[str] = "open"
 CASE_ROUTED: Final[str] = "routed"
 CASE_RESOLVED: Final[str] = "resolved"
 
+# What kind of thing decided. A first-class field rather than something worked
+# out from `owner_id`: telling a policy's actor from a person's means knowing
+# which service accounts are automation, which lives outside this table and is
+# wrong for exactly the deployment that adds a new one.
+DISPOSITION_BY_HUMAN: Final[str] = "human"
+DISPOSITION_BY_POLICY: Final[str] = "policy"
+DISPOSITION_ACTOR_KINDS: Final[frozenset[str]] = frozenset({DISPOSITION_BY_HUMAN, DISPOSITION_BY_POLICY})
+
 # What an owner may decide. The first three settle the disagreement itself; the last
 # three ask a different surface to write something, and asking is all they do.
 DISPOSITION_CONFIRM: Final[str] = "confirm"
@@ -185,6 +193,8 @@ class CurationCase:
     owner_id: str | None = None
     routed_at: datetime.datetime | None = None
     disposition: str | None = None
+    #: `human` or `policy`, set with the disposition or not at all.
+    disposition_actor_kind: str | None = None
     approval_authority: str | None = None
     evidence_threshold: str | None = None
     resolved_at: datetime.datetime | None = None
@@ -343,6 +353,7 @@ class CurationCaseService:
         case_id: uuid.UUID,
         disposition: str,
         now: datetime.datetime,
+        actor_kind: str = DISPOSITION_BY_HUMAN,
     ) -> CurationCase:
         """Record what the accountable owner decided, and on whose authority.
 
@@ -360,7 +371,22 @@ class CurationCaseService:
         owners racing the same case leave one decision rather than the last writer's.
         Nothing here writes what the disposition proposes -- the surface that owns
         the target does that, under the authority recorded on this row.
+
+        `actor_kind` says whether a person or a policy decided, and it is stored
+        rather than inferred. It defaults to `human` because every caller today
+        is a transport carrying a person's request past the owner check above; a
+        policy path that arrives later has to say so, which is the point.
+
+        **A policy disposition is not an inspected sample.** Acceptance sampling
+        assumes the item was looked at, so counting an automated disposal toward
+        a reviewer's sample would raise the measured quality of a queue nobody
+        read. `inspected_dispositions` excludes them, which keeps the human
+        sample requirement unchanged by automation -- a more aggressive policy
+        cannot quietly shrink what a person still has to review.
         """
+        if actor_kind not in DISPOSITION_ACTOR_KINDS:
+            msg = f"unknown disposition actor kind {actor_kind!r}; expected one of {sorted(DISPOSITION_ACTOR_KINDS)}"
+            raise ValidationError(msg)
         policy = policy_for(disposition)
 
         async with self._factory() as session, session.begin():
@@ -377,6 +403,7 @@ class CurationCaseService:
                     text(
                         "UPDATE curation_cases "
                         "SET status = 'resolved', disposition = :disp, "
+                        "    disposition_actor_kind = :actor_kind, "
                         "    approval_authority = :authority, evidence_threshold = :threshold, "
                         "    resolved_at = CAST(:now AS TIMESTAMPTZ) "
                         "WHERE case_id = :cid AND status = 'routed' AND resolved_at IS NULL "
@@ -385,6 +412,7 @@ class CurationCaseService:
                     {
                         "cid": case_id,
                         "disp": policy.disposition,
+                        "actor_kind": actor_kind,
                         "authority": policy.approval_authority,
                         "threshold": policy.evidence_threshold,
                         "now": now,
@@ -402,6 +430,7 @@ class CurationCaseService:
                 case_id=case_id,
                 payload={
                     "disposition": policy.disposition,
+                    "disposition_actor_kind": actor_kind,
                     "target_kind": policy.target_kind,
                     "approval_authority": policy.approval_authority,
                     "evidence_threshold": policy.evidence_threshold,
@@ -416,9 +445,47 @@ class CurationCaseService:
                 current,
                 status=CASE_RESOLVED,
                 disposition=policy.disposition,
+                disposition_actor_kind=actor_kind,
                 approval_authority=policy.approval_authority,
                 evidence_threshold=policy.evidence_threshold,
                 resolved_at=now,
+            )
+
+    async def inspected_dispositions(
+        self,
+        ctx: TenantContext,
+        *,
+        since: datetime.datetime,
+    ) -> int:
+        """How many dispositions since `since` were made by a person.
+
+        **The number acceptance sampling is entitled to use.** Sampling assumes
+        the sampled item was inspected; a policy disposed of nothing it looked
+        at, so counting automated disposals here would raise the measured quality
+        of a queue nobody read — the failure where the number keeps looking fine
+        while the evidence behind it disappears.
+
+        Excluding them, rather than giving automation its own acceptance
+        criteria, has one property worth the choice: the human sample
+        requirement is **unchanged by automation**. A more aggressive policy
+        cannot shrink what a person still has to review, so automating disposal
+        can never improve the figure by reducing the evidence behind it. The
+        alternative needed a defect tolerance and a consumer's risk for automated
+        disposal that nobody has measured, which is a governance fact invented to
+        make an automated path look governed.
+        """
+        async with self._factory() as session:
+            return int(
+                (
+                    await session.execute(
+                        text(
+                            "SELECT count(*) FROM curation_cases "
+                            "WHERE tenant_id = :tid AND resolved_at >= :since "
+                            "  AND disposition_actor_kind = :human"
+                        ),
+                        {"tid": ctx.tenant_id, "since": since, "human": DISPOSITION_BY_HUMAN},
+                    )
+                ).scalar_one()
             )
 
     async def case(self, ctx: TenantContext, case_id: uuid.UUID) -> CurationCase:
@@ -531,6 +598,7 @@ def _to_case(row: RowMapping) -> CurationCase:
         owner_id=row["owner_id"],
         routed_at=row["routed_at"],
         disposition=row["disposition"],
+        disposition_actor_kind=row["disposition_actor_kind"],
         approval_authority=row["approval_authority"],
         evidence_threshold=row["evidence_threshold"],
         resolved_at=row["resolved_at"],
@@ -579,6 +647,6 @@ _CASE_STATUSES: Final[frozenset[str]] = frozenset({CASE_OPEN, CASE_ROUTED, CASE_
 # at row-mapping time in whichever of the four read paths ran first.
 _CASE_COLUMNS: Final[str] = (
     "case_id, tenant_id, subject_reference, predicate, raised_by_derivation_id, "
-    "status, owner_id, routed_at, disposition, approval_authority, "
+    "status, owner_id, routed_at, disposition, disposition_actor_kind, approval_authority, "
     "evidence_threshold, resolved_at, created_at"
 )

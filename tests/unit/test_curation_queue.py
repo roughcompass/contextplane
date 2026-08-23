@@ -42,6 +42,9 @@ from contextplane.service.memory.curation_cases import (
     CASE_OPEN,
     CASE_RESOLVED,
     CASE_ROUTED,
+    DISPOSITION_ACTOR_KINDS,
+    DISPOSITION_BY_HUMAN,
+    DISPOSITION_BY_POLICY,
     DISPOSITION_CONFIRM,
     DISPOSITION_PROPOSE_ARC,
     DISPOSITIONS,
@@ -369,6 +372,7 @@ def _case_row(**overrides: Any) -> dict[str, Any]:
         "owner_id": None,
         "routed_at": None,
         "disposition": None,
+        "disposition_actor_kind": None,
         "approval_authority": None,
         "evidence_threshold": None,
         "resolved_at": None,
@@ -667,3 +671,70 @@ def test_a_case_with_no_disposition_names_no_target() -> None:
         created_at=_NOW,
     )
     assert case.target_kind is None
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_disposition_actor_kind_is_refused_before_the_write() -> None:
+    """A closed vocabulary, and the service says so before the database does.
+
+    A caller passing `automated` or `bot` gets a sentence naming the legal values
+    rather than a CHECK violation.
+    """
+    tenant, actor = uuid.uuid4(), uuid.uuid4()
+    locked = _case_row(tenant_id=tenant, status=CASE_ROUTED, owner_id=str(actor), routed_at=_NOW)
+    factory, _calls = _case_session(locked=locked)
+
+    with pytest.raises(ValidationError, match="unknown disposition actor kind"):
+        await CurationCaseService(factory).record_disposition(
+            _ctx(tenant, actor),
+            case_id=locked["case_id"],
+            disposition=DISPOSITION_CONFIRM,
+            now=_NOW,
+            actor_kind="automated",
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_disposition_defaults_to_human_and_records_it() -> None:
+    """Every path into `record_disposition` today is a transport carrying a
+    person's request past the owner check, so `human` is the honest default. A
+    policy path that arrives later has to say so, which is the point of the
+    default rather than an accident of it."""
+    tenant, actor = uuid.uuid4(), uuid.uuid4()
+    locked = _case_row(tenant_id=tenant, status=CASE_ROUTED, owner_id=str(actor), routed_at=_NOW)
+    factory, calls = _case_session(locked=locked)
+
+    case = await CurationCaseService(factory).record_disposition(
+        _ctx(tenant, actor), case_id=locked["case_id"], disposition=DISPOSITION_CONFIRM, now=_NOW
+    )
+
+    assert case.disposition_actor_kind == DISPOSITION_BY_HUMAN
+    assert calls["update"][0]["actor_kind"] == DISPOSITION_BY_HUMAN
+    # Recorded in the audit row too: a later reader can tell an automated
+    # disposal from a reviewed one without joining anything.
+    assert DISPOSITION_BY_HUMAN in calls["audit"][0]["after"]
+
+
+@pytest.mark.asyncio
+async def test_a_policy_disposition_is_stored_as_a_policy_disposition() -> None:
+    tenant, actor = uuid.uuid4(), uuid.uuid4()
+    locked = _case_row(tenant_id=tenant, status=CASE_ROUTED, owner_id=str(actor), routed_at=_NOW)
+    factory, calls = _case_session(locked=locked)
+
+    case = await CurationCaseService(factory).record_disposition(
+        _ctx(tenant, actor),
+        case_id=locked["case_id"],
+        disposition=DISPOSITION_CONFIRM,
+        now=_NOW,
+        actor_kind=DISPOSITION_BY_POLICY,
+    )
+
+    assert case.disposition_actor_kind == DISPOSITION_BY_POLICY
+    assert calls["update"][0]["actor_kind"] == DISPOSITION_BY_POLICY
+
+
+def test_the_actor_kind_vocabulary_is_exactly_two() -> None:
+    """Closed on purpose. A third value would need a sampling rule of its own,
+    and the argument for excluding automation is precisely that the human sample
+    requirement does not move when one is added."""
+    assert DISPOSITION_ACTOR_KINDS == {DISPOSITION_BY_HUMAN, DISPOSITION_BY_POLICY}

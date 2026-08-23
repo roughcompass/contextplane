@@ -875,13 +875,17 @@ def _case(
     approval_authority: str | None = None,
     evidence_threshold: str | None = None,
 ) -> uuid.UUID:
+    # Derived rather than a parameter: `ck_case_disposition_says_who_decided`
+    # ties the actor kind to the disposition, so a helper that let a caller set
+    # one without the other would only ever produce a constraint violation.
+    actor_kind = "human" if disposition is not None else None
     case_id = uuid.uuid4()
     conn.execute(
         text(
             "INSERT INTO curation_cases (case_id, tenant_id, subject_reference, predicate,"
             " raised_by_derivation_id, status, owner_id, routed_at, disposition, approval_authority,"
-            " evidence_threshold)"
-            " VALUES (:c, :t, :sub, :pred, :raised, :st, :own, :routed, :disp, :auth, :thr)"
+            " evidence_threshold, disposition_actor_kind)"
+            " VALUES (:c, :t, :sub, :pred, :raised, :st, :own, :routed, :disp, :auth, :thr, :kind)"
         ),
         {
             "c": case_id,
@@ -895,6 +899,7 @@ def _case(
             "disp": disposition,
             "auth": approval_authority,
             "thr": evidence_threshold,
+            "kind": actor_kind,
         },
     )
     return case_id
@@ -1169,6 +1174,7 @@ def test_a_curation_case_routes_and_resolves(sync_engine: Engine, tenant_id: uui
         conn.execute(
             text(
                 "UPDATE curation_cases SET status = 'resolved', disposition = 'supersede',"
+                " disposition_actor_kind = 'human',"
                 " approval_authority = 'catalog-owner', evidence_threshold = 'two-independent-sources',"
                 " resolved_at = now() WHERE case_id = :c"
             ),
@@ -1177,13 +1183,17 @@ def test_a_curation_case_routes_and_resolves(sync_engine: Engine, tenant_id: uui
     with sync_engine.connect() as conn:
         row = conn.execute(
             text(
-                "SELECT status, disposition, approval_authority, evidence_threshold, raised_by_derivation_id"
+                "SELECT status, disposition, disposition_actor_kind, approval_authority,"
+                " evidence_threshold, raised_by_derivation_id"
                 " FROM curation_cases WHERE case_id = :c"
             ),
             {"c": case_id},
         ).one()
     assert row.status == "resolved"
     assert row.disposition == "supersede"
+    # Resolving now has to say who decided, or `ck_case_disposition_says_who_decided`
+    # refuses the row -- which is the point of the constraint.
+    assert row.disposition_actor_kind == "human"
     assert row.approval_authority == "catalog-owner"
     assert row.evidence_threshold == "two-independent-sources"
     assert row.raised_by_derivation_id == derivation_id
