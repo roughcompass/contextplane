@@ -5162,7 +5162,7 @@ Acceptance (unchanged, for when it unblocks):
 
 ### E4-T5b — The obligation record ADR-0015 decided, which nothing implemented
 
-**Kind:** task · **Status:** pending · **Blocked by:** E4-T5 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E4-T5 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: `reporting_obligation` exists, with `materiality` including `unclassified`,
 and the delay gauge that makes an unclassified backlog visible.
@@ -5199,6 +5199,33 @@ compliance feature is worse than an absent one.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "obligation"
     make all
+
+**Shipped: the record, the states, the gauge, and a route that reaches all
+three.** Exposed in the same change that creates it, because a governed record
+nothing can reach is the defect this plan has now found five times.
+
+Three things the entry did not have to say and that the build settled:
+
+- **The gauges are deployment-wide and unlabelled.** A `tenant_id` label was the
+  first attempt and `tests/conformance/test_metric_surface.py` refused it:
+  one tenant label turns one metric into one series per tenant, and the
+  Prometheus that dies from it dies months later under load. So the per-tenant
+  figure is a *read* and the metric is a deployment-wide *observation*, and a
+  test asserts the read publishes nothing.
+- **A scheduled observer that silently stops is the known risk**, and it is
+  worse for a gauge than a worker: the value sits at its last reading looking
+  healthy. The age gauge is the defence — a stalled job freezes the age, and an
+  age that stops advancing while the count is non-zero is the signal that the
+  observer is the problem.
+- **`wiring/jobs.py` had two lines of headroom** under its 800-line ceiling and
+  could not take another registration. Rather than widen the allowlist, the
+  seventeen `_describe_*` report formatters moved to `wiring/job_summaries.py`
+  — they are not composition, and none of them knows a scheduler exists — and
+  governance now registers its own job through `register_governance_jobs`,
+  which is what the ceiling is for.
+
+Classification stays manual, and `E4-T6` stays blocked on the thresholds that
+would change that.
 
 ### E4-T5c — A reserved-vocabulary gate, so the next collision is caught by a machine
 

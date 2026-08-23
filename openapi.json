@@ -2728,6 +2728,25 @@
         "title": "AvailableAction",
         "type": "string"
       },
+      "BacklogResponse": {
+        "description": "The unclassified backlog, and how long the longest has waited.\n\nBoth, because the count alone is not actionable.",
+        "properties": {
+          "oldest_age_seconds": {
+            "title": "Oldest Age Seconds",
+            "type": "number"
+          },
+          "unclassified_count": {
+            "title": "Unclassified Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unclassified_count",
+          "oldest_age_seconds"
+        ],
+        "title": "BacklogResponse",
+        "type": "object"
+      },
       "BaselineDiffChange": {
         "additionalProperties": false,
         "description": "One field-level change in `BaselineDiffResponse.changes`.",
@@ -4233,6 +4252,32 @@
           "trust_note"
         ],
         "title": "ClaimResponse",
+        "type": "object"
+      },
+      "ClassifyObligationRequest": {
+        "description": "A decision somebody made, with the reason they made it.\n\n`unclassified` is absent from this type on purpose: it is where a row starts\nand is not a conclusion a decision can reach. Allowing it would let an actor\nclear a classification while leaving their name recorded as having made one.",
+        "properties": {
+          "materiality": {
+            "enum": [
+              "material",
+              "not_material"
+            ],
+            "title": "Materiality",
+            "type": "string"
+          },
+          "note": {
+            "description": "Why. A one-word rationale is the same as none.",
+            "maxLength": 2000,
+            "minLength": 20,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "materiality",
+          "note"
+        ],
+        "title": "ClassifyObligationRequest",
         "type": "object"
       },
       "ConfirmationResponse": {
@@ -8654,6 +8699,23 @@
         "title": "ManifestBody",
         "type": "object"
       },
+      "NominateObligationRequest": {
+        "description": "What may need reporting, in the reporter's own words.",
+        "properties": {
+          "summary": {
+            "description": "An obligation nobody can identify later is not a record.",
+            "maxLength": 4000,
+            "minLength": 10,
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary"
+        ],
+        "title": "NominateObligationRequest",
+        "type": "object"
+      },
       "NormalizedSignalReference": {
         "additionalProperties": false,
         "description": "A reference as stored identity sees it: the same fields, plus the key.\n\n`collision_key` is what makes two spellings of one reference compare equal,\nand it is returned rather than left for the caller to recompute -- a producer\ncorrelating its own references against what this submission was identified by\nshould not have to reimplement the digest to do it.",
@@ -8869,6 +8931,81 @@
           "next_cursor"
         ],
         "title": "NotificationListResponse",
+        "type": "object"
+      },
+      "ObligationResponse": {
+        "description": "One obligation. The classification fields are all set or all null.",
+        "properties": {
+          "classification_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification Note"
+          },
+          "classified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classified At"
+          },
+          "classified_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classified By"
+          },
+          "materiality": {
+            "title": "Materiality",
+            "type": "string"
+          },
+          "nominated_at": {
+            "format": "date-time",
+            "title": "Nominated At",
+            "type": "string"
+          },
+          "nominated_by": {
+            "format": "uuid",
+            "title": "Nominated By",
+            "type": "string"
+          },
+          "obligation_id": {
+            "format": "uuid",
+            "title": "Obligation Id",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "obligation_id",
+          "summary",
+          "materiality",
+          "nominated_at",
+          "nominated_by",
+          "classified_at",
+          "classified_by",
+          "classification_note"
+        ],
+        "title": "ObligationResponse",
         "type": "object"
       },
       "ObservationClassPredicate": {
@@ -18107,6 +18244,168 @@
         "summary": " Patch Pii Pattern",
         "tags": [
           "admin: pii"
+        ]
+      }
+    },
+    "/v1/admin/reporting-obligations": {
+      "post": {
+        "description": "Record that something may need reporting, without deciding whether it does.",
+        "operationId": "nominate_obligation_v1_admin_reporting_obligations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NominateObligationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObligationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Nominate Obligation",
+        "tags": [
+          "admin: obligations"
+        ]
+      }
+    },
+    "/v1/admin/reporting-obligations/{obligation_id}": {
+      "get": {
+        "description": "One obligation, scoped to the caller's tenant.",
+        "operationId": "get_obligation_v1_admin_reporting_obligations__obligation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "obligation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Obligation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObligationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Obligation",
+        "tags": [
+          "admin: obligations"
+        ]
+      }
+    },
+    "/v1/admin/reporting-obligations/{obligation_id}/classify": {
+      "post": {
+        "description": "Decide one obligation's materiality, on the record.\n\nRefuses a second classification rather than overwriting: the first answer is\nthe one somebody acted on, and an overwrite would leave the trail describing\nonly the most recent opinion.",
+        "operationId": "classify_obligation_v1_admin_reporting_obligations__obligation_id__classify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "obligation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Obligation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassifyObligationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObligationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Classify Obligation",
+        "tags": [
+          "admin: obligations"
+        ]
+      }
+    },
+    "/v1/admin/reporting-obligations:backlog": {
+      "get": {
+        "description": "How many obligations are waiting, and how long the longest has waited.\n\nA read rather than a scheduled report, and both numbers rather than one: a\nscheduled job that silently stops turns a backlog into \"whenever somebody\nlooks\", and a count with no age cannot tell a morning's work from a\nsix-month lapse.",
+        "operationId": "obligation_backlog_v1_admin_reporting_obligations_backlog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacklogResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Obligation Backlog",
+        "tags": [
+          "admin: obligations"
         ]
       }
     },
