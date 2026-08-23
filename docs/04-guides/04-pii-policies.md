@@ -41,6 +41,10 @@ The scanner runs on these current write fields:
 | REST session-event body | `memory_session_event.body` |
 | Direct or extracted claim string value and evidence excerpt | `claim_value` |
 | Artifact body | `artifact.body` |
+| Task checkpoint append, every client-supplied content field | `intent_checkpoint.body` |
+| Task checkpoint append, the evidence array rendered as text | `intent_checkpoint.references` |
+| External signal observation | `external_signal.payload` |
+| External signal references rendered as text | `external_signal.references` |
 | String claim value crossing the promotion boundary | `memory_claim.<predicate>` |
 
 The scanner does not run on reads or every free-text field. It does not scan

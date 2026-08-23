@@ -63,9 +63,14 @@ from typing import Any, Final
 from prometheus_client import Counter
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from contextplane.context.admission import (
+    FIELD_INTENT_CHECKPOINT_BODY,
+    FIELD_INTENT_CHECKPOINT_REFERENCES,
+)
 from contextplane.context.schemas.reference import normalize_reference
 from contextplane.context.schemas.trust import ExternalReferenceV1, InvalidContextItem
 from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
+from contextplane.security.pii_guard import AdmissionRefused, admit_or_refuse
 from contextplane.types import Clock, TenantContext
 from contextplane.workspaces import queries_checkpoint as queries
 from contextplane.workspaces.audience import CAPABILITY_EXTEND, AudienceDenied
@@ -183,6 +188,8 @@ class IntentCheckpointService:
         # would leave a window where a grant expires between the test and the
         # stamp, and the row would carry a time the actor was not authorized at.
         moment = self._clock.now()
+
+        await self._admit_content(ctx, intent_id=intent_id, payload=payload, references=references)
 
         async with self._session_factory() as session, session.begin():
             # Taken before the head is read. Reading first and locking after
@@ -490,6 +497,54 @@ class IntentCheckpointService:
             )
         return key
 
+    async def _admit_content(
+        self,
+        ctx: TenantContext,
+        *,
+        intent_id: uuid.UUID,
+        payload: Mapping[str, Any],
+        references: Sequence[ExternalReferenceV1],
+    ) -> None:
+        """Refuse a checkpoint carrying a prohibited class, before it is stored.
+
+        Here rather than in the two transports, for the reason workspace entries
+        scan in their service: a transport-level scan is one a second transport
+        can be written without, which is how this write path went four verbs
+        without one.
+
+        Outside the append's transaction, and so outside the task lock. The lock
+        serializes every append to one task, and holding it across a detector
+        sweep would make append throughput a function of scan cost; nothing the
+        scan decides depends on task state. Authorization still precedes it --
+        both surfaces assert participation before calling in -- so the scanner
+        is not reachable by a caller with no grant.
+
+        A replay re-scans. The content is identical by definition, since a key
+        reused for different content is refused, so the outcome is the same and
+        the second detection row records a submission that genuinely happened
+        twice.
+
+        Raised as `ValidationError`, the service layer's own refusal: letting a
+        `security.pii_guard` type through would make both adapters learn a
+        second refusal vocabulary for the thing they already map.
+        """
+        subject = str(intent_id)
+        scans: tuple[tuple[str, str], ...] = (
+            (FIELD_INTENT_CHECKPOINT_BODY, _scannable(dict(payload))),
+            (FIELD_INTENT_CHECKPOINT_REFERENCES, _scannable([_reference_payload(r) for r in references])),
+        )
+        for field_type, text in scans:
+            if not text:
+                continue
+            try:
+                await admit_or_refuse(self._session_factory, ctx, text, field_type, subject=subject)
+            except AdmissionRefused as refused:
+                classes = ", ".join(sorted(set(refused.decision.classes)))
+                raise ValidationError(
+                    f"this checkpoint carries content of a prohibited class ({classes}) in {field_type}; "
+                    "remove it and append again"
+                ) from refused
+
     def _normalized_evidence(self, evidence: Sequence[Mapping[str, Any]]) -> tuple[ExternalReferenceV1, ...]:
         """Normalize each reference before the checkpoint shape checks for duplicates.
 
@@ -502,6 +557,21 @@ class IntentCheckpointService:
             return tuple(normalize_reference(dict(reference)) for reference in evidence)
         except InvalidContextItem as exc:
             raise ValidationError(str(exc)) from exc
+
+
+def _scannable(value: object) -> str:
+    """One JSON spelling of the content a scanner is about to read.
+
+    Every field, including the ones the digest omits. A digest names what the
+    checkpoint *means* and can leave out an `authorized_uri` without changing
+    that; a scan is about what the bytes *contain*, and a credential in a query
+    string is a credential in storage.
+
+    Returns `"{}"` or `"[]"` for empty input, which the caller checks for --
+    scanning an empty container writes a detection row about nothing.
+    """
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+    return "" if encoded in {"{}", "[]"} else encoded
 
 
 def _reference_payload(reference: ExternalReferenceV1) -> dict[str, Any]:

@@ -160,6 +160,10 @@ def _result(
     result.rowcount = rowcount
     result.first = MagicMock(return_value=returning)
     result.scalar_one = MagicMock(return_value=None if returning is None else returning[0])
+    # ORM-style reads consume `.scalars()`. Only the admission scan does that
+    # here, and it has no tenant rows to find, so an empty iterator is the whole
+    # of it -- the built-in floor it falls back to is what the tests exercise.
+    result.scalars = MagicMock(return_value=iter(()))
     return result
 
 
@@ -271,6 +275,19 @@ def _make_session(db: _Db) -> AsyncMock:
             db.calls.append("insert_audit")
             db.audits.append({**args, "after": json.loads(args["after"])})
             return _result()
+
+        # The admission scan every append now runs before storage. Routed here
+        # rather than stubbed away, because the append genuinely reads this
+        # table and a fake that refuses to answer would only prove the fake is
+        # out of date. No tenant rows: the built-in floor is what these tests
+        # exercise, and `test_content_carrying_a_prohibited_class_is_refused`
+        # below asserts it still fires with the table empty.
+        if "FROM pii_patterns" in sql or "FROM pii_field_policies" in sql:
+            return _result()
+
+        if "INSERT INTO pii_detection_log" in sql:
+            db.calls.append("insert_pii_detection")
+            return _result(rowcount=1)
 
         msg = f"unrouted statement: {sql}"
         raise AssertionError(msg)
@@ -814,6 +831,56 @@ async def test_a_refused_append_writes_no_head_and_no_audit_row() -> None:
 
     assert db.heads == {}
     assert db.audits == []
+
+
+@pytest.mark.asyncio
+async def test_content_carrying_a_prohibited_class_is_refused() -> None:
+    """With no tenant policy rows at all -- the fake answers both policy reads
+    empty. The floor lives in code, so a deployment that has configured nothing
+    still refuses; a scan that only fired for a configured tenant would leave
+    the default deployment storing the card."""
+    db = _Db()
+    service = _make_service(db)
+    task = _participating_task(db, actor=_ACTOR_A)
+
+    with pytest.raises(ValidationError, match="prohibited class"):
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_A),
+            intent_id=task,
+            payload={"goal": "charge 4111111111111111"},
+            idempotency_key="k-pii",
+        )
+
+    assert db.heads == {}, "a refused append must not move the head"
+    assert "insert_checkpoint" not in db.calls, "and must not have stored the content it refused"
+    actions = [audit["action"] for audit in db.audits]
+    assert actions == ["context.admission_refused"], (
+        "the refusal is the only thing that happened, and the audit log says so -- "
+        "an append row beside it would describe a step that does not exist"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_scan_runs_before_the_task_lock_is_taken() -> None:
+    """The lock serializes every append to one task. Holding it across a detector
+    sweep would make append throughput a function of scan cost, so the refusal
+    has to happen before `lock_task` -- and nothing the scan decides needs task
+    state, which is what makes that safe."""
+    db = _Db()
+    service = _make_service(db)
+    task = _participating_task(db, actor=_ACTOR_A)
+
+    with pytest.raises(ValidationError):
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_A),
+            intent_id=task,
+            payload={"goal": "charge 4111111111111111"},
+            idempotency_key="k-pii-lock",
+        )
+
+    assert not any(
+        call.startswith("lock:") for call in db.calls
+    ), "a refused append must not have contended for the task lock"
 
 
 @pytest.mark.asyncio

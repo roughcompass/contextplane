@@ -5098,7 +5098,7 @@ claimed to scan, so nothing contradicted it and nobody looked.
 
 ### E13-T5 — Checkpoints are agent-written free text, unscanned, and served to a second agent
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `append_intent_checkpoint` scans before storage, like the other four
 observational writes do.
@@ -5127,6 +5127,40 @@ Two things to settle rather than assume:
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "intent_memory and pii"
     make all
+
+**Both settled, and neither the way the entry guessed.**
+
+**Which field type: two new ones, not the session-event constant.** The module
+that owns the vocabulary already answers this — *"Classification attaches to a
+field, not to a module: two surfaces writing the same field carry the same
+obligation."* A checkpoint is not a session event, and reusing
+`memory_session_event.body` would mean a tenant cannot state a policy about one
+without stating it about the other. So `intent_checkpoint.body` and
+`intent_checkpoint.references`, split for the reason the signal pair is split:
+the evidence array carries `authorized_uri`, which is separately authored and is
+a real token channel. That split matters more here than for signals, because
+`authorized_uri` is deliberately omitted from the checkpoint digest material — a
+digest names what a checkpoint *means*, and a scan is about what its bytes
+*contain*.
+
+**Which fields: all of them, and no warning is needed.** The premise behind the
+second question was wrong. A checkpoint has no counterpart to a session event's
+`metadata`: `CLIENT_FIELDS` is closed to content, so "every client field" needs
+no carve-out and there is nothing that was admitted on the understanding it goes
+unscanned.
+
+**Where it went: the service, not either route.** Both transports already call
+`assert_participant` before calling in, so authorization still precedes the
+scan — but a transport-level scan is one a second transport can be written
+without, and that is precisely how this path acquired two surfaces and no scan.
+
+**And before the task lock.** The lock serializes every append to one task;
+holding it across a detector sweep would make append throughput a function of
+scan cost. Nothing the scan decides depends on task state, so nothing is lost by
+refusing first. `test_the_scan_runs_before_the_task_lock_is_taken` pins it.
+
+**Nowhere had recorded the omission as deliberate.** Seven pilot field types
+covered every other write. That is what made this a gap rather than a decision.
 
 ### E13-T3 — A usage signal that could justify retiring anything
 
