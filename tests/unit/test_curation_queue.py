@@ -47,12 +47,14 @@ from contextplane.service.memory.curation_queue import (
     DISPOSITION_CONFIRM,
     DISPOSITION_PROPOSE_ARC,
     DISPOSITIONS,
+    ESCALATION_AGE_DAYS,
     REASON_AWAITING_OWNER,
     REASON_BELOW_FLOOR,
     REASON_CONTESTED,
     REASON_UNLINKED,
     CurationCase,
     CurationQueueService,
+    QueueCursor,
     QueueItem,
 )
 from contextplane.types import TenantContext
@@ -72,6 +74,11 @@ def _queue_row(**overrides: Any) -> dict[str, Any]:
         "created_at": _NOW,
         "human_backed": False,
         "proposal_id": None,
+        # The three ranking columns, negated in the query so the whole ordering
+        # is ascending and a row-constructor cursor can express it.
+        "escalation_rank": 1,
+        "neg_dependants": 0,
+        "neg_sampling": 0,
     }
     base.update(overrides)
     return base
@@ -131,13 +138,18 @@ async def test_items_for_without_a_cursor_fetches_page_size_plus_one_from_the_st
     service = CurationQueueService(factory)
     tenant_id = uuid.uuid4()
 
-    await service.items_for(tenant_id, page_size=25)
+    await service.items_for(tenant_id, page_size=25, now=_NOW)
 
     assert len(calls) == 1
     sql, params = calls[0]
-    assert "AND (c.created_at, c.claim_id) >" not in sql
-    assert "ORDER BY c.created_at, c.claim_id LIMIT :limit" in sql
-    assert params == {"tid": tenant_id, "limit": 26}
+    assert "escalation_rank, neg_dependants, neg_sampling, created_at, claim_id" not in sql.split("ORDER BY")[0]
+    assert "ORDER BY escalation_rank, neg_dependants, neg_sampling, created_at, claim_id LIMIT :limit" in sql
+    assert params["tid"] == tenant_id
+    assert params["limit"] == 26
+    # The escalation cutoff is derived from the caller's instant, not read off
+    # the wall clock inside the query -- so a test can pin it and a reviewer can
+    # reason about which rows were past the age at the moment of the read.
+    assert params["escalation_cutoff"] == _NOW - datetime.timedelta(days=ESCALATION_AGE_DAYS)
 
 
 @pytest.mark.asyncio
@@ -146,13 +158,25 @@ async def test_items_for_with_a_cursor_adds_the_keyset_condition_and_its_params(
     service = CurationQueueService(factory)
     tenant_id = uuid.uuid4()
     cursor_claim_id = uuid.uuid4()
-    cursor = (_NOW, cursor_claim_id)
+    cursor = QueueCursor(
+        escalation_rank=1,
+        neg_dependants=-7,
+        neg_sampling=-45,
+        created_at=_NOW,
+        claim_id=cursor_claim_id,
+    )
 
-    await service.items_for(tenant_id, cursor=cursor, page_size=10)
+    await service.items_for(tenant_id, cursor=cursor, page_size=10, now=_NOW)
 
     sql, params = calls[0]
-    assert "AND (c.created_at, c.claim_id) > (:cursor_created_at, :cursor_claim_id)" in sql
+    # The whole sort tuple, in one ascending comparison. A cursor over fewer
+    # components than the ordering uses would resume in the wrong place as soon
+    # as two rows shared an arrival time.
+    assert "(escalation_rank, neg_dependants, neg_sampling, created_at, claim_id)" in sql
     assert params is not None
+    assert params["cursor_escalation"] == 1
+    assert params["cursor_dependants"] == -7
+    assert params["cursor_sampling"] == -45
     assert params["cursor_created_at"] == _NOW
     assert params["cursor_claim_id"] == cursor_claim_id
     assert params["limit"] == 11

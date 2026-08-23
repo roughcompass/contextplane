@@ -5746,6 +5746,38 @@ Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "queue and (rank or starv)"
     make all
 
+### E5-T3b — `curation_queue.py` holds two concerns, and the ceiling found the seam
+
+**Kind:** task · **Status:** pending · **Blocked by:** E5-T3 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the curation-case lifecycle lives beside the queue read, not inside it.
+
+E5-T3 pushed the file past the 800-line ceiling. The ordering it added was
+extracted to `curation_ranking.py` — that was the seam the *new* code created,
+and taking it is what kept the overshoot to 29 lines instead of 111. The file is
+on the allowlist for the remainder, with that reason.
+
+What the ceiling is now pointing at is an **older** seam. The module holds a
+read-only queue *and* a read-write case lifecycle — `open_case`, `route_case`,
+`record_disposition`, `case`, `cases_for`, plus `CurationCase`,
+`DispositionPolicy` and the `CASE_*` vocabulary. `CurationQueueService`'s own
+class docstring already draws the line: *"Reads only. Acting on an item goes
+through the service that owns that decision, so the queue cannot become a second
+write path into claims."* The cases half is precisely that second write path,
+living in the same file as the sentence denying it.
+
+Roughly 300 lines, touching both transports. Deliberately not bundled into a
+ranking rewrite: one diff carrying both would be reviewable as neither.
+
+**Do it before E5-T4, not after.** That task adds `disposition_actor` to the
+case lifecycle, so it lands squarely in the half that should have moved — and
+doing it in the wrong file first makes the move bigger and the history harder to
+read.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit -q -k "curation"
+    make all
+
 ### E5-T4 — `disposition_actor`, and what changes once a policy can dispose
 
 **Kind:** task · **Status:** pending · **Blocked by:** E5-T2 · **Hotspot:** no · **Repo:** contextplane

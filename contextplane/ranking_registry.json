@@ -195,6 +195,19 @@
         "derived_from": "defect tolerance 0.01, consumer's risk 0.05, zero-acceptance plan (c=0)",
         "derivation": "P(accept | p) = (1 - p)**n for a zero-acceptance plan. Requiring P(accept | p=0.01) <= 0.05 gives n >= ln(0.05) / ln(0.99) = 298.07, so the smallest whole n is 299. Exact only for a representative draw: E5's queue is ranked and E5-T4 will let a policy dispose of items without a human, so this is a floor on effort rather than a guarantee about the residue."
       }
+    },
+    {
+      "model_id": "review-queue-escalation-age-days@1",
+      "form": "threshold",
+      "consumer": "contextplane/service/memory/curation_ranking.py",
+      "parameters": 14.0,
+      "reason": "Days a backlogged claim may wait before it is ordered ahead of every claim younger than it, whatever their leverage. This is the number that makes the ranked queue's reachability property checkable: without it 'we also consider age' is not something a test can assert. Fourteen days is one review fortnight -- long enough that a busy queue is still worked by leverage, short enough that nothing waits a month unseen. Governed because it is the sole bound on how long an item can be outranked, and a literal here could be lowered to make a backlog look shorter without anyone reviewing the trade.",
+      "coupling": "consumed",
+      "requires_validated": false,
+      "validation": {
+        "status": "grandfathered",
+        "reason": "A reasoned position, not a derivation and not a measurement -- exactly what ADR-0014 predicted this magnitude would be. There is no defect rate it follows from and no held-out result behind it: it is a statement about how long a reviewer may leave something, and the honest status is that nobody has checked it against outcomes because no release has produced any."
+      }
     }
   ]
 }
