@@ -7756,6 +7756,89 @@
         "title": "FieldProvenanceInput",
         "type": "object"
       },
+      "GovernanceObjectListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GovernanceObjectResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "GovernanceObjectListResponse",
+        "type": "object"
+      },
+      "GovernanceObjectResponse": {
+        "description": "One governed object, in the shape every kind answers in.\n\nShared because four screens read these alike, and *not* produced by a union\nquery: the six ARC governance objects agree on intent and disagree on schema\n\u2014 three spellings of scope, three of tenant, and three notions of \"in force\",\none of which does not exist. The shape is a contract; normalising the tables\nbehind it would mean inventing a state for the object that cannot be revoked.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "title": "Detail",
+            "type": "object"
+          },
+          "in_force": {
+            "title": "In Force",
+            "type": "boolean"
+          },
+          "in_force_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Force Until"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "object_id": {
+            "title": "Object Id",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "target_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Tenant Id"
+          }
+        },
+        "required": [
+          "kind",
+          "object_id",
+          "scope",
+          "target_tenant_id",
+          "in_force",
+          "in_force_until",
+          "created_at",
+          "detail"
+        ],
+        "title": "GovernanceObjectResponse",
+        "type": "object"
+      },
       "GrantCreate": {
         "description": "Add one participant to a task.\n\n`granted_by` is deliberately absent: it is the calling actor, taken from the\nrequest context. Accepting it would let a caller attribute a grant to\nsomebody else, and the stored record would look identical to a real one\nafterwards.",
         "properties": {
@@ -20412,6 +20495,48 @@
       }
     },
     "/v1/arc/admin/approval-verifiers": {
+      "get": {
+        "description": "Enrolled verifiers visible to this tenant, newest first.\n\nIncludes the **global** verifiers as well as the tenant's own, because a\nglobal verifier can approve for this tenant and a list that omitted them\nwould answer \"who may approve here\" wrongly by exactly the set that matters\nmost.\n\nThe public key is not returned. A list of who may approve does not need the\nmaterial, and a surface that carried it would be one more place it can leak.",
+        "operationId": "list_approval_verifiers_v1_arc_admin_approval_verifiers_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "in_force_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "In Force Only",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceObjectListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Approval Verifiers",
+        "tags": [
+          "arc: admin"
+        ]
+      },
       "post": {
         "description": "Complete a D1 enrollment challenge, admitting the verifier it names.\n\nReplaces the pre-existing direct-registration route entirely: there is\nno longer a way to admit a principal-bound verifier without first\nproving possession of its credential (or having a configured provider\nattest to it) against the exact bytes `create_enrollment_challenge`\ncommitted. Operator-gated deployment-wide, matching registration's\npre-existing gate -- see that route's own docstring.",
         "operationId": "register_approval_verifier_v1_arc_admin_approval_verifiers_post",
@@ -20551,6 +20676,48 @@
       }
     },
     "/v1/arc/admin/exceptions": {
+      "get": {
+        "description": "Exceptions granted for this tenant, newest first.\n\nThe register an exception is supposed to have. An exception is *defined* as\na documented deviation, and until this existed one was invisible from the\nmoment it was granted.\n\nStatements are returned only where the deployment stores them as plaintext;\nwhere they are encrypted at rest this does not reach for a key.\n`detail.has_statement` is what tells a reader \"none was given\" from \"not\nshown here\", because a list that decrypted every row would turn \"which\nexceptions exist\" into a bulk disclosure of why each was granted.",
+        "operationId": "list_approved_exceptions_v1_arc_admin_exceptions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "in_force_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "In Force Only",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceObjectListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Approved Exceptions",
+        "tags": [
+          "arc: admin"
+        ]
+      },
       "post": {
         "description": "Approve an exception narrowing a higher-scope directive.\n\nTenant-scoped rather than operator-gated: narrowing a rule *within* your\nown tenant is a tenant decision. What stops that becoming an escape\nhatch is the delegability check in the service -- a tenant cannot except\na global directive that does not permit it, or global governance would\nbe advisory.\n\nThe exception's tenant is taken from the authenticated context, never\nfrom the body: one a caller could file against another tenant would be\na way to weaken somebody else's rules.",
         "operationId": "approve_context_exception_v1_arc_admin_exceptions_post",

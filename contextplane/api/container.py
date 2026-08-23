@@ -63,6 +63,7 @@ from contextplane.arc import (
     DrafterService,
     EnrollmentService,
     ExceptionService,
+    GovernanceReadService,
     GraphPromotionAdmissionService,
     JitService,
     OperationalChainService,
@@ -318,6 +319,7 @@ class Services:
     # The ten-predicate atomic activation gate (ADR 040 Sec.5, ADR 041
     # Sec.8). Predicate 10 (`operational_integrity`) calls `arc_integrity.
     # assess` directly -- see `activation.py`'s own module docstring.
+    arc_governance_reads: GovernanceReadService
     arc_activation: ActivationService
     # None on every deployment today: ARC key material is not yet
     # operator-configurable, so resolution has nothing to sign a receipt
