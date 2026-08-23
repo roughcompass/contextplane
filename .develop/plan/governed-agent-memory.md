@@ -6204,6 +6204,22 @@ the reason verifiers are enrolled at all; whether the service enforces that
 separation is the first thing to check, because if it does not, this screen
 must not imply it does.
 
+**Checked, and the answer is more useful than yes or no.** Actor separation *is*
+enforced, by `_check_actor_separation` in `arc/schemas/authoring_profiles.py`:
+submitter and approver must be distinct principals, and a `global_mandatory`
+risk classification requires three distinct principals across submitter,
+approver and activator.
+
+**But that is the proposal lifecycle, not verifier enrolment.** Nothing prevents
+the actor who enrols a verifier from later approving with it.
+`VerifierRegistry.register` validates shape only and says so — *"Authorization is
+the caller's; the route holds the operator gate"* — and there is no
+separation-of-duty check anywhere between enrolment and use.
+
+So the screen must not present enrolment as if it carried the separation that
+approval does. If four-eyes over enrolment is wanted, it is a service change and
+its own task, not something a UI can assert.
+
 `GET /v1/arc/admin/operator-identity` belongs here rather than in a screen of
 its own: it answers "which verifier am I", which is the question this page's
 reader has, and one read is not a destination.
