@@ -3501,7 +3501,14 @@ Acceptance:
 
 ### E15-T7 — The contract pin bump for the second rename
 
-**Kind:** task · **Status:** pending · **Blocked by:** E15-T6 · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E15-T6 · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
+
+**Landed in contextplane-ui#21.** The vendored contract carries
+`SearchResultItem.fused_rank_score` and no `score`, the generated client follows
+it, and `ContextLabPage.test.tsx`'s fixture names the new field. The short window
+this entry worried about — the dashboard's pin disagreeing with the service about
+a response field — is closed. The pin has since moved again, to `0277c66` with
+E20-T10.
 
 Goal: vendor the contract E15-T6 exported, regenerate the client, and fix the one
 fixture that names the old field.
@@ -5877,7 +5884,7 @@ Acceptance:
 
 ### E10-T3 — ARC and PII operations out of the raw console
 
-**Kind:** task · **Status:** pending · **Blocked by:** E10-T2 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — PII half shipped, ARC half decomposed · **Blocked by:** E10-T2 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: the ARC and PII operations somebody currently performs against raw
 endpoints have screens.
@@ -5891,6 +5898,147 @@ The E19-T7 defect is the one to carry into the adapter work here: the endpoint
 is part of the behaviour. A governed edit sent to the collection path instead
 of the item path mints a second record instead of updating one, and a test
 asserting the body and the method but not the path passes while it happens.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**Measured before designing anything, which is what the entry asked for.** The
+gap is sixteen operations, and they do not belong on one screen.
+
+**PII: three of six operations had an adapter.** Shipped in
+contextplane-ui#24 — `POST /v1/admin/pii-field-policies` and
+`DELETE .../{policy_id}`, which is the operator's primary personal-data control
+and was a `curl` because the dashboard could list policies and not change one.
+
+`POST /v1/admin/pii-patterns` is **deliberately not built**: the runtime builds
+its scanner from the built-in detector modules only, so a registered tenant
+regex generates no matches. The operator guide says so in a warning block. A
+form for it would be a control that stores configuration and enforces nothing —
+shipped knowingly, which is worse than the accident.
+
+**ARC: twelve admin operations have no adapter**, and they are four different
+readers, cut below. Counted honestly: some `/v1/arc/admin/...` paths have a
+non-admin twin that *is* adapted, and those are excluded. That the service
+exposes several operations on two paths is a surface-consolidation question for
+E13, not for this epic.
+
+The one thing they share is the E19-T7 discipline: the endpoint is part of the
+behaviour, a governed edit sent to the collection path mints a record instead of
+updating one, and a test asserting body and method but not path passes while it
+happens.
+
+### E10-T6 — The PII vocabularies are closed in the service and open in the contract
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — vendored openapi.json · **Repo:** contextplane
+
+Goal: `field_type` and `policy` are published as the closed sets they are.
+
+The service holds `PILOT_FIELD_TYPES` (nine values) and refuses an unrecognised
+one with `NotAPilotField`; `policy` is `advisory | warn | block`. The contract
+types both as bare `string`.
+
+So a client cannot offer a correct picker without duplicating the vocabulary,
+and E10-T3 duplicated it — nine strings written into
+`PiiFieldPolicyEditor.tsx`. The alternative was a free-text box, which lets an
+operator save a policy that stores, lists, and **silently governs nothing**: a
+value missing from a select cannot be chosen, a typo in a text box cannot be
+seen.
+
+This is the same failure the codebase already refuses twice — `PROHIBITED_CLASSES`
+is read off the shipped detectors rather than restated, for exactly the reason
+that a hand-written second list disagrees first in the direction that silently
+admits. Publishing the enum deletes the duplicate rather than documenting it.
+
+Acceptance:
+    make contract-tags
+    make all
+
+### E10-T7 — Who may approve: the approval-verifier surface
+
+**Kind:** task · **Status:** pending · **Blocked by:** E10-T3 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: enrolling, challenging and revoking an approval verifier has a screen.
+
+Three operations, no adapter: `POST /v1/arc/admin/approval-verifiers`,
+`.../enrollment-challenges`, and `.../{approval_verifier_id}/revoke`.
+
+Its reader is whoever decides *who is allowed to approve an ARC change* — a
+different person from whoever approves one, and that separation is the control.
+A screen that let the same session enrol a verifier and then use it would defeat
+the reason verifiers are enrolled at all; whether the service enforces that
+separation is the first thing to check, because if it does not, this screen
+must not imply it does.
+
+`GET /v1/arc/admin/operator-identity` belongs here rather than in a screen of
+its own: it answers "which verifier am I", which is the question this page's
+reader has, and one read is not a destination.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E10-T8 — Proof that an approval happened, and withdrawing it
+
+**Kind:** task · **Status:** pending · **Blocked by:** E10-T7 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: attaching and revoking approval evidence has a screen, and so does
+invalidating a revision.
+
+`POST /v1/arc/admin/revisions/{revision_id}/approval-evidence`,
+`POST /v1/arc/admin/approval-evidence/{evidence_id}/revoke`, and
+`POST /v1/arc/admin/revisions/{revision_id}/invalidate` — the last has no
+non-admin twin, unlike activate and revoke, which do and are already adapted.
+
+**Invalidate and revoke are not the same act** and the screen must not let them
+read as one. Establish which is reversible and which is a statement that the
+revision should never have been active, before designing either control; a
+reader who picks the wrong one cannot tell from the button.
+
+Blocked by E10-T7 because evidence names a verifier, and a screen that attaches
+evidence citing verifiers nobody can enrol is half a workflow.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E10-T9 — Documented deviations: the exception surface
+
+**Kind:** task · **Status:** pending · **Blocked by:** E10-T3 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: granting and revoking an ARC exception has a screen.
+
+`POST /v1/arc/admin/exceptions` and `.../{exception_id}/revoke`.
+
+An exception is a governed statement that a policy does not apply here, for a
+reason, until a date. Its reader is an auditor as much as an operator, so the
+screen's job is as much *showing the standing exceptions and why* as granting
+one — a grant form with no register beside it makes the exceptions invisible the
+moment they are created, which is the opposite of what a documented deviation is
+for.
+
+Check whether the service requires an expiry. If it does not, this screen should
+say what an open-ended exception means before offering one, because an exception
+with no end is a policy change wearing a smaller word.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E10-T10 — Where ARC's inputs come from: source governance
+
+**Kind:** task · **Status:** pending · **Blocked by:** E10-T3 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: registering source connectors, upload policies and replay corpora has a
+screen.
+
+`POST /v1/arc/admin/source-connectors`, `.../source-upload-policies`, and
+`.../observation-replay-corpora`.
+
+These three configure what ARC is allowed to read and what it replays against,
+which makes them the highest-blast-radius controls in this group and the least
+obviously so — nothing about registering a connector looks like it changes what
+governance concludes. Whatever this screen does, it should make that visible.
+
+`ArcSourceEvidenceSection.tsx` already renders source evidence and is 755 lines;
+read it before adding a second source-shaped surface, because the answer may be
+that this belongs beside it rather than apart from it.
 
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
@@ -6245,11 +6393,6 @@ while E20 was being decomposed — 0071 by E4-T2's quarantine column and ledger,
 0072 by E20-T2's drop of the aggregate actor floor, which turned out to be a
 database CHECK as well as application code. The head moves; the entry's content
 does not.
-### E20-T3 — Migration: accuracy index and three new tables
-
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
-
-Goal: one Alembic revision, `contextplane/storage/migrations/versions/0071_agent_accuracy_and_instructions.py` (`down_revision = "0070_grant_temporal_exclusion"`), that:
 
 1. Adds `CREATE INDEX ix_memory_claims_author_created ON memory_claims (author_actor_id, created_at) WHERE author_actor_id IS NOT NULL` — lets `AgentAccuracyService`'s join drive from `memory_claims` on actor+window and complete via the existing `ix_memory_adjudication_claim`, instead of scanning `memory_claim_adjudication` per candidate row. The existing lone `ix_memory_claims_author` stays (other readers key on author without a time bound).
 2. Creates `agent_failure_pattern_report` table with columns: `report_id UUID PK, tenant_id, author_actor_id, window_start, window_end, n_adjudicated, n_incorrect, n_intervention_sessions, n_sessions, groups JSONB, generated_at, generated_by`. `groups` is a JSONB snapshot storing `[{claim_category, predicate, incorrect_count, total_count, rate, example_claim_ids}]`, matching `memory_calibration_mapping.bins`' precedent of storing a fitted aggregate as an inspectable blob rather than a normalized child table. `CHECK (window_end > window_start)`, `CHECK (n_incorrect <= n_adjudicated)`.
