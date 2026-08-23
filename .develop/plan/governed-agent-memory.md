@@ -5536,7 +5536,7 @@ Acceptance:
 
 ### E5-T2 — The SamplingPolicy, keyed on a tuple two-thirds of which exists
 
-**Kind:** task · **Status:** pending · **Blocked by:** E5-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E5-T1, E5-T1b · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: one governed sampling policy per (tenant, action class, sensitivity tier),
 with the sampling parameters derived from a stated risk tolerance rather than
@@ -5558,6 +5558,58 @@ the heaviest sampling, never the default.
 Acceptance:
     .venv/bin/python -m pytest tests/unit -q -k "sampling"
     make all
+
+**The title was right: two-thirds of the key existed, and the third does not.
+Both halves moved, and the entry invited exactly that — "reuse it or justify a
+second axis."**
+
+**Action class became claim category.** ARC's `ActionClass` is `merge`,
+`deploy`, `production_configuration_mutation`, `secret_release`, `data_export`
+— governed *actions an agent takes*. This queue holds *claims awaiting
+adjudication*, and a claim is not an action; keying a review budget on it would
+key on a dimension no queued row carries. There is a second, independent
+reason: the layer contract places `arc` above `service`, so `service.memory`
+may not import `ActionClass` at all. `CLAIM_CATEGORIES` is closed, on this
+layer, already a column on `memory_claims`, and already what decay keys on.
+
+**The sensitivity tier is absent, and that is the finding.** E1's handling tier
+is declared on *streams*: `memory_source_namespaces` is keyed on
+`(tenant_id, source_system, source_namespace)`. A `memory_claims` row has a
+`namespace` and **no `source_system`**, so it cannot reach that table. There is
+no tier to select a policy by, and inventing one inside a sampling policy would
+have manufactured a governance fact. A policy keyed on a column nobody can
+populate is a policy nobody can select. Giving claims a derivable tier is a real
+change and its own task.
+
+**The sample size is derived, and it is the first entry the third status was
+added for.** For a zero-acceptance plan `n >= ln(beta) / ln(1 - p)`; at a 1%
+tolerance and 5% consumer's risk that is 299, which is the governed
+unconfigured floor. `requires_validated: true` on that entry is satisfied by
+`derived` — the rule `_GATE_SATISFYING` was named for in E5-T1b.
+
+**Three things checked rather than assumed.** The module *reads* the registry at
+import, so `coupling: consumed` is true rather than claimed — a governed
+magnitude nothing reads is governed in name only. The stored `min_sample` is
+re-derived on every load and a row whose three numbers disagree is refused, so a
+budget edited in the database cannot serve as though it were derived. And the
+category CHECK is generated from `CLAIM_CATEGORIES`, so a second write path
+cannot introduce a value the service would have refused.
+
+**ADR-0014's dissent is carried into the code, not dropped.** The arithmetic is
+exact for a *representative draw*. This queue is ranked and E5-T4 will let a
+policy dispose of items without a human, so the reviewed subset is not a random
+sample and the true consumer's risk is not the one this number was derived
+against. It is a floor on effort, **not** a guarantee about the residue, and the
+module says so where a caller reads it.
+
+**A governance pin caught a design error.** Two registry tests assert every
+shipped magnitude is `grandfathered`, true of all seven until this one. The
+tempting fix was widening the assertion; the test's own docstring forbids it —
+*"delete the assertion for that id and record the evidence, not to relax the
+rule"* — because widening lets the *next* entry claim `derived` without anybody
+deciding. The exception is named by id with its reason, and a third test keeps
+that list honest: an exempted id must still be in the registry and still not be
+`grandfathered`, because a stale exemption reads as a live waiver.
 
 ### E5-T3 — The ranked queue, and the starvation it introduces
 

@@ -45,6 +45,7 @@ from contextplane.service.memory.quarantine import (
     QuarantineService,
     ReceiptWithholding,
 )
+from contextplane.service.memory.sampling_policy import SamplingPolicyService
 from contextplane.service.memory.session_events import MemoryService
 from contextplane.service.memory.source_governance import SourceGovernanceService
 from contextplane.service.memory.source_ingest import SourceIngestService
@@ -89,6 +90,10 @@ class MemoryServices:
     quarantine: QuarantineService
     promotion: PromotionService
     promotion_guardrails: GuardrailService
+    #: How much of each category's queue a reviewer must see. Read by the queue
+    #: E5-T3 builds; constructed here so one instance answers for a tenant
+    #: rather than each caller deriving its own budget.
+    sampling_policy: SamplingPolicyService
     curation_queue: CurationQueueService
     capability_requests: CapabilityRequestService
     source_governance: SourceGovernanceService
@@ -157,6 +162,7 @@ def build_memory_services(
         # parallel one of its own.
         promotion=PromotionService(session_factory, claims=claims, clock=clock, pii_scanner=pii_scanner),
         promotion_guardrails=GuardrailService(session_factory, clock=clock),
+        sampling_policy=SamplingPolicyService(session_factory, clock=clock),
         curation_queue=CurationQueueService(session_factory),
         # The loop's return path: what consuming teams need, routed to whoever
         # owns the capability. One place the lifecycle rules live.

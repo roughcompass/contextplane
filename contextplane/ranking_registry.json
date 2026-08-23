@@ -180,6 +180,21 @@
         "result": null
       },
       "requires_validated": false
+    },
+    {
+      "model_id": "review-sampling-unconfigured-floor@1",
+      "form": "threshold",
+      "consumer": "contextplane/service/memory/sampling_policy.py",
+      "parameters": 299.0,
+      "reason": "The zero-acceptance sample a tenant with no configured sampling policy falls back to: the smallest n with (1 - 0.01)**n <= 0.05, which is 299. A tenant that has configured nothing has not decided that little review is acceptable, so the unconfigured floor is the strictest plan this module derives rather than a lax one -- reading silence as permission is the failure the whole fail-closed rule exists to prevent. Governed because it decides how much of a review queue a human must see before the rest is accepted, which is a budget nobody should be able to change by editing a literal.",
+      "coupling": "consumed",
+      "requires_validated": true,
+      "validation": {
+        "status": "derived",
+        "reason": "Acceptance-sampling arithmetic, not a fitted or measured value. There is no held-out result because it is not a prediction: the number follows from two stated inputs and is reproducible by anybody with a calculator.",
+        "derived_from": "defect tolerance 0.01, consumer's risk 0.05, zero-acceptance plan (c=0)",
+        "derivation": "P(accept | p) = (1 - p)**n for a zero-acceptance plan. Requiring P(accept | p=0.01) <= 0.05 gives n >= ln(0.05) / ln(0.99) = 298.07, so the smallest whole n is 299. Exact only for a representative draw: E5's queue is ranked and E5-T4 will let a policy dispose of items without a human, so this is a floor on effort rather than a guarantee about the residue."
+      }
     }
   ]
 }
