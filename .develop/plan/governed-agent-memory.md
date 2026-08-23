@@ -4785,7 +4785,7 @@ would either test the drain or encode a race.
 
 ### E4-T3 — The preview is `get_blast_radius`, not a second traversal
 
-**Kind:** task · **Status:** pending · **Blocked by:** E4-T2 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E4-T2 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: before applying a quarantine, an operator sees what it would reach — using
 the traversal that already exists.
@@ -4807,6 +4807,54 @@ and an operator who believes otherwise will under-quarantine and not know it.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "blast_radius or quarantine"
     make all
+
+**The premise was wrong, and the correction is the interesting part.** The entry
+says *"`promotion_eligibility` already treats its result as a governance
+trigger"* — meaning `get_blast_radius`'s result. It does not.
+`promotion_eligibility.blast_radius_for` is its own statement:
+
+    SELECT count(DISTINCT src_entity_id) FROM edges
+     WHERE dst_entity_id = :eid AND rel IN ('depends_on','composes','provides_to') ...
+
+One hop, three edge types, no visibility filter.
+`GraphClosureCache.get_blast_radius` is a different thing entirely — transitive
+to depth 5, cache-first, visibility-filtered, exposed over REST and MCP.
+
+**So the two graph walks the entry warned about already exist — and they
+disagree on purpose.** `blast_radius_for`'s docstring says why: *"A deeper
+traversal would count transitively, but the count is a review threshold rather
+than a correctness property, and a direct-dependant count is the one an owner
+can verify by looking."* That is right for promotion, which asks "would enough
+owners notice to warrant review". It is wrong for quarantine, which asks "what
+content rests on this" — and a claim four hops away rests on withheld content
+exactly as much as one hop away.
+
+Collapsing them would have broken whichever one lost. They stay separate, and
+both now say so.
+
+**Which left a third option the entry did not consider: call the existing
+traversal once per seed.** Not a second traversal, and not a widened one.
+`get_blast_radius` is single-root by construction — `closure_cache` is keyed by
+root and the CTE recurses from one — so teaching it about sets would rewrite a
+cached path REST and MCP both serve, to answer a question an operator asks
+occasionally. Per-seed invocation reuses the cache and agrees about what
+"downstream" means by *being the same code*.
+
+**`preview` now returns two sets that mean different things**, which is the
+distinction an operator acts on:
+
+- `matched` — the claims that would be withheld. Exact; the predicate decides it.
+- `downstream` — what depends on those claims' subjects. **Advisory: applying
+  the quarantine withholds none of it.**
+
+**The seed cap is reported, not silent.** Fifty subjects, and the result carries
+`seeds_traversed` beside `seeds_total` with a `truncated` property. A capped
+downstream set that did not say it was capped would read as the answer. The same
+property covers the no-traversal-wired case: zero seeds traversed out of one is
+`truncated`, because an untraversed subject is not a subject with no dependants.
+
+The point-in-time warning the entry asks for was already on `preview` from
+E4-T2 and is extended to cover both sets.
 
 ### E4-T4 — Pre-quarantine of downstream receipts
 
@@ -6396,7 +6444,7 @@ not exist, are now filled in — and the parity gate that checks every mapping
 names a real operation passes.
 ### E20-T10 — Admin dashboard: agent performance and instruction lifecycle screens
 
-**Kind:** task · **Status:** pending · **Blocked by:** E20-T9 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E20-T9 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: new feature `apps/admin-dashboard/src/features/agents/` (a distinct top-level feature — it answers "how is this agent principal doing," a different question from `memory`'s claim-curation surfaces or `analytics`'s usage-volume surfaces, per this repo's business-vocabulary-over-generic-buckets convention). Reuses existing composition primitives (`PageContainer`/`PageHeader`/`SummaryStrip`/`TableSection`/`EmptyState` — the same pieces `AnalyticsPage.tsx` and `SettingsPage.tsx` already use):
 
@@ -6409,6 +6457,36 @@ Goal: new feature `apps/admin-dashboard/src/features/agents/` (a distinct top-le
 Acceptance:
     pnpm --filter admin-dashboard test -- -t "agents"
     pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**Delivered** in contextplane-ui#23, with the contract pin bumped to `0277c66`
+in the same PR. Four things worth carrying forward.
+
+**An unmeasured rate is not a zero one, and the whole surface turns on it.** The
+service returns `null` when nothing was adjudicated, which means the opposite of
+"wrong every time". The adapter keeps the `null`, the model renders it "Not
+measured", and every rate is shown beside the counts it came from. Folding
+`null` to `0` would report a failing agent where the service reported an
+unmeasured one.
+
+**Failure patterns rank by rate, never by volume** — the reason the report
+carries both counts. The test uses the pair that makes it concrete: a predicate
+at 40 incorrect of 1000 must sort *below* one at 3 of 4.
+
+**The instruction in force is read off `status`.** A proposal is a row too, and
+reading the highest version would name a proposal as governing live behaviour —
+in exactly the state this screen exists to let somebody fix. The test sets the
+active instruction to version 2 and a proposal to version 3, so a version-based
+implementation fails it.
+
+**Rollback is hidden, not merely confirmed, when there is nothing behind the
+current instruction.** It restores the previously *active* one, ordered by
+`activated_at`; with one activation ever, offering the button would promise a
+result the server declines to produce.
+
+**One deviation, stated rather than silent.** The entry specified a `<select>`
+for the report picker. The repo lints native selects out in favour of
+`SearchableSelect`, so it is that behind a `Controller`. The lint rule is the
+enforced convention and outranks the entry's prose.
 
 ## Out of scope for E20
 
