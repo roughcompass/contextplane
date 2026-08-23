@@ -414,6 +414,9 @@ class CurationCaseResponse(BaseModel):
     owner_id: str | None
     routed_at: datetime.datetime | None
     disposition: str | None
+    #: `human` or `policy`. Reported rather than left to a reader to infer from
+    #: `owner_id`, and excluded from the review sample when it is `policy`.
+    disposition_actor_kind: str | None
     approval_authority: str | None
     evidence_threshold: str | None
     resolved_at: datetime.datetime | None
@@ -483,6 +486,7 @@ def _to_group_response(group: ContradictionGroup) -> ContradictionGroupResponse:
 
 def _to_case_response(case: CurationCase) -> CurationCaseResponse:
     return CurationCaseResponse(
+        disposition_actor_kind=case.disposition_actor_kind,
         case_id=case.case_id,
         tenant_id=case.tenant_id,
         subject_reference=case.subject_reference,
