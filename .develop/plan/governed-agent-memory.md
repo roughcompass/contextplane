@@ -5815,7 +5815,7 @@ that list honest: an exempted id must still be in the registry and still not be
 
 ### E5-T3 — The ranked queue, and the starvation it introduces
 
-**Kind:** task · **Status:** pending · **Blocked by:** E5-T2 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done — shipped in #109, with a defect found on the way · **Blocked by:** E5-T2 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the review queue orders by leverage and sampling priority instead of
 arrival time, without any item becoming unreachable.
@@ -5845,6 +5845,24 @@ already produces the material.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "queue and (rank or starv)"
     make all
+
+**Shipped, and the way it nearly did not is the part worth keeping.** The
+ranked query carried two defects only a database could see: `_RANK_JOIN`
+concatenated onto the finished base query, which put a `LEFT JOIN` after the
+`WHERE` it must precede, and `_RANK_COLUMNS` never imported at all — so the
+`ORDER BY` and the keyset cursor both named columns the `SELECT` did not
+produce.
+
+**Every unit test passed throughout**, because none of them executes SQL. The
+integration tier caught both the first time it ran the path, which is exactly
+what that tier is for and exactly why it is not in the coverage gate.
+
+So the fix was not two lines. `_QUEUE_BASE` split into `_QUEUE_SELECT` plus the
+predicate, because the ranked query adds columns to one and a join to the other
+and each has exactly one legal position; `backlog_predicate` takes the join as a
+parameter rather than leaving a caller to append it. And an integration test now
+asserts the ordering this queue exists to provide — an escalated claim ahead of
+a recent one, end to end through the route — because nothing did.
 
 ### E5-T3b — `curation_queue.py` holds two concerns, and the ceiling found the seam
 
@@ -6027,7 +6045,7 @@ permissive direction is silent.
 
 ### E11-T2 — The receipts explorer, over endpoints that already exist
 
-**Kind:** task · **Status:** pending · **Blocked by:** E11-T1 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — shipped in contextplane-ui#36 · **Blocked by:** E11-T1 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: a reader can find a receipt, see what it served and what it withheld, and
 follow its references — without a new endpoint.
@@ -6046,6 +6064,22 @@ prevent a caller from believing.
 
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**The entry names one 409 reason; there are two.** `receipt_not_hydrated` is
+the system being careful and waiting fixes it. E4-T4 added `receipt_withheld`,
+where an operator withheld the content deliberately and waiting fixes nothing.
+
+Collapsing them would be the same mistake in the other direction: it leaves
+somebody refreshing a screen that will never change, and hides that a decision
+was taken. So the withheld notice offers no re-read and says plainly that
+re-reading returns the same refusal. A real error stays a real error — swallowing
+a 500 into "still being written" would be the third version of it.
+
+Two smaller findings: `GET /receipts/{id}` deliberately does not refuse (it is
+the poll surface), so the header is a separate query and stays readable when it
+is the only thing that can be read; and there was **no adapter for finding a
+receipt at all**, only for opening one by id, which made "a reader can find a
+receipt" unbuildable until `findReceiptsByReference` was added.
 
 ### E11-T3 — Audit-role drill-down, and the justification that is the control
 
@@ -6791,7 +6825,7 @@ bottleneck. It is not a guess: the numbers are below.
 
 ### E15b-T1 — The critical path is twice what it needs to be, and one tier runs twice
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done — the fan-out; the duplication kept, with a reason · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a PR's checks finish in about the time the slowest tier takes, not the sum
 of two of them.
@@ -6871,6 +6905,29 @@ here provides one; corrected too.
 The rest of the UI copy was scanned for the same class of claim and is clean.
 The other uses of "immutable" — a source locator, a profile revision, a `seq` —
 are accurate and left alone.
+
+**Fanned out.** `integration`, `conformance` and `image` now depend on
+`changes` rather than on `unit`, each carrying the same
+`if: needs.changes.outputs.code == 'true'` that `unit` already had, so docs-only
+PRs skip exactly as before. The measured critical path goes from `unit` **then**
+`integration` (17–20 min) to `max(unit, integration)` (~11.5).
+
+The cost is stated in the workflow rather than left implicit: a PR whose unit
+tier is already broken now burns an integration runner before anybody knows.
+That buys back eight minutes on every PR that passes, which is nearly all of
+them.
+
+`native-stack` and `perf` keep `needs: unit` deliberately — both are
+schedule-only and neither is on a PR's path, so moving them would add risk for
+no wall-clock.
+
+**The duplication is kept, and now it is a decision.** `make test-coverage` runs
+`tests/unit` and `tests/conformance` together because the coverage ratchet counts
+on both, and the separate job exists so a conformance failure reads as a
+conformance failure instead of arriving buried in a summary of ten thousand
+tests. Running beside `unit` instead of behind it, that duplication costs runner
+minutes and no wall clock at all — which is what makes keeping it defensible
+where before it was merely unnoticed.
 
 ### E14-T1 — Every ARC governance object is invisible the moment it is created
 
