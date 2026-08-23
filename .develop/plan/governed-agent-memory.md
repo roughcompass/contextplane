@@ -6471,6 +6471,24 @@ read as one. Establish which is reversible and which is a statement that the
 revision should never have been active, before designing either control; a
 reader who picks the wrong one cannot tell from the button.
 
+**Established, and the question as posed has no answer: neither is reversible.**
+`revoke` is documented "Terminal", and `test_a_revoked_revision_cannot_be_reactivated`
+holds it there. `invalidate` is terminal too. So a screen built around
+"reversible versus not" would be sorting them on an axis they do not differ on.
+
+What they differ on is **what the tombstone tells an auditor**, and the service
+keeps two codes to say it — `OBLIGATION_MISSING_REVOKED` and
+`OBLIGATION_MISSING_INVALID`, pinned by
+`test_invalidation_tombstones_differently_from_revocation`:
+
+- **Revoke** says the rule no longer applies. The revision was validly in force
+  until now, and everything resolved under it stands.
+- **Invalidate** says the content was wrong or its source is gone. That reaches
+  *backwards*: it casts doubt over every resolution made while it was active.
+
+So the distinction the screen must carry is not undo-ability but blast radius in
+time, and invalidate is the one that reaches into the past. Design from that.
+
 Blocked by E10-T7 because evidence names a verifier, and a screen that attaches
 evidence citing verifiers nobody can enrol is half a workflow.
 
@@ -6495,6 +6513,30 @@ for.
 Check whether the service requires an expiry. If it does not, this screen should
 say what an open-ended exception means before offering one, because an exception
 with no end is a policy change wearing a smaller word.
+
+**Both questions checked. The expiry answer is the expected one; the other one
+removes half this task's stated goal.**
+
+- **Expiry is not required.** `effective_from` is mandatory and
+  `effective_until` is nullable, so an open-ended exception is grantable
+  today. The entry's instinct stands and the screen should say so before
+  offering the control.
+- **Standing exceptions cannot be shown.** There is no read path for an
+  exception — see E14-T1. So "showing the standing exceptions and why", which
+  this entry names as as much of the job as granting one, cannot be built here.
+  The register this task asks for is a service change.
+
+A third thing, not asked about and worth knowing before designing the form:
+`ExceptionApprovalBody` requires `evidence_id`, `approval_verifier_id`,
+`approved_payload_digest`, `audit_log_reference` and an approval timestamp. That
+is a **pre-assembled approval envelope**, not something an operator composes at a
+screen. Whatever this page does, granting is transcribing an approval that
+already happened elsewhere — which also makes it depend on E10-T7 in practice,
+since the envelope names an enrolled verifier.
+
+Rescoped to what the API supports: grant, revoke, say plainly what an
+open-ended exception is, and say plainly that this screen cannot show what is
+already in force. Re-scope back when E14-T1 lands.
 
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
@@ -6539,6 +6581,68 @@ author is the person most likely to reach for the stronger word.
 
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+## Task decomposition — fourteenth wave (ARC's admin surface has no read side)
+
+Found by building E10-T7 and then checking E10-T9's premise. Not a defect in
+either screen: it is the same absence twice, and counting the surface showed it
+is the same absence thirteen times.
+
+### E14-T1 — Every ARC governance object is invisible the moment it is created
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — api/routers/, arc/service/ · **Repo:** contextplane
+
+Goal: the governance objects the ARC admin surface creates can be read back.
+
+**The count, because the shape of this is not obvious one endpoint at a time.**
+Of fourteen paths under `/v1/arc/admin`, **thirteen are POST-only**. The single
+`GET` is `operator-identity`, and it reads the *caller* — not any governed
+object. So there is no way, through the API, to answer:
+
+- which approval verifiers are enrolled
+- which exceptions are standing, against what, and until when
+- what approval evidence a revision carries
+- which source connectors, upload policies or replay corpora are registered
+
+Each of those is a governance object whose whole purpose is to be inspectable
+later. An exception in particular is *defined* as a documented deviation, and a
+deviation nobody can enumerate is an undocumented one with a paper trail in the
+audit log.
+
+**Why this is filed here rather than fixed inside a UI task.** It has now
+determined the shape of two screens and will determine two more:
+
+- **E10-T7** shipped with the gap stated on the screen: enrolment shows the
+  verifier id once and tells the operator to record it, because revoking later
+  needs an id nothing can look up.
+- **E10-T9** loses half its stated goal — the register of standing exceptions it
+  asks for beside the grant form.
+- **E10-T8** and **E10-T10** attach evidence and register sources with the same
+  absence underneath.
+
+Four screens papering over one missing read side is four places to un-paper
+later. The alternative — each UI task inventing its own workaround — is how a
+gap becomes permanent.
+
+**The audit log is not the answer**, and it is worth saying so before somebody
+offers it. It records that an object was created. It does not report current
+state: an exception granted and then revoked appears twice, and reconstructing
+"what is in force right now" from an event stream is a query the operator asking
+the question cannot write.
+
+**Scope note.** The read side does not have to be six endpoints. The objects
+share a shape — scope, validity window, who approved, whether revoked — and the
+first design question is whether one governance-object index serves all of them
+or whether the differences are load-bearing. Decide that before writing routes.
+
+**Both transports.** Whatever is added exists in the service, not a router, and
+appears on REST and MCP alike — the rule this plan has recorded three times, and
+a read-only surface added to one transport is the cheapest possible place to
+break it again.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "arc and (list or read)"
+    make all
 
 ## Task decomposition — thirteenth wave (three defects found while judging E4-T1)
 
