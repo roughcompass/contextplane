@@ -66,7 +66,13 @@ _MUST_GUARD: frozenset[str] = frozenset({"context/receipts.py"})
 #: Reads over the same tables that are *writers*, not serving paths. A writer
 #: cannot serve a withdrawn key to anybody, and blocking a write while
 #: propagation is late would stall the very queue that is behind.
-_WRITERS: frozenset[str] = frozenset({"context/derivative_handlers.py"})
+#:
+#: `receipt_withholding.py` joins `context_receipt_items` to find which receipts
+#: quoted a quarantined claim, and then writes `context_receipts`. It serves
+#: nobody: the join is a subquery inside an UPDATE, and no `item_key` it reads
+#: reaches a caller. Guarding it would refuse to withhold receipts *because*
+#: propagation is late, which is exactly when withholding them matters most.
+_WRITERS: frozenset[str] = frozenset({"context/derivative_handlers.py", "context/receipt_withholding.py"})
 
 #: Declares the tables and reads nothing. The ORM module is mapped-column
 #: definitions with no session and no query, so there is no read to guard.

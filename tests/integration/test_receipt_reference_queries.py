@@ -98,9 +98,16 @@ async def _receipt(wired: _Fixture, *, tenant_id: uuid.UUID) -> uuid.UUID:
     async with wired["factory"]() as session, session.begin():
         await session.execute(
             text(
+                # `hydration_state` explicitly, because the evidence reads now
+                # refuse an unhydrated receipt in the service rather than in the
+                # router: an exclusions read that returned nothing for one would
+                # say "nothing was withheld" when it means "not recorded yet".
+                # These tests are about tenant isolation, so they want a receipt
+                # that is servable to its owner.
                 "INSERT INTO context_receipts "
-                "(receipt_id, tenant_id, intent_id, state, cacheable, resolved_at, requested_by) "
-                "VALUES (:rid, :tid, NULL, 'complete', TRUE, :now, 'actor')"
+                "(receipt_id, tenant_id, intent_id, state, cacheable, hydration_state, "
+                " resolved_at, requested_by) "
+                "VALUES (:rid, :tid, NULL, 'complete', TRUE, 'complete', :now, 'actor')"
             ),
             {"rid": receipt_id, "tid": tenant_id, "now": _NOW},
         )

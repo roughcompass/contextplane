@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends, Path, Query, status
 
 from contextplane.api.auth.context import require_roles
 from contextplane.api.container import Services, services
-from contextplane.api.errors import build_error, map_catalog_error
+from contextplane.api.errors import map_catalog_error
 from contextplane.api.schemas.receipts import (
     ExclusionListResponse,
     ExclusionResponse,
@@ -46,7 +46,7 @@ from contextplane.api.schemas.receipts import (
     ResumeResponse,
 )
 from contextplane.auth.roles import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER
-from contextplane.context.receipts import HYDRATION_SERVABLE
+from contextplane.context.receipts import refuse_if_unservable
 from contextplane.context.resume import ResumeRequest, ResumeState
 from contextplane.exceptions import NotFoundError
 from contextplane.signals.reads import FeedbackReadService, ResumeFeedback
@@ -89,25 +89,29 @@ async def _servable_or_refuse(container: Services, ctx: TenantContext, receipt_i
     nothing -- and the second is a fact while the first is a race.
 
     `GET /receipts/{id}` deliberately does *not* refuse: it surfaces
-    `hydration_state`, which is how a caller polling for a resolution it
-    triggered learns to wait. Refusing the summary too would leave no way to
-    observe the state this column exists to publish.
+    `hydration_state` and `withheld_at`, which is how a caller polling for a
+    resolution it triggered learns to wait, and how an operator learns why these
+    reads are refusing. Refusing the summary too would leave no way to observe
+    the states those columns exist to publish.
 
     404 for a missing receipt is unchanged and comes first, so a caller cannot
     learn that an id exists by getting a different refusal for it.
+
+    **The rule itself is no longer written here.** This function answers 404 and
+    then calls the shared predicate, because the copy that used to live here was
+    the only copy: the four MCP tools over the same service reads had none, and
+    `get_receipt_exclusions` told its caller that "an empty list means nothing
+    was withheld" -- the exact belief this 409 exists to prevent.
+
+    `/exclusions` would now be refused by the service anyway. `/references`
+    would not: it reads through the index rather than through
+    `ContextReceiptService`, so the call here is what covers it, and the MCP
+    tool over the same index read makes the same call for the same reason.
     """
     row = await container.context_receipts.get(ctx, receipt_id=receipt_id)
     if row is None:
         raise map_catalog_error(NotFoundError(f"no receipt {receipt_id}"))
-    if row.hydration_state not in HYDRATION_SERVABLE:
-        raise build_error(
-            status.HTTP_409_CONFLICT,
-            code="receipt_not_hydrated",
-            message=(
-                f"receipt {receipt_id} is {row.hydration_state}, so what it served has not been "
-                "recorded yet and an empty answer here would not mean nothing was withheld"
-            ),
-        )
+    refuse_if_unservable(row)
 
 
 def resume_status(state: ResumeState) -> str:

@@ -217,6 +217,14 @@ class _CapturingSession:
 
                 return _Scalars()
 
+            @staticmethod
+            def scalar_one_or_none() -> Any:
+                """No receipt row, which the servability check reads as nothing
+                to refuse. The row-level reads answer an absent receipt with an
+                empty tuple, exactly as they did before that check existed, and
+                the transports answer 404 from `get`."""
+                return None
+
         return _Result()
 
     async def __aenter__(self) -> _CapturingSession:
@@ -228,6 +236,21 @@ class _CapturingSession:
 
 def _compiled(statement: Any) -> str:
     return str(statement.compile(compile_kwargs={"literal_binds": False}))
+
+
+def _statement_touching(session: Any, table: str) -> str:
+    """The emitted statement that reads *table*, whichever order it was issued in.
+
+    Not `statements[0]`: these reads now load the receipt header first, to refuse
+    one that may not be shown. Indexing by position would make every future read
+    added ahead of this one look like a missing join, which is the assertion
+    below, and it would fail for a reason that has nothing to do with tenancy.
+    """
+    for statement in session.statements:
+        sql = _compiled(statement)
+        if table in sql:
+            return sql
+    raise AssertionError(f"no statement read {table}")
 
 
 @pytest.mark.asyncio
@@ -245,7 +268,7 @@ async def test_reading_a_receipts_arms_scopes_the_read_to_the_tenant() -> None:
 
     await service.arms_for(_ctx(), receipt_id=uuid.uuid4())
 
-    sql = _compiled(session.statements[0])
+    sql = _statement_touching(session, "context_receipt_arms")
     assert "context_receipt_arms" in sql
     assert "JOIN context_receipts" in sql
     assert "context_receipts.tenant_id" in sql
@@ -264,4 +287,4 @@ async def test_reading_a_receipts_arms_orders_them_so_two_reads_agree() -> None:
 
     await service.arms_for(_ctx(), receipt_id=uuid.uuid4())
 
-    assert "ORDER BY context_receipt_arms.block" in _compiled(session.statements[0])
+    assert "ORDER BY context_receipt_arms.block" in _statement_touching(session, "context_receipt_arms")

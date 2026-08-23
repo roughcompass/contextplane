@@ -29,6 +29,7 @@ from contextplane.api.middleware.metrics import MetricsMiddleware
 from contextplane.api.middleware.ratelimit import RateLimitMiddleware
 from contextplane.api.middleware.request_id import RequestIdMiddleware
 from contextplane.config import Settings
+from contextplane.context.receipts import ReceiptNotServable as _ReceiptNotServable
 from contextplane.exceptions import NotFoundError as _NotFoundError
 
 _log = logging.getLogger(__name__)
@@ -64,6 +65,18 @@ def _install_error_envelope(app: FastAPI) -> None:
         return JSONResponse(
             status_code=404,
             content={"errors": [{"path": None, "code": "not_found", "message": str(exc)}]},
+        )
+
+    @app.exception_handler(_ReceiptNotServable)
+    async def _receipt_not_servable_handler(_request: object, exc: _ReceiptNotServable) -> JSONResponse:
+        # 409, not 404: the receipt exists and the caller may know it does --
+        # they were told so by `GET /receipts/{id}`, which publishes the states
+        # this refusal reports. `exc.reason` distinguishes the two, and they
+        # call for opposite actions: an unhydrated receipt is worth retrying,
+        # a withheld one is not until the incident is resolved.
+        return JSONResponse(
+            status_code=409,
+            content={"errors": [{"path": None, "code": exc.reason, "message": exc.detail}]},
         )
 
     @app.exception_handler(PermissionError)

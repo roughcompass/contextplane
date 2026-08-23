@@ -36,6 +36,12 @@ def _row(**overrides: Any) -> SimpleNamespace:
         "resolved_at": _RESOLVED_AT,
         "requested_by": "agent-a",
         "request_digest": "abc123",
+        # The two states the evidence reads refuse on. The projection publishes
+        # them for the reason the REST summary does: this is the surface a
+        # caller polls to learn to wait, and an operator reads to learn why the
+        # reads below it are refusing.
+        "hydration_state": "complete",
+        "withheld_at": None,
     }
     fields.update(overrides)
     return SimpleNamespace(**fields)
@@ -57,6 +63,8 @@ def test_the_projection_carries_every_field_the_rest_response_does() -> None:
         "resolved_at",
         "requested_by",
         "request_digest",
+        "hydration_state",
+        "withheld_at",
     }
 
 

@@ -95,8 +95,15 @@ async def world(pg_container: str) -> AsyncIterator[dict[str, Any]]:
                 await _grant(session, tenant=tenant, task=task, actor=actor)
             await session.execute(
                 text(
+                    # `hydration_state` explicitly: a handoff assembled from an
+                    # unhydrated receipt would report "nothing was withheld"
+                    # about a resolution that has not finished recording what it
+                    # withheld, and the service now refuses one. These tests are
+                    # about who may hand over what, so they want a receipt that
+                    # can be presented.
                     "INSERT INTO context_receipts (receipt_id, tenant_id, intent_id, state, cacheable, "
-                    "resolved_at, requested_by) VALUES (:r, :t, :task, 'complete', false, :now, :by)"
+                    "hydration_state, resolved_at, requested_by) "
+                    "VALUES (:r, :t, :task, 'complete', false, 'complete', :now, :by)"
                 ),
                 {"r": receipt, "t": tenant, "task": task, "now": _NOW, "by": coding},
             )

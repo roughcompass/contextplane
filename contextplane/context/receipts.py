@@ -80,6 +80,67 @@ HYDRATION_FAILED = "failed"
 HYDRATION_SERVABLE: frozenset[str] = frozenset({HYDRATION_COMPLETE})
 
 
+class ReceiptNotServable(Exception):
+    """A receipt exists but may not be shown as evidence right now.
+
+    Carries which of the two reasons applies, because they call for opposite
+    actions: an unhydrated receipt is worth retrying, and a withheld one is not
+    until the incident that withheld it is resolved.
+
+    A dedicated type rather than a status code, so the refusal is decided once
+    in the service and each transport renders it -- see `refuse_if_unservable`
+    for why that had to move.
+    """
+
+    def __init__(self, receipt_id: uuid.UUID, *, reason: str, detail: str) -> None:
+        super().__init__(detail)
+        self.receipt_id = receipt_id
+        self.reason = reason
+        self.detail = detail
+
+
+#: Why a receipt is not servable. A closed pair: both are refusals, and a caller
+#: branches on which one rather than on the message.
+NOT_SERVABLE_UNHYDRATED = "receipt_not_hydrated"
+NOT_SERVABLE_WITHHELD = "receipt_withheld"
+
+
+def refuse_if_unservable(receipt: ContextReceipt) -> None:
+    """Refuse a receipt that must not be shown, whichever surface is asking.
+
+    **Here rather than in the routers, because it was in one router and one
+    transport went without it.** `api/routers/receipts.py` checked
+    `hydration_state` before serving; the four MCP tools over the same three
+    service reads checked nothing. `get_receipt_exclusions` even told its caller
+    that "an empty list means nothing was withheld" -- the exact belief the REST
+    409 exists to prevent, since an unhydrated receipt has recorded no
+    exclusions yet. One surface refused and the other asserted the opposite
+    about the same row.
+
+    That is the third time in this codebase a guard written at a transport was
+    missing from a second transport over the same service, so this one is a
+    chokepoint the reads call and the transports only render.
+    """
+    if receipt.withheld_at is not None:
+        raise ReceiptNotServable(
+            receipt.receipt_id,
+            reason=NOT_SERVABLE_WITHHELD,
+            detail=(
+                f"receipt {receipt.receipt_id} is withheld while an incident affecting its inputs is "
+                "worked; it will serve again if the quarantine is reverted"
+            ),
+        )
+    if receipt.hydration_state not in HYDRATION_SERVABLE:
+        raise ReceiptNotServable(
+            receipt.receipt_id,
+            reason=NOT_SERVABLE_UNHYDRATED,
+            detail=(
+                f"receipt {receipt.receipt_id} is {receipt.hydration_state}, so what it served has not "
+                "been recorded yet and an empty answer here would not mean nothing was withheld"
+            ),
+        )
+
+
 class ContextReceiptService:
     """Writes receipts, and reads them back by their own id."""
 
@@ -263,15 +324,47 @@ class ContextReceiptService:
         read that loaded the row and then compared has already loaded a row it
         may not return, and the comparison is one refactor from disappearing.
         """
+        # **Deliberately does not refuse an unservable receipt.** The header is
+        # the observability surface: `hydration_state` is how a caller polling
+        # for a resolution it triggered learns to wait, and `withheld_at` is how
+        # an operator learns *why* the evidence reads below are refusing.
+        # Refusing here too would leave no way to observe the states these
+        # columns exist to publish. The reads that return the receipt's content
+        # do refuse -- see `_refuse_if_unservable`.
         async with self._session_factory() as session:
-            return (
-                await session.execute(
-                    select(ContextReceipt).where(
-                        ContextReceipt.receipt_id == receipt_id,
-                        ContextReceipt.tenant_id == ctx.tenant_id,
-                    )
+            return await self._header(session, ctx, receipt_id)
+
+    @staticmethod
+    async def _header(session: AsyncSession, ctx: TenantContext, receipt_id: uuid.UUID) -> ContextReceipt | None:
+        """The receipt row, tenant-scoped, or `None`.
+
+        In the caller's own session, for the reason `_refuse_if_overdue` is: a
+        servability check that passed on another connection cannot vouch for a
+        state this read never sees.
+        """
+        return (
+            await session.execute(
+                select(ContextReceipt).where(
+                    ContextReceipt.receipt_id == receipt_id,
+                    ContextReceipt.tenant_id == ctx.tenant_id,
                 )
-            ).scalar_one_or_none()
+            )
+        ).scalar_one_or_none()
+
+    async def _refuse_if_unservable(self, session: AsyncSession, ctx: TenantContext, receipt_id: uuid.UUID) -> None:
+        """Refuse before returning any part of a receipt that must not be shown.
+
+        A missing receipt is left alone here: the row-level reads below return
+        an empty tuple for one, which is what they returned before, and the
+        transports already answer 404 from `get`.
+
+        Without this the withheld state would be a filter rather than a refusal,
+        and an empty exclusions list would mean "nothing was withheld" when it
+        means "you may not see what was".
+        """
+        found = await self._header(session, ctx, receipt_id)
+        if found is not None:
+            refuse_if_unservable(found)
 
     async def exclusions_for(
         self,
@@ -315,6 +408,7 @@ class ContextReceiptService:
             stmt = stmt.where(ContextReceiptExclusion.block == block)
 
         async with self._session_factory() as session:
+            await self._refuse_if_unservable(session, ctx, receipt_id)
             await self._refuse_if_overdue(session, tenant_id=ctx.tenant_id)
             return tuple((await session.execute(stmt)).scalars().all())
 
@@ -359,6 +453,7 @@ class ContextReceiptService:
             .order_by(ContextReceiptArm.block)
         )
         async with self._session_factory() as session:
+            await self._refuse_if_unservable(session, ctx, receipt_id)
             return tuple((await session.execute(stmt)).scalars().all())
 
 

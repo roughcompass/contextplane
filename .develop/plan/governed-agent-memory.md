@@ -4858,7 +4858,7 @@ E4-T2 and is extended to cover both sets.
 
 ### E4-T4 — Pre-quarantine of downstream receipts
 
-**Kind:** task · **Status:** pending · **Blocked by:** E4-T2 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E4-T2 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: a receipt whose inputs are being quarantined stops being servable before
 the sweep reaches it, not after.
@@ -4879,6 +4879,79 @@ was never hydrated, and collapsing them loses the difference an operator needs.
 
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "receipt and quarantine"
+    make all
+
+**The ordering the entry asks for is unnecessary here, and that is the finding.**
+It prescribes marking the downstream set first and reconciling afterwards, to
+close the window in which a row-at-a-time sweep still serves the receipts it has
+not reached. There is no such window: `apply` is **one transaction**. The claims
+and the receipts that quoted them become withheld at the same instant and no
+reader observes one without the other — strictly stronger than mark-first, and
+without the marked-but-unreconciled state that design would add. "Mark first" is
+a remedy for an incremental sweep this code does not do.
+
+**The residual race is stated rather than papered over.** A resolution already
+in flight can commit a receipt citing a claim a moment after this transaction
+withholds it. Serving refuses the claim from that instant so no *new* resolution
+can cite it, but a receipt recording a true past serving is not reached. That is
+a reconciliation sweep's job and this task does not build one.
+
+**A separate column, not a fourth `hydration_state`.** Three reasons, weakest
+first: the states answer different questions ("has this finished recording what
+it served" against "may this be shown right now"); `HYDRATION_SERVABLE` exists
+precisely to make a fourth state expensive, and its docstring says so. And
+decisively — **reversibility**. Pre-quarantine is provisional by definition, so
+overwriting `hydration_state` would destroy the value to reconcile *back* to,
+and un-withholding would have to guess between `complete` and `failed`. That is
+the argument `claim_quarantine_members` already rests on.
+
+`withheld_by` travels with `withheld_at` under a CHECK that moves them together.
+Without it, releasing one incident's receipts would re-derive the set, and a
+receipt reached by two open incidents would be released by whichever finished
+first.
+
+**The blocking discovery: the servability gate was in one router, and the second
+transport went without it.** `api/routers/receipts.py` checked `hydration_state`
+before serving. The four MCP tools over the same service reads checked nothing —
+and `get_receipt_exclusions`'s docstring told its caller that *"an empty list
+means nothing was withheld"*, which is exactly the belief the REST 409 exists to
+prevent, since an unhydrated receipt has recorded no exclusions yet. One surface
+refused and the other asserted the opposite about the same row.
+
+**That is the third time** a guard written at a transport was missing from a
+second transport over the same service — after E13-T5's checkpoint scan and
+E3-T8's overdue guard. So the rule is now one function the reads call and the
+transports only render, `GET /receipts/{id}` still publishes both states rather
+than refusing (it is the surface a caller polls to learn to wait and an operator
+reads to learn why), and the MCP header tool publishes them too, which it did
+not before.
+
+### E4-T8 — The quarantine mechanism is complete and reachable by nothing
+
+**Kind:** task · **Status:** pending · **Blocked by:** E4-T3, E4-T4 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: `QuarantineService` is invocable by an operator.
+
+E4-T2 built apply/preview/revert, E4-T3 gave the preview a blast radius, E4-T4
+made receipts follow. `grep -rn QuarantineService contextplane/` finds it in its
+own module and nowhere else: **no REST route, no MCP tool, no entry in
+`wiring/`.** Nothing in production constructs it, so nothing passes the
+`blast_radius` or `receipts` collaborators either, and the whole mechanism is
+tested and inert.
+
+This is the pattern this plan keeps finding — `requires_validated`,
+`queryRelationships`, `resolve_weights`, the E3-T4 filters — and it was authored
+here rather than inherited, which is worse. Filed rather than folded into E4-T4
+because a surface is its own decision: who may quarantine, whether preview and
+apply are one call or two, and what an idempotency key means for an operation
+whose predicate matches a moving set.
+
+**E10-T1 depends on this, not on E4-T2.** Its entry lists E4-T2 and E4-T3 as
+blockers, but a screen cannot call a service with no endpoint. Retarget it when
+this lands.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/conformance -q -k "tool_registry or parity"
     make all
 
 ### E4-T5 — ADR: materiality is not severity, and the word is already taken

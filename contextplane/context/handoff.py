@@ -49,6 +49,7 @@ import json
 import uuid
 from typing import TYPE_CHECKING, Protocol
 
+from contextplane.context.receipts import ReceiptNotServable
 from contextplane.exceptions import RegistryError
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -266,8 +267,23 @@ class ContextHandoffService:
             # here, and both halves would individually check out.
             raise HandoffRefused("the receipt and the checkpoint do not belong to the same task")
 
-        exclusions = await self._receipts.exclusions_for(ctx, receipt_id=receipt_id)
-        arms = await self._receipts.arms_for(ctx, receipt_id=receipt_id)
+        # Both reads refuse a receipt that may not be shown -- unhydrated, or
+        # withheld while an incident affecting its inputs is worked. Translated
+        # into this module's own refusal, the way the checkpoint read above
+        # translates `RegistryError`: a caller that learned to handle
+        # `HandoffRefused` must not also have to learn a receipt type, and an
+        # escaping one would reach them as a fault rather than as an answer.
+        #
+        # Refusing is the point rather than a cost. A handoff assembled from an
+        # unhydrated receipt would report "nothing was withheld" about a
+        # resolution that has not finished recording what it withheld, and one
+        # assembled from a withheld receipt would hand a second agent exactly
+        # the content the quarantine is keeping back.
+        try:
+            exclusions = await self._receipts.exclusions_for(ctx, receipt_id=receipt_id)
+            arms = await self._receipts.arms_for(ctx, receipt_id=receipt_id)
+        except ReceiptNotServable as exc:
+            raise HandoffRefused("the handed-over receipt cannot be presented as evidence right now") from exc
         return checkpoint, {
             "receipt_id": str(receipt.receipt_id),
             "state": receipt.state,
