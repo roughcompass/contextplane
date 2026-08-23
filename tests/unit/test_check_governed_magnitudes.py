@@ -44,6 +44,23 @@ def _grandfathered(**overrides: Any) -> dict[str, Any]:
     return entry
 
 
+def _derived(**overrides: Any) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "model_id": "test-magnitude@1",
+        "form": "threshold",
+        "coupling": "consumed",
+        "requires_validated": True,
+        "validation": {
+            "status": "derived",
+            "reason": "Follows by arithmetic from a stated defect rate and consumer's risk.",
+            "derived_from": "AQL 0.05, consumer's risk 0.10, lot size 500",
+            "derivation": "Binomial OC curve: smallest n with P(accept | p=0.05) <= 0.10.",
+        },
+    }
+    entry.update(overrides)
+    return entry
+
+
 def _validated(**overrides: Any) -> dict[str, Any]:
     entry: dict[str, Any] = {
         "model_id": "test-magnitude@1",
@@ -83,6 +100,29 @@ def test_a_grandfathered_number_no_flag_demands_is_fine() -> None:
     """Where every shipped magnitude sits today. Grandfathered is an honest
     state, not a defect."""
     assert _violations(_grandfathered()) == []
+
+
+def test_a_flag_demanding_validation_passes_on_a_derived_number() -> None:
+    """A reproducible derivation is a stronger warrant than a validation
+    somebody ran once, so it satisfies the same gate."""
+    assert _violations(_derived()) == []
+
+
+def test_a_derived_entry_missing_either_field_is_refused() -> None:
+    """The mirror of the validated-evidence rule. A derivation nobody can
+    reproduce is a number with a nicer word on it."""
+    for field in ("derived_from", "derivation"):
+        entry = _derived()
+        entry["validation"][field] = ""
+        found = _violations(entry)
+        assert any("derived" in line and field in line for line in found), field
+
+
+def test_derived_does_not_reopen_the_door_grandfathered_is_kept_out_of() -> None:
+    """The rule the third status could have quietly broken. Adding a status the
+    gate accepts is only safe while `grandfathered` still fails it."""
+    found = _violations(_grandfathered(requires_validated=True))
+    assert any("requires_validated" in line and "grandfathered" in line for line in found)
 
 
 def test_a_gated_magnitude_nothing_reads_is_refused() -> None:

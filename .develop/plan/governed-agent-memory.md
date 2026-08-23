@@ -5453,6 +5453,47 @@ surface growth and missed nothing an integrator feels.
 The failure message says "lower the ratchet when the count drops — never raise
 it to fit", because the one way this gate becomes decoration is somebody
 adjusting the number instead of the surface.    make all
+### E5-T1b — ADR-0014 decided a third status; nothing implemented it
+
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: `derived` exists in the two places ADR-0014 named, so E5-T2 can register a
+sampling parameter as what it is.
+
+**Found while grounding E5-T2, and it blocked it.** E5-T1 is marked done, and it
+was — an ADR task delivers a decision. But `ranking.py` still read
+`_VALIDATION_STATUSES = frozenset({"validated", "grandfathered"})` and gated on
+`status != "validated"`, and `scripts/check_governed_magnitudes.py` still read
+`_STATUSES = ("validated", "grandfathered")`. So the status E5-T2 must record
+its parameters under did not exist, and an entry using it would have refused the
+whole registry at import.
+
+No task covered the implementation. The ADR's own Consequences section named
+both halves and said **"both halves move together or the protection is
+one-sided"** — which is precisely what had happened, except that neither half
+had moved.
+
+**What landed.** Both halves, together:
+
+- `derived` joins the status vocabulary in the loader and in the gate.
+- It requires `derived_from` and `derivation`, mirroring the four-field rule for
+  `validated`. A derivation nobody can reproduce is a number with a nicer word
+  on it.
+- `requires_validated` is satisfied by a named set, `_GATE_SATISFYING`, rather
+  than by a comparison against one literal — so a fourth status cannot be added
+  without somebody deciding which side of that line it falls on. `derived`
+  qualifies because a reproducible derivation is a stronger warrant than a
+  validation run once; **`grandfathered` still never does**, and that has its own
+  test, because adding a status the gate accepts is only safe while the one it
+  must keep out still fails.
+
+Mutation-checked: widening `_GATE_SATISFYING` to include `grandfathered` fails
+three tests.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit -q -k "ranking_registry or governed_magnitudes"
+    make all
+
 ### E5-T2 — The SamplingPolicy, keyed on a tuple two-thirds of which exists
 
 **Kind:** task · **Status:** pending · **Blocked by:** E5-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane

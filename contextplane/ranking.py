@@ -81,7 +81,24 @@ _FORMS: Final = frozenset({"weights", "ladder", "threshold"})
 #: registry: an entry unable to say "nobody checked this" would have to claim
 #: the opposite, and a registry that silently upgrades unexamined numbers to
 #: examined ones is worse than no registry at all.
-_VALIDATION_STATUSES: Final = frozenset({"validated", "grandfathered"})
+_VALIDATION_STATUSES: Final = frozenset({"validated", "derived", "grandfathered"})
+
+#: The statuses that satisfy a consumer's `requires_validated`. `derived`
+#: qualifies and `grandfathered` never does: a reproducible derivation is a
+#: stronger warrant than a validation somebody ran once, while grandfathered
+#: says plainly that nobody checked. Named rather than written as two
+#: comparisons, so a fourth status cannot be added without somebody deciding
+#: which side of this line it falls on.
+_GATE_SATISFYING: Final = frozenset({"validated", "derived"})
+
+#: What a `derived` status has to show. An acceptance-sampling parameter follows
+#: by arithmetic from a stated defect rate and consumer's risk -- there is no
+#: held-out result, because it is not a prediction. `validated` would mean
+#: inventing a method and a result for a check nobody ran; `grandfathered` would
+#: assert nobody checked, which is false the other way. The derivation *is* the
+#: check, and these two fields are what make it reproducible by anybody with a
+#: calculator.
+_DERIVATION_FIELDS: Final = ("derived_from", "derivation")
 
 #: The three shapes a magnitude may hold: a named weight map, an ordered ladder,
 #: or a single number. One shape per form in `_FORMS`, which is why adding a
@@ -166,6 +183,15 @@ def _load() -> dict[str, GovernedMagnitude]:
         if status == "grandfathered" and not validation.get("reason", "").strip():
             msg = f"{model_id}: grandfathered without a stated reason"
             raise UngovernedMagnitude(msg)
+        if status == "derived" and not all(str(validation.get(k) or "").strip() for k in _DERIVATION_FIELDS):
+            # The mirror of the `validated` rule below, for the status whose
+            # evidence is arithmetic rather than a measurement. A derivation
+            # nobody can reproduce is a number with a nicer word on it.
+            msg = (
+                f"{model_id}: derived requires derived_from and derivation; "
+                "a derivation nobody can reproduce is a number with a nicer word on it"
+            )
+            raise UngovernedMagnitude(msg)
         if status == "validated" and not all(
             validation.get(k) for k in ("validated_by", "validated_on", "method", "result")
         ):
@@ -179,7 +205,7 @@ def _load() -> dict[str, GovernedMagnitude]:
             raise UngovernedMagnitude(msg)
 
         gated = bool(entry.get("requires_validated", False))
-        if gated and status != "validated":
+        if gated and status not in _GATE_SATISFYING:
             # The rule the whole `requires_validated` field exists for, enforced
             # here and not only by `scripts/check_governed_magnitudes.py`.
             #
@@ -201,7 +227,7 @@ def _load() -> dict[str, GovernedMagnitude]:
             msg = (
                 f"{model_id}: requires_validated is true but the status is {status!r}. "
                 "A magnitude whose consumer demands validation cannot serve on a number "
-                "nobody checked -- record the evidence, or clear the flag"
+                "nobody checked -- record the evidence, record the derivation, or clear the flag"
             )
             raise UngovernedMagnitude(msg)
 
