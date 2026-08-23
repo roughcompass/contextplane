@@ -109,12 +109,41 @@ def test_the_two_providers_are_actually_two(jobs: dict[str, Any]) -> None:
 # Conformance is its own job and does not queue behind the slowest tier
 
 
-def test_conformance_does_not_wait_on_the_integration_tier(jobs: dict[str, Any]) -> None:
-    """Nothing passes from one to the other, so the dependency was pure latency."""
-    needs = jobs["conformance"]["needs"]
-    needs = [needs] if isinstance(needs, str) else list(needs)
-    assert "integration" not in needs, "conformance must not serialize behind the integration tier"
-    assert "unit" in needs
+#: The tiers a pull request waits on. Each does its own checkout and its own
+#: `make install-dev`, so none of them consumes anything another produces.
+_HEAVY_TIERS = ("unit", "integration", "conformance", "image")
+
+
+@pytest.mark.parametrize("tier", _HEAVY_TIERS)
+def test_no_heavy_tier_waits_on_another(jobs: dict[str, Any], tier: str) -> None:
+    """Nothing passes between these jobs, so any dependency between them is pure latency.
+
+    This assertion started narrower -- conformance must not sit behind
+    integration -- and the argument for it never mentioned integration
+    specifically: there is no artifact passing and no job consumes what another
+    produces. It was true one link further up too. Chaining `integration` behind
+    `unit` put a PR's critical path at 17-20 minutes where `max(unit,
+    integration)` is about 11.5.
+
+    Reverting any of the four to `needs: unit` fails here, which is the only
+    reason to keep a test over a config file.
+    """
+    needs = jobs[tier].get("needs")
+    needs = [needs] if isinstance(needs, str) else list(needs or ())
+    waits_on = sorted(set(needs) & set(_HEAVY_TIERS))
+    assert not waits_on, f"{tier} must not serialize behind {waits_on}"
+    assert needs == ["changes"], f"{tier} should fan out from the changes probe, got {needs}"
+
+
+@pytest.mark.parametrize("tier", _HEAVY_TIERS)
+def test_every_heavy_tier_still_skips_a_docs_only_change(jobs: dict[str, Any], tier: str) -> None:
+    """Fanning out must not cost the docs-only skip.
+
+    These tiers used to inherit it: a skipped `unit` skipped everything behind
+    it. Depending on `changes` instead, each one has to carry the condition
+    itself, and a tier that forgot would run the whole suite on a typo fix.
+    """
+    assert jobs[tier].get("if") == "needs.changes.outputs.code == 'true'"
 
 
 def test_conformance_remains_a_separate_job(jobs: dict[str, Any]) -> None:
