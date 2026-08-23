@@ -68,7 +68,7 @@ TEST_ROOT   := tests
 		auth-consolidation-gate reachability-audit \
         test-unit test-coverage test-integration test-conformance test-native-provider arc-vectors test-perf test-airgap test-smoke test all \
         eval \
-        migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean scoring-accessor mcp-tool-registry \
+        migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean scoring-accessor mcp-tool-registry reserved-vocabulary \
         build-docker helm-package \
         dev-up dev-down dev-status dev-reset dev-logs dev-url
 
@@ -135,14 +135,18 @@ install-dev: ## Install the project + dev extras into the current Python env.
 # Lint, format, type-check, doc-refs (PR gates — fast)
 # -----------------------------------------------------------------------------
 
-lint: ## Run ruff, the file-size, approval-writer and magnitude guards, and the module-boundary contract.
+lint: ## Run ruff, the file-size, approval-writer, vocabulary and magnitude guards, and the module-boundary contract.
 	$(RUFF) check .
 	$(PYTHON) scripts/check_file_sizes.py
 	$(PYTHON) scripts/check_arc_approval_writers.py
+	$(MAKE) --no-print-directory reserved-vocabulary
 	$(MAKE) --no-print-directory governed-magnitudes
 	$(MAKE) --no-print-directory scoring-accessor
 	$(MAKE) --no-print-directory mcp-tool-registry
 	PYTHONPATH=$(CURDIR) $(LINT_IMPORTS)
+
+reserved-vocabulary: ## Verify no governed noun carries a second meaning on the wire or in a migration.
+	$(PYTHON) scripts/check_reserved_vocabulary.py
 
 governed-magnitudes: ## Verify no validation-gated magnitude rides a grandfathered value.
 	$(PYTHON) scripts/check_governed_magnitudes.py

@@ -5202,7 +5202,7 @@ Acceptance:
 
 ### E4-T5c — A reserved-vocabulary gate, so the next collision is caught by a machine
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a governed noun that already means something else fails a gate, not a
 grep.
@@ -5254,6 +5254,22 @@ the failure.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "incident or deadline"
     make all
+
+**Shipped with an empty allowlist, which is the part worth noting.** Nothing on
+the scanned surfaces violated it, so every entry that ever appears in
+`ALLOWLIST` will be a decision somebody wrote a reason for rather than debt
+somebody inherited.
+
+Scope is the two surfaces where a second meaning does damage: wire schemas —
+ADR-0015's refusal was about a *field* named `severity`, and the wire name is the
+one a UI author reads — and migration columns and CHECK values, which is where
+`incident` already lives twice. Internal locals are deliberately out of scope: a
+`severity` local inside the PII scanner is that module's own word for its own
+concept, and a gate that fired on it would be switched off within a week.
+
+The reservations are checked against their owners rather than restated, so a
+reserved word whose meaning moves fails instead of quietly reserving a word
+nothing uses.
 
 ### E4-T7 — Evidence-bundle export, scoped to one case
 
