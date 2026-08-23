@@ -69,11 +69,10 @@ covers *context* receipts -- `context_receipt_items`, `context_receipt_exclusion
 -- and ARC receipts are a different subsystem with different tables that no
 derivative kind names.
 
-One read outside this module belongs on the list and is **not** guarded:
-`ContextReceiptService.get` and `.exclusions_for` serve the `item_key` field that
-the `receipt_link` handler minimizes, and that kind *is* blocking. It is named
-here because leaving it off the list is how this defect propagated twice; fixing
-it is not this module's to do.
+**This list has been wrong three times, so it is no longer the authority.** The
+rule -- guard a read exactly when it serves a column a *blocking* derivative
+handler rewrites -- is derived and checked by
+`tests/conformance/test_overdue_guard_covers_the_blocking_reads.py`.
 """
 
 from __future__ import annotations
