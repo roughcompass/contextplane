@@ -137,6 +137,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
         admin_lifecycle,
         admin_memory_curation,
         admin_pii,
+        admin_quarantine,
         admin_sync,
         admin_vocab,
         artifacts,
@@ -212,6 +213,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(admin_pii.router)
     app.include_router(admin_extraction.router)
     app.include_router(admin_memory_curation.router)
+    app.include_router(admin_quarantine.router)
     # E20's agent-performance reads and instruction lifecycle. Admin-gated:
     # a per-actor figure is authorized here rather than made unconstructible,
     # which is what replaced the aggregate floor.

@@ -40,6 +40,11 @@ from contextplane.service.memory.consolidation import ConsolidationService
 from contextplane.service.memory.curation_queue import CurationQueueService
 from contextplane.service.memory.promotion import PromotionService
 from contextplane.service.memory.promotion_guardrails import GuardrailService
+from contextplane.service.memory.quarantine import (
+    BlastRadius,
+    QuarantineService,
+    ReceiptWithholding,
+)
 from contextplane.service.memory.session_events import MemoryService
 from contextplane.service.memory.source_governance import SourceGovernanceService
 from contextplane.service.memory.source_ingest import SourceIngestService
@@ -66,6 +71,22 @@ class MemoryServices:
     agent_failure_patterns: AgentFailurePatternService
     agent_instructions: AgentInstructionService
     claim_serving: ClaimServingService
+    #: Withholds claims by provenance and puts them back. Constructed here with
+    #: both collaborators rather than left for a caller to assemble: a
+    #: `QuarantineService` built without them still applies and reverts, but its
+    #: preview reports no blast radius and its apply leaves the receipts that
+    #: quoted the claim serving. Two half-configured instances is the shape that
+    #: makes an incident response depend on which call site built one.
+    #:
+    #: **Both arrive from the composition root, and cannot arrive from here.**
+    #: The boundary contract places `contextplane.context` above the service
+    #: layer, so this module may not import the receipt withholder; and the
+    #: retrieval service that answers the blast radius is built in another area
+    #: this one has no handle on. The root is the only place that can see both,
+    #: which is why it names them despite its own rule that adding a service to
+    #: an existing area should not touch it — what it adds is two arguments,
+    #: not a construction.
+    quarantine: QuarantineService
     promotion: PromotionService
     promotion_guardrails: GuardrailService
     curation_queue: CurationQueueService
@@ -89,6 +110,13 @@ def build_memory_services(
     # here would invert the layering for an annotation.
     extraction_strategies: tuple[Any, ...],
     pii_scanner: PiiScanner | None,
+    # Typed by the protocols the quarantine service declares, not by the
+    # concrete classes: `ReceiptWithholder` lives in `contextplane.context`,
+    # which the module boundary contract places above this layer, and the
+    # retrieval service is a sibling this area has no import of. The protocols
+    # are the seam that lets the root pass both without either import.
+    blast_radius: BlastRadius | None = None,
+    receipt_withholding: ReceiptWithholding | None = None,
 ) -> MemoryServices:
     """Construct the memory area's services, in dependency order."""
     # The one path that creates claims. Every invariant a claim carries is a
@@ -115,6 +143,12 @@ def build_memory_services(
         # path of its own -- and a second one would be a second place those
         # guarantees could lapse.
         claim_serving=ClaimServingService(session_factory, clock=clock),
+        quarantine=QuarantineService(
+            session_factory,
+            clock=clock,
+            blast_radius=blast_radius,
+            receipts=receipt_withholding,
+        ),
         # Promotion is the only path from staging into the canonical graph, so it
         # is constructed here rather than per request: a second instance would be
         # a second place the guardrails could be configured differently. It takes

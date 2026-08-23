@@ -4935,7 +4935,7 @@ not before.
 
 ### E4-T8 — The quarantine mechanism is complete and reachable by nothing
 
-**Kind:** task · **Status:** pending · **Blocked by:** E4-T3, E4-T4 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E4-T3, E4-T4 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `QuarantineService` is invocable by an operator.
 
@@ -4960,6 +4960,46 @@ this lands.
 Acceptance:
     .venv/bin/python -m pytest tests/conformance -q -k "tool_registry or parity"
     make all
+
+**Three routes under `/v1/admin/claim-quarantines`, and three decisions a
+surface makes permanent.**
+
+**`preview` and `apply` are separate routes, not one route with a `dry_run`
+flag.** A flag puts the decision to *look* and the decision to *withhold* on the
+same request, so a caller who gets the boolean wrong withholds content by
+accident — and withholding being consequential is the whole reason this surface
+exists. Two paths cannot be confused by a boolean.
+
+**No idempotency key on `apply`, deliberately.** A key exists so a retry after a
+dropped response finds the first result rather than making a second one. That
+model does not hold here: the predicate matches a *moving* set, so "the
+identical request" does not identify an identical outcome, and a replayed key
+would return a quarantine whose recorded membership no longer describes what a
+re-run would withhold. Applying twice is already safe — `apply` refuses to
+overwrite an existing `quarantined_at` — and the ledger then records two
+incidents, which is what happened. A key would have made the second invisible.
+
+**A predicate matching nothing is a `409`, not an empty success**, and a second
+revert is a `409` rather than a `200` with zero: "already reverted" and "nothing
+left to restore" are different facts about an incident.
+
+**The wiring, and the gate that corrected its shape.** Both collaborators come
+from the composition root and cannot come from anywhere else: the boundary
+contract places `contextplane.context` above the service layer, so the memory
+area may not import the receipt withholder, and the retrieval service that
+answers the blast radius is built in an area it has no handle on. The first
+attempt put that reasoning in `wiring/services.py` and pushed it past the
+tighter 250-line ceiling that file carries — whose stated purpose is exactly
+that *"adding a service to an existing area touches that area's `wiring.py` and
+the container's field list, and nothing here."* The reasoning moved to
+`service/memory/wiring.py`; the root keeps two arguments and a pointer.
+
+**The test that distinguishes wired from half-configured.** A `QuarantineService`
+built without collaborators still applies and reverts, so a test checking only
+`quarantined_at` passes on a deployment whose receipts keep serving the withheld
+content. `test_applying_through_the_route_also_withholds_the_receipts_that_quoted_it`
+asserts the receipt read turns `409 receipt_withheld`; setting
+`receipt_withholding=None` fails that test and nothing else. Measured.
 
 ### E4-T5 — ADR: materiality is not severity, and the word is already taken
 
@@ -5826,7 +5866,12 @@ Acceptance:
 
 ### E10-T1 — Quarantine and suspend screens
 
-**Kind:** task · **Status:** pending · **Blocked by:** E4-T2, E4-T3 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** pending · **Blocked by:** E4-T8 · **Hotspot:** no · **Repo:** contextplane-ui
+
+**Retargeted.** This entry named E4-T2 and E4-T3 as its blockers, and both were
+done while this stayed unbuildable: a screen cannot call a service with no
+endpoint, and `QuarantineService` had no route, no tool and no wiring until
+E4-T8. The dependency was on the surface all along.
 
 Goal: an operator can preview what a quarantine would reach, apply it, and
 revert it, from a screen.

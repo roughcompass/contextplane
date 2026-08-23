@@ -45,6 +45,7 @@ from contextplane.arc import (
 )
 from contextplane.auth import wiring as auth_wiring
 from contextplane.config import Settings
+from contextplane.context.receipt_withholding import ReceiptWithholder
 from contextplane.extraction.strategies import STRATEGIES
 from contextplane.ownership import wiring as ownership_wiring
 from contextplane.profile import wiring as profile_wiring
@@ -152,6 +153,9 @@ def build_post_app_services(
         catalog=catalog,
         extraction_strategies=tuple(STRATEGIES.values()) if settings.extraction_provider != "noop" else (),
         pii_scanner=getattr(app.state, "pii_scanner", None),
+        # Why these two are the root's to supply: see `MemoryServices.quarantine`.
+        blast_radius=getattr(app.state, "retrieval", None),
+        receipt_withholding=ReceiptWithholder(),
     )
     arc = build_arc_services(session_factory, clock, settings, visibility=visibility)
     stages.attach_arc_state(app, arc)
