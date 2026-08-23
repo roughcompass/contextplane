@@ -5983,7 +5983,7 @@ not only wording."**
 
 ### E10-T12 — The other five modules, and the convention question underneath them
 
-**Kind:** task · **Status:** pending · **Blocked by:** E10-T11 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — five converted; `catalog.ts` is E10-T13 · **Blocked by:** E10-T11 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: `parse.ts` is the only definition, across the whole API layer.
 
@@ -6028,6 +6028,46 @@ growing while the task to stop it was open, which is the argument for a lint
 rule over a sweep. Consider whether one is cheap here: a `no-restricted-syntax`
 forbidding a top-level `function requiredString` outside `parse.ts` would have
 caught it at the point it was written.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**Landed in contextplane-ui#28.** Two more duplicate pairs surfaced while doing
+it and were folded in, because they are the same defect: `optionalBoolean` was
+identical in two modules, and `requiredInteger` in two more — where the copies
+**disagreed on ordering**, one delegating to `requiredNumber` and one checking
+`Number.isInteger` directly, so they produced different messages for a
+non-finite value.
+
+Ten test assertions named the old wording, and one of them showed the shared
+message was the *weaker* one. `nullableString` now says "is not text or null"
+where `requiredString` says only "is not text", so a refusal states what was
+allowed and a reader can tell an optional field from a required one without
+opening the source. The spellings this replaced were four: "is not text", "must
+be text", "is not a string", "is not nullable text".
+
+### E10-T13 — `catalog.ts` speaks a different validator dialect
+
+**Kind:** task · **Status:** pending · **Blocked by:** E10-T12 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: the catalog adapter refuses in the same words as every other adapter.
+
+It is not a copy of the shared validators. It has its own vocabulary —
+`string()`, `boolean()`, `record()`, `unknownRecord()` — with a different
+calling convention again and, more consequentially, **messages carrying no
+`Invalid API response:` prefix at all**: `"${label} was not a boolean."`,
+`"${label} was not a list."`
+
+So a caller cannot recognise a catalog parse failure by the same shape as any
+other, and a log filter written for one misses the other. Converting it rewrites
+that whole parse layer plus every assertion against it, which is why it was left
+out of E10-T12 rather than bundled into a change that was already ten
+assertions wide.
+
+**Decide the prefix deliberately.** Every other adapter leads with `Invalid API
+response:`, which is what makes these failures greppable as a class. If catalog
+has a reason to differ, it is not recorded anywhere; if it does not, the prefix
+is the smaller half of this task and worth doing even if the vocabulary stays.
 
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
