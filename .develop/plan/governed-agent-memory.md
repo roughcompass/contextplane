@@ -5072,7 +5072,109 @@ what somebody would say while building the wrong thing.
 
 ### E4-T6 — The notification clock, and why a missed deadline must be loud
 
-**Kind:** task · **Status:** pending · **Blocked by:** E4-T5 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** blocked — on a decision nobody here can make · **Blocked by:** E4-T5, E4-T5b, ratified DORA thresholds · **Hotspot:** no · **Repo:** contextplane
+
+**Picked up, and stopped before writing code. ADR-0015's own dissent is why:**
+
+> *"Without thresholds there is no clock, without a clock there are no deadlines,
+> and E4-T6 and E4-T7 are building machinery around a classification that cannot
+> currently be made. A fair reading is that E4's DORA half should be deferred
+> wholesale until legal input arrives, rather than half-built against a
+> placeholder — and that this decision's careful structure is a way of appearing
+> to make progress on something blocked."*
+
+This entry asks for deadlines stamped **at classification time**. Nothing can
+classify: DORA's thresholds are external, this service does not get to invent
+them, and E4-T5 recorded that the mapping waits for legal input. Building the
+clock now would produce deadline machinery that never fires — a mechanism
+nothing consults, which is the defect this plan has caught five times already
+and would this time have authored deliberately.
+
+The dissent's counter — that the obligation record and the delay gauge are
+useful without thresholds — is true, and it is also, in its own words, *"exactly
+what someone would say while building the wrong thing."* So the useful part is
+cut out as **E4-T5b** rather than smuggled in under a task whose goal needs the
+clock.
+
+**What unblocks this:** a ratified threshold set, from legal. Not a date, not a
+volume of internal usage. When it arrives, this entry is buildable as written.
+
+Acceptance (unchanged, for when it unblocks):
+    .venv/bin/python -m pytest tests/integration -q -k "incident or deadline"
+    make all
+
+### E4-T5b — The obligation record ADR-0015 decided, which nothing implemented
+
+**Kind:** task · **Status:** pending · **Blocked by:** E4-T5 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+
+Goal: `reporting_obligation` exists, with `materiality` including `unclassified`,
+and the delay gauge that makes an unclassified backlog visible.
+
+**Found by picking up E4-T6 and grepping for what it presumed.**
+`reporting_obligation` and `materiality` appear **nowhere in the codebase**.
+E4-T5 is marked done and was — an ADR task delivers a decision — but nothing
+implemented it, and no task covered the implementation. That is the second time
+this session: E5-T1 decided the `derived` status and E5-T1b had to be filed to
+build it.
+
+The pattern is worth naming rather than fixing twice more. **An ADR task's
+"done" means the decision is recorded, never that the code exists.** Where an
+ADR's Consequences section names artefacts, those artefacts need a task, and the
+plan currently creates one only when somebody trips over the gap.
+
+What this task is, exactly — ADR-0015's Consequences name all of it:
+
+- The `reporting_obligation` record, named for what is tracked rather than for
+  what triggered it. **Not** `incident`: that word is already taken twice — a
+  `LIFECYCLE_REFERENCE_KINDS` entry and an `evidence_kind` in
+  `memory_claim_provenance`'s CHECK, where it means an *external* operational
+  incident something points at.
+- `materiality`, **not** `severity`. That word is the PII scanner's
+  `advisory < warn < block` in three modules, and two orderings sharing one
+  field name is a defect waiting for a reader who has only seen the other.
+- `unclassified` as a first-class state — *"the state most obligations are in
+  most of the time"* — and a gauge **whose healthy value is not zero**.
+
+Deliberately **not** in scope: any automatic classification. That needs the
+thresholds E4-T6 is blocked on, and a placeholder threshold presented as a
+compliance feature is worse than an absent one.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "obligation"
+    make all
+
+### E4-T5c — A reserved-vocabulary gate, so the next collision is caught by a machine
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a governed noun that already means something else fails a gate, not a
+grep.
+
+ADR-0015's third dissent asks for this directly:
+
+> *"The naming decisions rest on collisions found by grep, and grep found two.
+> There is no gate preventing a third, and the next author to introduce a
+> governed noun will do exactly what E4 did — reach for the obvious word. The
+> durable fix is a reserved-vocabulary check, not three ADRs noticing collisions
+> one at a time."*
+
+Two collisions are already documented — `severity` and `incident` — and the
+second is enforced by a database CHECK, so a third would be found the same way:
+late, by someone reading carefully.
+
+The check is cheap and the shape is settled by this repo's own gates: read the
+reserved words from where they are already defined rather than restating them,
+refuse a new governed object or column reusing one, and require a per-entry
+written reason for any deliberate exception — the pattern
+`check_governed_magnitudes.py` and `check_file_sizes.py` both use.
+
+ADR-0015 says a lint rule "would be cheap and is not part of this decision".
+Filed so it stops being nobody's.
+
+Acceptance:
+    make all
+
+
 
 Goal: classification-as-major stamps initial, intermediate and final deadlines
 on the incident case, and their approach and breach are visible without anybody
