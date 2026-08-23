@@ -49,13 +49,13 @@ The scanner runs on these current write fields:
 
 The scanner does not run on reads or every free-text field. It does not scan
 structured identifiers, workspace `reference_ids`, session metadata, generic
-fact writes, or generic attribute writes. The MCP `record_session_event` tool
-does not run the REST session-event adapter's scan.
+fact writes, or generic attribute writes.
 
 > **Warning:** Never put sensitive content in session metadata. Context Plane
-> indexes metadata but does not scan, redact, or encrypt it. MCP callers must
-> also treat the event body as unscanned until the MCP adapter gains the REST
-> route's PII control.
+> indexes metadata but does not scan, redact, or encrypt it. The *body* is
+> scanned on both transports — the MCP tool runs the same admission the REST
+> route does — so the warning is about metadata specifically, not about which
+> surface wrote the event.
 
 Three policy levels control what happens when a pattern matches:
 
