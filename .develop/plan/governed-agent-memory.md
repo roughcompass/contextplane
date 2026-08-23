@@ -6939,7 +6939,7 @@ Acceptance:
 
 ### E15b-T2 — Four workers, four CPUs, and a Postgres each
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** amended — the proposed fix is measured wrong, and one flake was a real bug · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: an integration run that fails means a test is wrong.
 
@@ -6983,6 +6983,49 @@ Acceptance:
 
 One task, filed against the standing instruction that CI must not become a
 bottleneck. It is not a guess: the numbers are below.
+
+**Measured, and the answer is the opposite of what this entry assumed.**
+
+Reducing the worker count was the obvious fix and it is the wrong one. On the
+18-core reference host, over the whole tier:
+
+| workers | wall clock |
+|---|---|
+| 4 | **141 s** |
+| 2 | **264 s** |
+
+Halving the workers costs **1.87x**. On a CI runner that takes the tier from
+about seven minutes to about thirteen — which puts it straight back on the
+critical path E15b-T1 just took it off, and trades a probabilistic cost for a
+certain one that is larger.
+
+**And one of the three flakes was not a flake.** The 2-worker run failed
+`test_running_the_sweep_twice_records_it_once` and
+`test_a_second_fall_is_recorded_from_where_it_was_last_seen` — both E5-T5's, and
+both failing for a real defect in `TrustTransitionSweep`: it read
+`ORDER BY claim_id LIMIT 500` with no cursor, and nothing in its predicate
+excludes a claim it has already examined. So it looked at the same first page on
+every pass forever and **every claim beyond it decayed unobserved.** Fixed, with
+a `batch=1` test that tells a walking sweep from a stopping one.
+
+That failure presented as flakiness *because* it was order-dependent: whether it
+failed depended on how many claims the run happened to have seeded before it.
+Which is the lesson worth keeping — **a flaky-looking integration failure is a
+hypothesis, not a diagnosis**, and this entry filed the hypothesis as one.
+
+**What is left of the original finding.** Two flakes are still unexplained:
+`test_an_extracted_claim_is_inference_tier_not_extraction_tier` (IndexError) and
+`test_a_nomination_lands_unclassified_and_says_so` (hung in `epoll_wait`). Both
+passed locally and on re-run, and the second's traceback is consistent with the
+capacity the runner warns about. Two is a thinner basis than three, and neither
+has been reproduced.
+
+**So the task changes shape.** Not "pick a smaller worker count" — that is
+measured to cost more than it saves. Either reproduce the two remaining failures
+under constrained CPU and fix what they actually are, or accept them as the cost
+of the current ratio and say so. Guessing at a number is what this entry was
+already told not to do, and halving would have been that with a measurement
+attached to the wrong question.
 
 ### E15b-T1 — The critical path is twice what it needs to be, and one tier runs twice
 
