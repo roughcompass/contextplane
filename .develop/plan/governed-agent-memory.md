@@ -5453,6 +5453,47 @@ surface growth and missed nothing an integrator feels.
 The failure message says "lower the ratchet when the count drops — never raise
 it to fit", because the one way this gate becomes decoration is somebody
 adjusting the number instead of the surface.    make all
+### E5-T1b — ADR-0014 decided a third status; nothing implemented it
+
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: `derived` exists in the two places ADR-0014 named, so E5-T2 can register a
+sampling parameter as what it is.
+
+**Found while grounding E5-T2, and it blocked it.** E5-T1 is marked done, and it
+was — an ADR task delivers a decision. But `ranking.py` still read
+`_VALIDATION_STATUSES = frozenset({"validated", "grandfathered"})` and gated on
+`status != "validated"`, and `scripts/check_governed_magnitudes.py` still read
+`_STATUSES = ("validated", "grandfathered")`. So the status E5-T2 must record
+its parameters under did not exist, and an entry using it would have refused the
+whole registry at import.
+
+No task covered the implementation. The ADR's own Consequences section named
+both halves and said **"both halves move together or the protection is
+one-sided"** — which is precisely what had happened, except that neither half
+had moved.
+
+**What landed.** Both halves, together:
+
+- `derived` joins the status vocabulary in the loader and in the gate.
+- It requires `derived_from` and `derivation`, mirroring the four-field rule for
+  `validated`. A derivation nobody can reproduce is a number with a nicer word
+  on it.
+- `requires_validated` is satisfied by a named set, `_GATE_SATISFYING`, rather
+  than by a comparison against one literal — so a fourth status cannot be added
+  without somebody deciding which side of that line it falls on. `derived`
+  qualifies because a reproducible derivation is a stronger warrant than a
+  validation run once; **`grandfathered` still never does**, and that has its own
+  test, because adding a status the gate accepts is only safe while the one it
+  must keep out still fails.
+
+Mutation-checked: widening `_GATE_SATISFYING` to include `grandfathered` fails
+three tests.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit -q -k "ranking_registry or governed_magnitudes"
+    make all
+
 ### E5-T2 — The SamplingPolicy, keyed on a tuple two-thirds of which exists
 
 **Kind:** task · **Status:** pending · **Blocked by:** E5-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
@@ -5856,7 +5897,7 @@ could load its chunk and highlight nothing in the nav.
 
 ### E10-T5 — `shared/api/tenantWork.ts` outlived the destination it was named for
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: the API module names a domain, like every one of its siblings, rather than
 a page that no longer exists.
@@ -5878,6 +5919,155 @@ all three groups. Splitting three ways needs a fourth module for them. Check
 first whether the siblings already have their own copies of these: if they do,
 the extraction is larger than this task and serves more than it, and that is
 worth knowing before a fourth private copy is created.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**Landed in contextplane-ui#25, and the check this entry asked for came back
+positive.** It said to establish, before creating a fourth private copy of the
+validators, whether the siblings already keep their own. They do — `admin.ts`,
+`arcAuthoring.ts` and `entityResolution.ts` each carry `isRecord`,
+`requiredRecord`, `requiredString` and `nullableString` — **and they have already
+drifted.** The same failure reads `"… is not text."`, `"… must be text."` or
+`"… is not a string."` depending on which module happened to parse it, and
+`arcAuthoring`'s `requiredRecord` says `Invalid API {label}.` where the others
+say `Invalid API response: {label} is not an object.`
+
+So the validators are extracted once into `parse.ts` rather than copied a fifth
+time: splitting three ways without it would have turned four copies into six.
+The module becomes `activity.ts`, `ownership.ts` and `intents.ts`, and the
+342-line test file splits the same way so every source keeps a same-named
+sibling. Test count unchanged at 457 — this moves code, it does not add
+behaviour.
+
+### E10-T11 — Three modules still carry their own copies of the validators
+
+**Kind:** task · **Status:** done — for the three named; the rest is E10-T12 · **Blocked by:** E10-T5 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: `parse.ts` is the only definition of the response validators.
+
+E10-T5 extracted them and pointed the three modules it created at them.
+`admin.ts`, `arcAuthoring.ts` and `entityResolution.ts` still hold their own,
+and the drift above is the argument: three spellings of one refusal is three
+things a reader has to recognise as the same failure.
+
+**Deliberately not folded into E10-T5**, and the reason is what makes this its
+own task rather than a tidy-up: it **changes message text**, and some tests
+assert on that text — `test_a_foreign_receipts_exclusions_are_not_readable`'s
+sibling in this repo asserts `"Invalid API response: capability_id is not
+text."` verbatim. So this is a behaviour change wearing a refactor's clothes,
+and it wants its own review rather than a diff nobody separates from a move.
+
+Settle one thing while doing it: whether the divergent messages are *only*
+wording. `arcAuthoring`'s `requiredRecord` takes a label and produces a
+different sentence shape, so a caller matching on the message — if any does —
+breaks differently from one matching the others.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**Landed in contextplane-ui#26, and the answer to this entry's question was "no,
+not only wording."**
+
+- `arcAuthoring.stringArray` took `(record, key)` where every other copy takes
+  `(value, label)` — **a different function wearing the same name**. Its two
+  call sites were converted rather than the shared one bent to fit.
+- `admin.stringArray` returned a mutable `string[]`, and three of its fields
+  come from *generated* contract types that declare `string[]`. Those sites copy
+  the readonly result rather than cast it: the shared validator returns
+  `readonly` so a parsed response cannot be edited in place, and a cast keeps
+  the annotation while dropping the guarantee.
+- One test asserted `"entity_id is not a string"` verbatim. That is the
+  behaviour change this task was cut from E10-T5 to make reviewable, arriving
+  exactly where the entry predicted it.
+
+### E10-T12 — The other five modules, and the convention question underneath them
+
+**Kind:** task · **Status:** done — five converted; `catalog.ts` is E10-T13 · **Blocked by:** E10-T11 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: `parse.ts` is the only definition, across the whole API layer.
+
+E10-T11 was filed against three modules. Measured after converting them, **five
+more** carry copies — and the reason they were not swept in with the rest is
+that they do not agree on a calling convention:
+
+| convention | modules |
+|---|---|
+| `(value, field)` | `agents.ts`, `audit.ts` |
+| `(record, key)` | `contextplane.ts`, `entityWrites.ts`, `relationships.ts` |
+
+`parse.ts` uses `(record, key)` for field readers and `(value, label)` for
+container checks. So converting the first group rewrites every call site rather
+than an import, and that is a decision about which shape is right — not a move.
+
+**Settle the convention before touching a line.** `(record, key)` reads the key
+off the record and can name the field in its own refusal without the caller
+repeating it; `(value, field)` lets a caller validate something that is not a
+record field at all. Both are defensible and the codebase currently asserts
+both. Whichever wins, the other's call sites change, so picking after starting
+is how this becomes two rewrites.
+
+**Decided, so this is a move and not a decision: `(record, key)` for field
+readers, `(value, label)` for container checks** — which is what `parse.ts`
+already does, and what three of the five remaining modules already do.
+
+Two reasons, and the second is the one that matters. `(value, field)` makes the
+caller write the field name twice — `requiredString(value.rate, "rate")` — and
+nothing holds the two together, so a copy-paste that updates one and not the
+other produces a refusal naming the wrong field. `(record, key)` cannot drift
+that way because there is only one name.
+
+And the case `(value, field)` exists to serve — validating something that is not
+a record field — is already served: `requiredArray` and `stringArray` take a
+value and a label precisely because a container is not always read off a key.
+So nothing is lost by converting `agents.ts` and `audit.ts`; their call sites
+become `requiredString(record, "key")` and the second name disappears.
+
+`agents.ts` was added by E20-T10 with its own copies — the duplication was still
+growing while the task to stop it was open, which is the argument for a lint
+rule over a sweep. Consider whether one is cheap here: a `no-restricted-syntax`
+forbidding a top-level `function requiredString` outside `parse.ts` would have
+caught it at the point it was written.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**Landed in contextplane-ui#28.** Two more duplicate pairs surfaced while doing
+it and were folded in, because they are the same defect: `optionalBoolean` was
+identical in two modules, and `requiredInteger` in two more — where the copies
+**disagreed on ordering**, one delegating to `requiredNumber` and one checking
+`Number.isInteger` directly, so they produced different messages for a
+non-finite value.
+
+Ten test assertions named the old wording, and one of them showed the shared
+message was the *weaker* one. `nullableString` now says "is not text or null"
+where `requiredString` says only "is not text", so a refusal states what was
+allowed and a reader can tell an optional field from a required one without
+opening the source. The spellings this replaced were four: "is not text", "must
+be text", "is not a string", "is not nullable text".
+
+### E10-T13 — `catalog.ts` speaks a different validator dialect
+
+**Kind:** task · **Status:** pending · **Blocked by:** E10-T12 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: the catalog adapter refuses in the same words as every other adapter.
+
+It is not a copy of the shared validators. It has its own vocabulary —
+`string()`, `boolean()`, `record()`, `unknownRecord()` — with a different
+calling convention again and, more consequentially, **messages carrying no
+`Invalid API response:` prefix at all**: `"${label} was not a boolean."`,
+`"${label} was not a list."`
+
+So a caller cannot recognise a catalog parse failure by the same shape as any
+other, and a log filter written for one misses the other. Converting it rewrites
+that whole parse layer plus every assertion against it, which is why it was left
+out of E10-T12 rather than bundled into a change that was already ten
+assertions wide.
+
+**Decide the prefix deliberately.** Every other adapter leads with `Invalid API
+response:`, which is what makes these failures greppable as a class. If catalog
+has a reason to differ, it is not recorded anywhere; if it does not, the prefix
+is the smaller half of this task and worth doing even if the vocabulary stays.
 
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build

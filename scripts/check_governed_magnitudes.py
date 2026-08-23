@@ -65,7 +65,24 @@ from checklib import repo_root, require_nonempty, run_guard
 #: still inspects the artifact if the loader stops pointing at it.
 _REGISTRY = repo_root() / "contextplane" / "ranking_registry.json"
 
-_STATUSES = ("validated", "grandfathered")
+_STATUSES = ("validated", "derived", "grandfathered")
+
+#: What a `derived` status has to be able to show. An acceptance-sampling
+#: parameter follows by arithmetic from a stated defect rate and consumer's
+#: risk: there is no held-out result, because it is not a prediction. So
+#: `validated`'s four fields do not apply -- recording one would mean inventing
+#: a method and a result for a check nobody ran -- and `grandfathered` asserts
+#: nobody checked, which is false in the other direction. The derivation *is*
+#: the check, and unlike every other entry it is reproducible by anybody with a
+#: calculator, which is what these two fields have to make possible.
+_DERIVATION_FIELDS = ("derived_from", "derivation")
+
+#: The statuses that satisfy `requires_validated`. `derived` qualifies because a
+#: reproducible derivation is a stronger warrant than a validation somebody ran
+#: once; `grandfathered` never does, because it says plainly that nobody
+#: checked. Named rather than written as two comparisons, so a fourth status
+#: cannot be added without deciding which side of this line it falls on.
+_GATE_SATISFYING = frozenset({"validated", "derived"})
 
 #: What a `validated` status has to be able to show. Four fields rather than a
 #: free-text blob because "who validated this" and "against what data" are the
@@ -107,11 +124,19 @@ def _violations(entry: dict[str, Any]) -> list[str]:
                 "and the word is what a later reader would trust"
             )
 
-    if requires is True and status != "validated":
+    if status == "derived":
+        missing = [field for field in _DERIVATION_FIELDS if not str(validation.get(field) or "").strip()]
+        if missing:
+            found.append(
+                f"{model_id}: derived but missing {missing}; a derivation nobody can reproduce is a "
+                "number with a nicer word on it"
+            )
+
+    if requires is True and status not in _GATE_SATISFYING:
         found.append(
             f"{model_id}: `requires_validated` is true but the status is {status!r}. "
-            "A feature whose activation is gated on validation cannot turn on against a number "
-            "nobody checked — either validate it and record the evidence, or clear the flag."
+            "A feature whose activation is gated cannot turn on against a number nobody checked — "
+            "validate it and record the evidence, derive it and record the derivation, or clear the flag."
         )
 
     coupling = entry.get("coupling")

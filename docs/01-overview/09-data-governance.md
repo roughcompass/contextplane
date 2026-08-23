@@ -100,9 +100,9 @@ free-text field in Context Plane passes this control.
 
 > **Warning:** Do not put sensitive content in session metadata on either
 > transport. Metadata is indexed and filterable, but it is not scanned,
-> redacted, or encrypted. The current MCP `record_session_event` path also
-> writes event bodies without the REST route's PII adapter. Do not rely on an
-> MCP session write being blocked by a PII policy.
+> redacted, or encrypted. Event *bodies* are scanned on both transports: the
+> MCP tool runs the same admission the REST route does, so a tenant policy of
+> `block` refuses the write whichever surface made it.
 
 ## Detection is not redaction or encryption
 

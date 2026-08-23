@@ -238,6 +238,9 @@ def test_the_synthetic_entry_loads_so_the_refusals_below_are_not_vacuous(tmp_pat
         ({"status": "grandfathered", "reason": "  "}, "without a stated reason"),
         ({"status": "validated"}, "a status without its evidence"),
         ({"status": "validated", "validated_by": "someone"}, "a status without its evidence"),
+        ({"status": "derived"}, "derived requires derived_from and derivation"),
+        ({"status": "derived", "derived_from": "an AQL"}, "derived requires derived_from and derivation"),
+        ({"status": "derived", "derivation": "arithmetic", "derived_from": " "}, "derived requires"),
     ],
 )
 def test_an_entry_that_cannot_say_whether_it_was_checked_is_refused(
@@ -251,6 +254,50 @@ def test_an_entry_that_cannot_say_whether_it_was_checked_is_refused(
     """
     with pytest.raises(ranking.UngovernedMagnitude, match=expected):
         _load_with(tmp_path, _entry(validation=validation))
+
+
+def test_a_derived_entry_carrying_its_derivation_is_accepted(tmp_path: Path) -> None:
+    """The third status. An acceptance-sampling parameter follows by arithmetic
+    from a stated defect rate and consumer's risk: there is no held-out result
+    because it is not a prediction, so `validated` would mean inventing a method
+    and a result for a check nobody ran, and `grandfathered` would assert nobody
+    checked -- false in the other direction, since the derivation *is* the
+    check."""
+    loaded = _load_with(
+        tmp_path,
+        _entry(
+            validation={
+                "status": "derived",
+                "reason": "",
+                "derived_from": "AQL 0.05, consumer's risk 0.10, lot size 500",
+                "derivation": "Binomial OC curve: smallest n with P(accept | p=0.05) <= 0.10.",
+            }
+        ),
+    )
+    assert loaded["probe@1"].validation_status == "derived"
+
+
+def test_a_gated_magnitude_may_ride_a_derivation_but_never_a_grandfathering(tmp_path: Path) -> None:
+    """The rule the third status could have quietly broken. `derived` satisfies
+    `requires_validated` because a reproducible derivation is a stronger warrant
+    than a validation somebody ran once; `grandfathered` still never does,
+    because it says plainly that nobody checked."""
+    loaded = _load_with(
+        tmp_path,
+        _entry(
+            requires_validated=True,
+            validation={
+                "status": "derived",
+                "reason": "",
+                "derived_from": "AQL 0.05, consumer's risk 0.10",
+                "derivation": "Binomial OC curve.",
+            },
+        ),
+    )
+    assert loaded["probe@1"].requires_validated
+
+    with pytest.raises(ranking.UngovernedMagnitude, match="requires_validated is true"):
+        _load_with(tmp_path, _entry(requires_validated=True))
 
 
 def test_a_fully_evidenced_validated_entry_is_accepted(tmp_path: Path) -> None:
