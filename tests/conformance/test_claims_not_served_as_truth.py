@@ -69,6 +69,15 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         "service/memory/claim_curator_actions.py",
         "service/memory/claim_authority.py",
         "service/memory/claim_erasure_writes.py",
+        # The trust-decay sweep. Reads `memory_claims` for confidence, the time
+        # it was scored, and the half-life -- the three inputs decay is computed
+        # from -- and writes to `claim_trust_transitions`, never to the claim.
+        #
+        # It touches no value and serves nothing: the only thing it emits about a
+        # claim is which trust bucket it fell to, which is the *opposite* of the
+        # risk this gate guards. A staged claim acquiring canonical authority is
+        # what the sweep exists to make visible, not a thing it can cause.
+        "service/memory/trust_transitions.py",
         # Failure-pattern reports. The one entry on this list that genuinely
         # serves claim *content*: a group carries up to five example
         # `value_jsonb` values and the adjudicator's note, because a rate

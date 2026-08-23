@@ -58,6 +58,7 @@ from contextplane.service.memory.promotion import PromotionService
 from contextplane.service.memory.promotion_guardrails import GuardrailService
 from contextplane.service.memory.source_governance import SourceGovernanceService
 from contextplane.service.memory.source_ingest import SourceIngestService
+from contextplane.service.memory.trust_transitions import TrustTransitionSweep
 from contextplane.service.retrieval.embedding_drain import drain_outbox
 from contextplane.signals.aggregates import PrivacyAggregateWriter
 from contextplane.types import Clock, Embedder
@@ -78,6 +79,7 @@ from contextplane.wiring.job_summaries import (
     _describe_privacy_aggregates,
     _describe_promotion_sweep,
     _describe_retention_expiry,
+    _describe_trust_transitions,
     _describe_usage_expiry,
     _describe_workspace_expiry,
 )
@@ -286,6 +288,19 @@ def build_scheduler(
     # values alone and need no model at all.
     consolidation = ConsolidationService(session_factory, clock=clock)
     consolidation_sweep = ConsolidationSweepWorker(session_factory, consolidation, clock=clock)
+    # Decay is computed on read, so no code runs when a claim crosses a trust
+    # boundary -- it is `strong` on one read and `moderate` on the next. This is
+    # the only thing that notices, which is why it is scheduled rather than
+    # triggered: there is nothing to trigger it.
+    register_periodic(
+        scheduler,
+        TrustTransitionSweep(session_factory, clock=clock).run_once,
+        job_id="trust_transition_sweep",
+        interval_seconds=settings.trust_transition_sweep_interval_s,
+        log=_log,
+        describe=_describe_trust_transitions,
+    )
+
     register_periodic(
         scheduler,
         consolidation_sweep.run_once,

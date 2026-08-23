@@ -29,6 +29,7 @@ from contextplane.arc import (
     ReviewExpiryResult,
     SourceStatusRefreshResult,
 )
+from contextplane.service.memory.trust_transitions import SweepReport as TrustSweepReport
 from contextplane.signals.aggregates import PrivacyAggregateReport
 from contextplane.workers.calibration_refit import CalibrationRefitReport
 from contextplane.workers.consolidation_sweep import SweepReport
@@ -185,7 +186,17 @@ def _describe_arc_observation_fingerprint_reaper(result: ObservationFingerprintR
     return f"arc_observation_fingerprint_reaper.run: reaped={result.reaped}"
 
 
+def _describe_trust_transitions(report: TrustSweepReport) -> str | None:
+    # Logged whenever anything fell, and silent otherwise. The ratio is the
+    # signal: a pass that examines many and records none is a healthy store, and
+    # one that records most of what it sees means a half-life is wrong.
+    if not report.recorded:
+        return None
+    return f"trust_transition_sweep.run: examined={report.examined} recorded={report.recorded}"
+
+
 __all__ = [
+    "_describe_trust_transitions",
     "_describe_arc_audit_drain",
     "_describe_arc_challenge_cleanup",
     "_describe_arc_checkpoint_exporter",

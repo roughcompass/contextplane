@@ -27,6 +27,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.service.memory.confidence_read import serve
+from contextplane.service.memory.trust_transitions import transitions_for
 
 
 @dataclasses.dataclass(frozen=True)
@@ -154,6 +155,22 @@ class ClaimHistoryService:
                 current = row.superseded_by
 
         return chain
+
+    async def trust_history_for(self, claim_id: uuid.UUID) -> list[dict[str, object]]:
+        """When this claim fell out of a trust class, oldest first.
+
+        Here rather than on its own surface because it answers the question this
+        service already exists for — given the claim I was told about, what
+        happened to it — and losing trust to age is one of the things that
+        happened. A separate endpoint would make a reader ask twice.
+
+        **`observed_at` is when a sweep noticed, not when the crossing
+        happened.** Decay is computed on read, so no code runs at the moment a
+        claim crosses a boundary; the two differ by up to one sweep interval and
+        the column is named so a reader has to know that.
+        """
+        async with self._session_factory() as session:
+            return await transitions_for(session, claim_id=claim_id)
 
     async def visibility_rows_for(self, claim_ids: list[uuid.UUID]) -> dict[uuid.UUID, ClaimVisibility]:
         """The tenancy columns for each id, by claim_id -- not the belief content.
