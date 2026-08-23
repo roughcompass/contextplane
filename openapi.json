@@ -11207,6 +11207,163 @@
         "title": "QualityResponse",
         "type": "object"
       },
+      "QuarantineApplyRequest": {
+        "description": "A predicate plus the reason it is being applied.",
+        "properties": {
+          "reason": {
+            "description": "Why. Withheld content with no stated cause is unreviewable.",
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "selector": {
+            "description": "One of ['connector_run', 'strategy_id', 'namespace_prefix'].",
+            "title": "Selector",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector",
+          "value",
+          "reason"
+        ],
+        "title": "QuarantineApplyRequest",
+        "type": "object"
+      },
+      "QuarantinePredicate": {
+        "description": "Which claims to withhold, in the closed provenance vocabulary.",
+        "properties": {
+          "selector": {
+            "description": "One of ['connector_run', 'strategy_id', 'namespace_prefix'].",
+            "title": "Selector",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector",
+          "value"
+        ],
+        "title": "QuarantinePredicate",
+        "type": "object"
+      },
+      "QuarantinePreviewResponse": {
+        "description": "What a predicate reaches, and what depends on what it reaches.\n\nTwo sets that mean different things, kept apart in the response for the\nreason they are kept apart in the service: `matched` is exact and is what\nwould be withheld; `downstream` is advisory and **is withheld by nothing**.\nA caller that merged them would tell an operator that applying this makes\nthe second list disappear.",
+        "properties": {
+          "downstream": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Downstream",
+            "type": "array"
+          },
+          "matched": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Matched",
+            "type": "array"
+          },
+          "seeds_total": {
+            "title": "Seeds Total",
+            "type": "integer"
+          },
+          "seeds_traversed": {
+            "title": "Seeds Traversed",
+            "type": "integer"
+          },
+          "subjects": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Subjects",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "matched",
+          "subjects",
+          "downstream",
+          "seeds_traversed",
+          "seeds_total",
+          "truncated"
+        ],
+        "title": "QuarantinePreviewResponse",
+        "type": "object"
+      },
+      "QuarantineResponse": {
+        "description": "One applied quarantine, and exactly which claims it withheld.\n\nThe ids rather than only the count, because `revert` restores the recorded\nmembership and an operator reviewing the incident needs to see the same set\nthe ledger will put back.",
+        "properties": {
+          "matched": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Matched",
+            "type": "array"
+          },
+          "matched_count": {
+            "title": "Matched Count",
+            "type": "integer"
+          },
+          "quarantine_id": {
+            "format": "uuid",
+            "title": "Quarantine Id",
+            "type": "string"
+          },
+          "selector": {
+            "title": "Selector",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "quarantine_id",
+          "selector",
+          "value",
+          "matched_count",
+          "matched"
+        ],
+        "title": "QuarantineResponse",
+        "type": "object"
+      },
+      "QuarantineRevertResponse": {
+        "description": "How many claims a revert actually restored.",
+        "properties": {
+          "quarantine_id": {
+            "format": "uuid",
+            "title": "Quarantine Id",
+            "type": "string"
+          },
+          "restored_count": {
+            "title": "Restored Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "quarantine_id",
+          "restored_count"
+        ],
+        "title": "QuarantineRevertResponse",
+        "type": "object"
+      },
       "QueueCountsResponse": {
         "additionalProperties": false,
         "properties": {
@@ -16535,6 +16692,134 @@
         "summary": "Query Audit Log",
         "tags": [
           "admin: audit"
+        ]
+      }
+    },
+    "/v1/admin/claim-quarantines": {
+      "post": {
+        "description": "Withhold every claim this predicate matches, and record which ones.\n\nA predicate matching nothing is a `409`, not an empty success: a quarantine\nthat withheld nothing reads later as one that was tried and worked, and an\nincident review would take it as evidence the content was contained.",
+        "operationId": "apply_quarantine_v1_admin_claim_quarantines_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuarantineApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuarantineResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Quarantine",
+        "tags": [
+          "admin: quarantine"
+        ]
+      }
+    },
+    "/v1/admin/claim-quarantines/{quarantine_id}:revert": {
+      "post": {
+        "description": "Put back exactly what this quarantine withheld. Returns how many.\n\nThe count can be lower than `matched_count` and that is correct rather than\na partial failure: a claim still held by a second, unreverted quarantine\nstays withheld, because releasing it would republish what the other incident\nstill means to contain.\n\nReverting an already-reverted quarantine is a `409`. Answering `200` with\nzero would be indistinguishable from a quarantine that had nothing left to\nrestore, and those are different facts about the incident.",
+        "operationId": "revert_quarantine_v1_admin_claim_quarantines__quarantine_id__revert_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "quarantine_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Quarantine Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuarantineRevertResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revert Quarantine",
+        "tags": [
+          "admin: quarantine"
+        ]
+      }
+    },
+    "/v1/admin/claim-quarantines:preview": {
+      "post": {
+        "description": "What applying this predicate would reach, without withholding anything.\n\nA POST rather than a GET despite writing nothing: the predicate is a body,\nand putting a selector and an operator-chosen value in a query string puts\nthem in every access log between here and the caller.",
+        "operationId": "preview_quarantine_v1_admin_claim_quarantines_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuarantinePredicate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuarantinePreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Quarantine",
+        "tags": [
+          "admin: quarantine"
         ]
       }
     },

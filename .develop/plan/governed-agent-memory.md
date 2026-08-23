@@ -4935,7 +4935,7 @@ not before.
 
 ### E4-T8 — The quarantine mechanism is complete and reachable by nothing
 
-**Kind:** task · **Status:** pending · **Blocked by:** E4-T3, E4-T4 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E4-T3, E4-T4 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `QuarantineService` is invocable by an operator.
 
@@ -4960,6 +4960,46 @@ this lands.
 Acceptance:
     .venv/bin/python -m pytest tests/conformance -q -k "tool_registry or parity"
     make all
+
+**Three routes under `/v1/admin/claim-quarantines`, and three decisions a
+surface makes permanent.**
+
+**`preview` and `apply` are separate routes, not one route with a `dry_run`
+flag.** A flag puts the decision to *look* and the decision to *withhold* on the
+same request, so a caller who gets the boolean wrong withholds content by
+accident — and withholding being consequential is the whole reason this surface
+exists. Two paths cannot be confused by a boolean.
+
+**No idempotency key on `apply`, deliberately.** A key exists so a retry after a
+dropped response finds the first result rather than making a second one. That
+model does not hold here: the predicate matches a *moving* set, so "the
+identical request" does not identify an identical outcome, and a replayed key
+would return a quarantine whose recorded membership no longer describes what a
+re-run would withhold. Applying twice is already safe — `apply` refuses to
+overwrite an existing `quarantined_at` — and the ledger then records two
+incidents, which is what happened. A key would have made the second invisible.
+
+**A predicate matching nothing is a `409`, not an empty success**, and a second
+revert is a `409` rather than a `200` with zero: "already reverted" and "nothing
+left to restore" are different facts about an incident.
+
+**The wiring, and the gate that corrected its shape.** Both collaborators come
+from the composition root and cannot come from anywhere else: the boundary
+contract places `contextplane.context` above the service layer, so the memory
+area may not import the receipt withholder, and the retrieval service that
+answers the blast radius is built in an area it has no handle on. The first
+attempt put that reasoning in `wiring/services.py` and pushed it past the
+tighter 250-line ceiling that file carries — whose stated purpose is exactly
+that *"adding a service to an existing area touches that area's `wiring.py` and
+the container's field list, and nothing here."* The reasoning moved to
+`service/memory/wiring.py`; the root keeps two arguments and a pointer.
+
+**The test that distinguishes wired from half-configured.** A `QuarantineService`
+built without collaborators still applies and reverts, so a test checking only
+`quarantined_at` passes on a deployment whose receipts keep serving the withheld
+content. `test_applying_through_the_route_also_withholds_the_receipts_that_quoted_it`
+asserts the receipt read turns `409 receipt_withheld`; setting
+`receipt_withholding=None` fails that test and nothing else. Measured.
 
 ### E4-T5 — ADR: materiality is not severity, and the word is already taken
 
@@ -5826,7 +5866,12 @@ Acceptance:
 
 ### E10-T1 — Quarantine and suspend screens
 
-**Kind:** task · **Status:** pending · **Blocked by:** E4-T2, E4-T3 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** pending · **Blocked by:** E4-T8 · **Hotspot:** no · **Repo:** contextplane-ui
+
+**Retargeted.** This entry named E4-T2 and E4-T3 as its blockers, and both were
+done while this stayed unbuildable: a screen cannot call a service with no
+endpoint, and `QuarantineService` had no route, no tool and no wiring until
+E4-T8. The dependency was on the surface all along.
 
 Goal: an operator can preview what a quarantine would reach, apply it, and
 revert it, from a screen.
@@ -6139,6 +6184,36 @@ is read off the shipped detectors rather than restated, for exactly the reason
 that a hand-written second list disagrees first in the direction that silently
 admits. Publishing the enum deletes the duplicate rather than documenting it.
 
+**Two live defects found while scoping this, and they are worse than the
+contract-shape problem it was filed for.**
+
+**`field_type` is never validated on the policy-write path.** In
+`api/routers/admin_pii.py`, `body.field_type` goes straight into
+`insert_pii_field_policy` with no check against `PILOT_FIELD_TYPES`. So
+`POST /v1/admin/pii-field-policies` with `"workspace_entry.bodies"` — one
+character wrong — stores a row, lists it back, and **governs nothing**, because
+resolution matches the field type as an exact string. An operator reading their
+own policy list sees the control they think they configured.
+
+That is precisely what `NotAPilotField` exists to prevent one layer down:
+`admit()` refuses an unrecognised field type rather than admitting it, and its
+docstring says silence on an unrecognised field "is how admission gets switched
+off for a surface by a typo". The *writing* path never asks. E10-T3's select
+mitigates it for UI callers and does nothing for anyone using the API.
+
+**`_VALID_POLICIES` is a fourth copy of the policy vocabulary**, hand-written in
+`admin_pii.py` beside `_POLICY_SEVERITY` in `pii_scanner.py` — which is the
+authority, since it also carries the ordering the scanner takes the maximum
+over. Two lists, and the one that decides is not the one the route checks.
+
+So the deliverable is three things, not one: validate `field_type` fail-closed
+against the pilot set, read the policy vocabulary from the scanner instead of
+restating it, and *then* publish both as `Literal` so the contract carries them
+and clients stop duplicating what E10-T3 had to duplicate.
+
+**Sequence it after E4-T8.** Both regenerate `openapi.json`, and a merge
+conflict in a generated file is the one kind worth avoiding by ordering.
+
 Acceptance:
     make contract-tags
     make all
@@ -6158,6 +6233,22 @@ A screen that let the same session enrol a verifier and then use it would defeat
 the reason verifiers are enrolled at all; whether the service enforces that
 separation is the first thing to check, because if it does not, this screen
 must not imply it does.
+
+**Checked, and the answer is more useful than yes or no.** Actor separation *is*
+enforced, by `_check_actor_separation` in `arc/schemas/authoring_profiles.py`:
+submitter and approver must be distinct principals, and a `global_mandatory`
+risk classification requires three distinct principals across submitter,
+approver and activator.
+
+**But that is the proposal lifecycle, not verifier enrolment.** Nothing prevents
+the actor who enrols a verifier from later approving with it.
+`VerifierRegistry.register` validates shape only and says so — *"Authorization is
+the caller's; the route holds the operator gate"* — and there is no
+separation-of-duty check anywhere between enrolment and use.
+
+So the screen must not present enrolment as if it carried the separation that
+approval does. If four-eyes over enrolment is wanted, it is a service change and
+its own task, not something a UI can assert.
 
 `GET /v1/arc/admin/operator-identity` belongs here rather than in a screen of
 its own: it answers "which verifier am I", which is the question this page's
