@@ -122,6 +122,9 @@ class CurationCase(Base):
     routed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
 
     disposition: Mapped[str | None] = mapped_column(Text)
+    #: `human` or `policy`, set with the disposition or not at all. A policy
+    #: disposition inspected nothing, so it is excluded from the review sample.
+    disposition_actor_kind: Mapped[str | None] = mapped_column(Text)
     approval_authority: Mapped[str | None] = mapped_column(Text)
     evidence_threshold: Mapped[str | None] = mapped_column(Text)
 
