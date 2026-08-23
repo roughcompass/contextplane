@@ -247,6 +247,12 @@ class Settings(BaseSettings):
     # because the work is idempotent: running more often only reduces how stale an
     # answer can be, it never changes what the answer converges to.
     consolidation_sweep_interval_s: int = 300
+    #: How often the trust-decay sweep looks for claims that have fallen out of a
+    #: bucket. Six hours because decay is measured in category half-lives of days
+    #: to years, so a tighter interval finds nothing new and a looser one widens
+    #: the gap between when a crossing happened and when `observed_at` says it
+    #: was noticed -- which is the one thing that column has to be honest about.
+    trust_transition_sweep_interval_s: int = 21600
     # How often consolidated claims are proposed for promotion, and auto-accepted
     # where a tenant's own guardrails permit it. Wider than the embedding poll for
     # the same reason the consolidation sweep is: the work is idempotent, so a

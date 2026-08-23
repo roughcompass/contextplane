@@ -5961,7 +5961,7 @@ all.
 
 ### E5-T5 — Decay as a trust-class transition, with materiality frozen
 
-**Kind:** task · **Status:** pending — grounded; scope and one name changed · **Blocked by:** E5-T4 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E5-T4 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a claim losing trust to age is recorded as a transition between trust
 classes, at a materiality frozen when the decay happened — not as a
@@ -6030,6 +6030,41 @@ wanted, not because the value lacked a name.
 **Note, as the entry asked:** `NON_DECAYING_VALUE_TYPES` is `{"prose"}`, so
 prose claims never enter this path and the transition record is not universal.
 Whether that exemption is right is still not this task's question.
+
+**Shipped as the grounding said it had to be: a sweep, not a table.**
+
+`claim_trust_transitions` records downward bucket crossings, written by
+`TrustTransitionSweep` because nothing else can notice one. The column is
+**`observed_at`, not `transitioned_at`** — the sweep records when it saw, and the
+crossing happened somewhere in the interval before that. Naming it for the
+crossing would answer "when did we let this decay" wrong by up to one interval,
+with nothing in the row to reveal it.
+
+Three properties the build had to get right, each pinned:
+
+- **Seeded from the stored score.** A claim with no prior transition is compared
+  against the bucket its *undecayed* score falls in — where it started. Without
+  that, the first pass either invents a transition or misses a real one.
+- **Idempotent, and enforced.** The first pass moves the last-seen bucket to
+  where the claim already is, so the second records nothing;
+  `ck_trust_transition_moved` refuses a row whose buckets are equal, so a bug
+  that lost the comparison fails loudly instead of writing a decay history that
+  never happened.
+- **Contiguous.** Each `from_bucket` is the previous `to_bucket`, so a reviewer
+  sees two drops where there were two rather than one summarising both.
+
+Measured in buckets, not points: 0.86 → 0.85 is a bigger numeric move than 0.84
+→ 0.71 and only the second crosses nothing. Recording numeric movement would
+fill the table with changes no consumer can act on.
+
+**Read by `ClaimHistoryService.trust_history_for`**, which is the surface that
+already answers "given the claim I was told about, what happened to it" — losing
+trust to age being one of the things that happened. A record with no reader is
+the defect this plan keeps finding; it does not get to be one here.
+
+Correction to the entry's arithmetic while building: decay runs toward
+`DECAY_FLOOR`, not toward zero (`floor + (stored - floor) * 2**(-age/half_life)`),
+so a 0.90 claim sits at 0.50 after one half-life rather than 0.45.
 
 ### E5-T6 — The reviewer cockpit
 
