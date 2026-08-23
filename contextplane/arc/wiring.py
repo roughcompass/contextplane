@@ -56,6 +56,7 @@ from contextplane.arc.service.corpus import CorpusReader
 from contextplane.arc.service.detail_retrieval import JitService
 from contextplane.arc.service.drafter import DrafterService
 from contextplane.arc.service.enrollment import EnrollmentService
+from contextplane.arc.service.governance_reads import GovernanceReadService
 from contextplane.arc.service.integrity import RevisionIntegrityService
 from contextplane.arc.service.operational_chain import OperationalChainService
 from contextplane.arc.service.preflight import PreflightRegistry
@@ -94,6 +95,8 @@ class ArcServices:
     Field order follows construction order in `build_arc_services`, not
     alphabetical order, so this reads as a map of the same graph.
     """
+
+    arc_governance_reads: GovernanceReadService
 
     arc_signing: ReceiptSigningProvider
     arc_authorization: ArcAuthorizationService
@@ -419,6 +422,7 @@ def build_arc_services(
         )
 
     return ArcServices(
+        arc_governance_reads=GovernanceReadService(session_factory, clock=clock),
         arc_signing=signing,
         arc_authorization=authorization,
         arc_receipts=receipts,

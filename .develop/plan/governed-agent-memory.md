@@ -7192,6 +7192,26 @@ appears on REST and MCP alike — the rule this plan has recorded three times, a
 a read-only surface added to one transport is the cheapest possible place to
 break it again.
 
+**That sentence is wrong for this surface, and E14-T1a found out by tripping the
+gate that says so.** `tests/integration/test_arc_admin_routes.py::test_no_admin_operation_is_exposed_as_an_mcp_tool`
+refuses any `arc_*` tool whose name carries `activate`, `revoke`, `invalidate`,
+`register` or `approval`, and its docstring states the intent plainly: *"The claim
+that makes 'REST only' real rather than a comment. An agent that could revoke a
+revision over MCP could edit the governance it is judged against."*
+
+So the ARC admin surface is REST-only by an enforced rule, and the parity rule
+this entry cited does not reach it. The half of that rule that does still apply
+is the half that matters: **the logic lives in the service**, so a transport
+added later inherits it rather than restating it. E14-T1a's reads are in
+`GovernanceReadService` for exactly that reason.
+
+Worth being precise about why the gate is right even for a *read*. The rule it
+enforces is not "mutations are dangerous"; it is that the governance surface an
+agent is judged against is not a surface that agent talks to. A read of which
+verifiers may approve is reconnaissance on exactly that boundary, and the
+argument for exposing it is convenience. Weakening a stated security gate to fit
+work already written is the move this plan refuses everywhere else.
+
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "arc and (list or read)"
     make all
@@ -7238,7 +7258,7 @@ smaller than "six endpoints" and is why this decomposes rather than growing.
 
 ### E14-T1a — Read back what may approve: verifiers and exceptions
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: an operator can list enrolled approval verifiers and standing exceptions,
 at a scope, with whether each is still in force.
@@ -7257,6 +7277,44 @@ Both transports.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "arc and (verifier or exception)"
     make all
+
+**Shipped REST-only**, `GET /v1/arc/admin/approval-verifiers` and
+`.../exceptions`.
+
+MCP tools were written and then removed: they tripped
+`test_no_admin_operation_is_exposed_as_an_mcp_tool`, which exists to make "REST
+only" real for this surface. See E14-T1's own amendment — the "both transports"
+instruction was mine and was wrong here.
+
+Four decisions the build made that the entry did not have to:
+
+- **A tenant's verifier list includes the global ones.** A global verifier can
+  approve for that tenant, so a list showing only its own would answer "who may
+  approve here" wrongly by exactly the verifiers with the widest reach.
+- **The public key is never returned.** A list of who may approve does not need
+  the material, and a surface carrying it is one more place a key leaks from.
+  `public_key` is not even selected.
+- **The list does not decrypt.** Exception statements are stored encrypted at
+  rest with plaintext as the alternative; this returns plaintext where a
+  deployment stores plaintext and nothing where it does not, and never reaches
+  for a key. A list that decrypted every row would turn "which exceptions exist"
+  into a bulk disclosure of why each was granted — a different question with a
+  different audience. `has_statement` distinguishes "none was given" from "not
+  shown here".
+- **Both defaults show everything, and `in_force_only` narrows.** "What was
+  enrolled" and "what can approve today" are different questions, and a revoked
+  verifier is part of the first.
+
+Two things the gates caught and were right about. The reads went into their own
+router because `arc_admin.py` crossed the 800-line ceiling — reads and writes
+being different jobs is why it lands cleanly — but the new router keeps the
+**same tag**, because `GET` and `POST` on one path are one resource and a path
+whose methods sit under different tags belongs to neither section. The split is
+for readers of the code, not readers of the API.
+
+And the exceptions query named `lower_scope_capability_id`, which migration 0049
+renamed to `lower_scope_entity_id` two years ago. The baseline schema is history;
+only the integration tier reads the live one.
 
 ### E14-T1b — Read back what ARC may ingest: connectors, policies, corpora
 

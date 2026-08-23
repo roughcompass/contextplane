@@ -157,6 +157,7 @@ from contextplane.arc.service.enrollment import (
     ProofInput,
 )
 from contextplane.arc.service.envelope import EnvelopeInvalid
+from contextplane.arc.service.governance_reads import GovernanceObject, GovernanceReadService
 from contextplane.arc.service.integrity import RevisionIntegrityService
 from contextplane.arc.service.operational_chain import (
     OperationalChainIdempotencyConflict,
@@ -306,6 +307,8 @@ from contextplane.arc.workers.source_status_refresh import (
 )
 
 __all__ = [
+    "GovernanceObject",
+    "GovernanceReadService",
     "APPROVAL_VERIFIER_ENROLLMENT_PROFILE",
     "ARTIFACT_SEMANTICS_PROFILE",
     "ActivationEligibility",

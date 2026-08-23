@@ -1118,3 +1118,4 @@ because a rate nobody can check is a lead nobody follows.
 **This writes.** It stores a report and returns `report_id`. That is not
 bookkeeping: an instruction change has to cite a stored report, so a report
 nobody kept could justify nothing.
+
