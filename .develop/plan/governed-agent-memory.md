@@ -5897,7 +5897,7 @@ could load its chunk and highlight nothing in the nav.
 
 ### E10-T5 — `shared/api/tenantWork.ts` outlived the destination it was named for
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: the API module names a domain, like every one of its siblings, rather than
 a page that no longer exists.
@@ -5919,6 +5919,49 @@ all three groups. Splitting three ways needs a fourth module for them. Check
 first whether the siblings already have their own copies of these: if they do,
 the extraction is larger than this task and serves more than it, and that is
 worth knowing before a fourth private copy is created.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**Landed in contextplane-ui#25, and the check this entry asked for came back
+positive.** It said to establish, before creating a fourth private copy of the
+validators, whether the siblings already keep their own. They do — `admin.ts`,
+`arcAuthoring.ts` and `entityResolution.ts` each carry `isRecord`,
+`requiredRecord`, `requiredString` and `nullableString` — **and they have already
+drifted.** The same failure reads `"… is not text."`, `"… must be text."` or
+`"… is not a string."` depending on which module happened to parse it, and
+`arcAuthoring`'s `requiredRecord` says `Invalid API {label}.` where the others
+say `Invalid API response: {label} is not an object.`
+
+So the validators are extracted once into `parse.ts` rather than copied a fifth
+time: splitting three ways without it would have turned four copies into six.
+The module becomes `activity.ts`, `ownership.ts` and `intents.ts`, and the
+342-line test file splits the same way so every source keeps a same-named
+sibling. Test count unchanged at 457 — this moves code, it does not add
+behaviour.
+
+### E10-T11 — Three modules still carry their own copies of the validators
+
+**Kind:** task · **Status:** pending · **Blocked by:** E10-T5 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: `parse.ts` is the only definition of the response validators.
+
+E10-T5 extracted them and pointed the three modules it created at them.
+`admin.ts`, `arcAuthoring.ts` and `entityResolution.ts` still hold their own,
+and the drift above is the argument: three spellings of one refusal is three
+things a reader has to recognise as the same failure.
+
+**Deliberately not folded into E10-T5**, and the reason is what makes this its
+own task rather than a tidy-up: it **changes message text**, and some tests
+assert on that text — `test_a_foreign_receipts_exclusions_are_not_readable`'s
+sibling in this repo asserts `"Invalid API response: capability_id is not
+text."` verbatim. So this is a behaviour change wearing a refactor's clothes,
+and it wants its own review rather than a diff nobody separates from a move.
+
+Settle one thing while doing it: whether the divergent messages are *only*
+wording. `arcAuthoring`'s `requiredRecord` takes a label and produces a
+different sentence shape, so a caller matching on the message — if any does —
+breaks differently from one matching the others.
 
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
