@@ -6184,6 +6184,36 @@ is read off the shipped detectors rather than restated, for exactly the reason
 that a hand-written second list disagrees first in the direction that silently
 admits. Publishing the enum deletes the duplicate rather than documenting it.
 
+**Two live defects found while scoping this, and they are worse than the
+contract-shape problem it was filed for.**
+
+**`field_type` is never validated on the policy-write path.** In
+`api/routers/admin_pii.py`, `body.field_type` goes straight into
+`insert_pii_field_policy` with no check against `PILOT_FIELD_TYPES`. So
+`POST /v1/admin/pii-field-policies` with `"workspace_entry.bodies"` — one
+character wrong — stores a row, lists it back, and **governs nothing**, because
+resolution matches the field type as an exact string. An operator reading their
+own policy list sees the control they think they configured.
+
+That is precisely what `NotAPilotField` exists to prevent one layer down:
+`admit()` refuses an unrecognised field type rather than admitting it, and its
+docstring says silence on an unrecognised field "is how admission gets switched
+off for a surface by a typo". The *writing* path never asks. E10-T3's select
+mitigates it for UI callers and does nothing for anyone using the API.
+
+**`_VALID_POLICIES` is a fourth copy of the policy vocabulary**, hand-written in
+`admin_pii.py` beside `_POLICY_SEVERITY` in `pii_scanner.py` — which is the
+authority, since it also carries the ordering the scanner takes the maximum
+over. Two lists, and the one that decides is not the one the route checks.
+
+So the deliverable is three things, not one: validate `field_type` fail-closed
+against the pilot set, read the policy vocabulary from the scanner instead of
+restating it, and *then* publish both as `Literal` so the contract carries them
+and clients stop duplicating what E10-T3 had to duplicate.
+
+**Sequence it after E4-T8.** Both regenerate `openapi.json`, and a merge
+conflict in a generated file is the one kind worth avoiding by ordering.
+
 Acceptance:
     make contract-tags
     make all
