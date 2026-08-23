@@ -4320,7 +4320,7 @@ Acceptance:
 
 ### E7-T1 — The tool registry, and what a default connection sees
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done — with one clause that cannot be satisfied yet · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: one machine-readable registry naming every MCP tool, its surface tier, and
 the REST operation it corresponds to -- and a default connection that exposes the
@@ -4344,6 +4344,32 @@ the code is a gate, which is E7-T2.
 Acceptance:
     .venv/bin/python -m pytest tests/conformance -q -k "tool_registry"
     make all
+
+**Shipped.** `contextplane/api/mcp/tool_registry.json` is the committed artifact:
+every tool with its `module`, its `tier`, and the REST operation it corresponds
+to. `scripts/check_mcp_tool_registry.py` reports **70 registered, 70 listed, 8
+core over 7 REST paths**, and E13-T4 turned those last two figures into ratchets
+so the tier cannot widen without somebody raising a ceiling on purpose.
+
+**The one clause that could not be honoured: "read the receipts rather than
+picking."** E7-T1 asked for the core set to be *derived* from what agents
+actually call, on the argument that "a core verb set chosen by taste will be
+defended by taste." That evidence does not exist, and E13-T3 established why:
+nothing has shipped, so there is no call corpus, and `install_tool_metrics`
+answers "was this called in the current scrape window" rather than "has any
+agent ever needed this."
+
+So the set was chosen by argument, and the entry says so rather than implying a
+derivation happened. Two things limit the damage the original clause feared:
+E13-T1 fixed the *unit* the set is measured in — paths, not operations, since a
+path carrying two methods is one thing for an integrator to learn — and E13-T4
+ratchets it, so taste can no longer quietly expand what taste chose. Re-deriving
+from receipts stays available once a release produces them; it is not a
+prerequisite for the registry existing.
+
+**Not in this task:** the default connection actually *serving* only the core.
+That is E7-T3, which the epic already cut as "the full surface is opt-in, per
+envelope" — this task delivers the declaration it enforces.
 
 ### E7-T2 — Parity, extending the gate that already half-exists
 
@@ -4524,7 +4550,25 @@ first. Name it `materiality` and keep them apart.
 
 ### E4-T1 — ADR: is quarantine a state, or a predicate evaluated at read?
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done — landed as ADR-0016, out of order · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+**Answered by [`ADR-0016`](../adr/0016-quarantine-is-a-materialised-state-on-its-own-column.md),
+which shipped with E4-T2 rather than before it.** Recorded here because a task
+left `pending` next to its own delivered answer is how the answer gets written
+twice. The ADR settles every question this entry posed:
+
+- **Materialised state**, on its own `quarantined_at` column — not a read-time
+  predicate, and not a reuse of `t_invalidated_at`. The reuse would have been a
+  bug: `_SERVABLE_AS_OF`'s term is `as_of`-relative and `as_of` is caller-supplied,
+  so a quarantine expressed that way is bypassable by the caller it restrains.
+- **Index retraction *and* read filtering**, which this entry framed as an
+  either/or. It also corrects this entry's premise: the codebase does *not* make
+  things unservable by deleting from the index. Retraction is a **recall**
+  mechanism — a dead vector still occupies a candidate slot in
+  `ORDER BY vector <-> q LIMIT k` — and the read filter is what makes a row
+  unservable. So both, for different reasons, rather than one instead of the other.
+- **Rows arriving after the sweep** get their own section: they are the emitting
+  connector's problem, not a standing predicate's.
 
 Goal: decide the shape before anything is built, because the two shapes have
 different failure modes and only one of them matches what this system already
@@ -5634,7 +5678,7 @@ Acceptance:
 
 ### E10-T2 — Navigation and DESIGN.md repositioning
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: the information architecture reflects what the product does, and
 `.develop/DESIGN.md` and the nav agree.
@@ -5647,6 +5691,65 @@ arrange.
 **E10's "cockpit dispositions" is not part of this.** That work is now E5-T6,
 cut with the epic that owns the disposition vocabulary and the ranked queue it
 displays. Listing it in both places would be two teams building one screen.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**The document contradicted its own opening line, so the document moved.** The
+IA section said *"Organize navigation by user intent, not by endpoint or database
+table"* and then listed seven sections — Overview, Catalog, Memory, Workspaces,
+Governance, Audit, Administration — six of them named after the thing stored.
+The shipped nav was already four groups named for what someone came to do, so it
+is the better artifact and `DESIGN.md` was rewritten to describe it, plus the
+rule that was implicit in it: **a destination is named for its reader's job, not
+for the scope the job runs in.** If describing who it serves needs the word
+"and", it is more than one destination.
+
+**"Tenant work" was the counterexample, and hid the headline loop.** One
+destination named after a scope, with three unrelated readers behind it:
+notifications and learning evidence; ownership and profile governance; and
+intent participants with their checkpoint chains. The third is the chain
+`resume_context` serves to whoever picks a task up next, and it was reachable as
+the third tab of a page named after a tenancy — `DESIGN.md`'s own list had no
+section for it at all. Now `Tasks` under *Work with context*, `Activity` under
+*Monitor usage*, `Ownership & profiles` under *Governance*, each panel unchanged
+in its own feature folder.
+
+**An unrecognized address used to render the catalog.** `DESIGN.md` asks that a
+copied URL reconstruct the same view; silently reconstructing a *different* one
+is worse than reporting nothing, because it is indistinguishable from having
+asked for that page. There is now a not-found destination, and no nav item
+claims `aria-current` while it shows.
+
+**Five parallel dispatch lists collapsed into one route table.** Adding a
+destination meant editing a union, a matcher, a chunk loader, an identity
+predicate, and two nested ternary chains. Nothing made them agree, so a route
+could load its chunk and highlight nothing in the nav.
+
+### E10-T5 — `shared/api/tenantWork.ts` outlived the destination it was named for
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: the API module names a domain, like every one of its siblings, rather than
+a page that no longer exists.
+
+E10-T2 dissolved the "Tenant work" destination into `Activity`, `Tasks` and
+`Ownership & profiles`. The 620-line API module behind it still carries the old
+name over three domains' worth of calls: notifications, learning and signals
+(240–322); ownership and profiles (323–488, 587–620); intents and checkpoints
+(489–586). Every sibling in `shared/api/` — `admin`, `audit`, `catalog`,
+`relationships` — is named for a domain. This one was named for a screen, which
+is why it accumulated three.
+
+Deliberately not folded into E10-T2: that change was navigation, this one is the
+data layer, and one PR carrying both would be two changes wearing one title.
+
+**The part that needs a decision rather than a move.** Lines 84–240 are thirteen
+generic validators — `requiredString`, `nullableNumber`, `stringArray` — used by
+all three groups. Splitting three ways needs a fourth module for them. Check
+first whether the siblings already have their own copies of these: if they do,
+the extraction is larger than this task and serves more than it, and that is
+worth knowing before a fourth private copy is created.
 
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
