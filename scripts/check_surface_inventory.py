@@ -240,6 +240,16 @@ EXCLUSIONS: tuple[Exclusion, ...] = (
             "Its one read -- the items a receipt still names -- exists so it can overwrite them."
         ),
     ),
+    Exclusion(
+        path="contextplane/context/receipt_withholding.py",
+        reason=(
+            "Withholds and releases receipts while an incident affecting their inputs is worked. "
+            "Excluded for the same reason as the two above: it returns nothing to a caller. Its "
+            "only read is a subquery inside an UPDATE, finding which receipts quoted a "
+            "quarantined claim, and no value it touches reaches a response -- the effect is that "
+            "a receipt stops being served, which is the opposite of a surface."
+        ),
+    ),
 )
 
 
