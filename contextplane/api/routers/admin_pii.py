@@ -21,6 +21,7 @@ from __future__ import annotations
 import datetime
 import re
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
@@ -31,13 +32,49 @@ from contextplane.api.middleware.etag import check_if_match, compute_etag, lates
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
 from contextplane.api.routers._admin_common import _admin_required
+from contextplane.context.admission import PILOT_FIELD_TYPES
 from contextplane.security import queries as pii_queries
+from contextplane.security.pii_scanner import POLICY_VALUES
 from contextplane.storage.models import PiiFieldPolicyRow, PiiPatternRow
 from contextplane.types import TenantContext
 
 router = APIRouter(prefix="/v1/admin")
 
-_VALID_POLICIES: frozenset[str] = frozenset({"advisory", "warn", "block"})
+#: The two closed vocabularies this surface writes, read from the modules that
+#: own them rather than restated here.
+#:
+#: `_VALID_POLICIES` used to be a hand-written `frozenset({"advisory", "warn",
+#: "block"})` beside `_POLICY_SEVERITY` in the scanner -- and the scanner's copy
+#: is the one that decides, because it also carries the ordering the maximum is
+#: taken over. Two lists, and the one the route checked was not the one that
+#: governs.
+_VALID_POLICIES: frozenset[str] = frozenset(POLICY_VALUES)
+
+#: The field types a policy may govern. **A policy for anything else stores,
+#: lists, and governs nothing**, because resolution matches the field type as an
+#: exact string -- so an operator reading their own policy list would see a
+#: control they never had. `admit()` already refuses an unrecognised field type
+#: one layer down, and its docstring says silence on one "is how admission gets
+#: switched off for a surface by a typo". This is that refusal, moved to the
+#: path that writes the policy rather than the path that reads it.
+_VALID_FIELD_TYPES: frozenset[str] = PILOT_FIELD_TYPES
+
+#: Published on the request schemas so the contract carries both vocabularies.
+#: Without this a client cannot offer a correct picker without duplicating them,
+#: and the dashboard had to: nine field-type strings written into a component
+#: because `field_type` arrived as a bare `string`.
+PolicyValue = Literal["advisory", "warn", "block"]
+FieldTypeValue = Literal[
+    "artifact.body",
+    "claim_value",
+    "external_signal.payload",
+    "external_signal.references",
+    "intent_checkpoint.body",
+    "intent_checkpoint.references",
+    "memory_session_event.body",
+    "workspace_entry.body",
+    "workspace_entry.references",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -87,9 +124,9 @@ class PiiFieldPolicyCreate(BaseModel):
     the field type as a whole.
     """
 
-    field_type: str
+    field_type: FieldTypeValue
     pattern_id: uuid.UUID | None = None
-    policy: str
+    policy: PolicyValue
 
 
 class PiiFieldPolicyResponse(BaseModel):
@@ -369,6 +406,18 @@ async def create_pii_field_policy(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"policy must be one of {sorted(_VALID_POLICIES)}",
+        )
+    # Checked here as well as by the schema, because the schema's `Literal` is a
+    # hand-written list and this set is the one the scanner resolves against. A
+    # policy written for a field type nothing scans stores, lists, and governs
+    # nothing -- the operator sees a control they never had.
+    if body.field_type not in _VALID_FIELD_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"field_type must be one of {sorted(_VALID_FIELD_TYPES)}; a policy for any other "
+                "value would be stored and never consulted"
+            ),
         )
 
     now = datetime.datetime.now(tz=datetime.UTC)

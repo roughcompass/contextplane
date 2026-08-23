@@ -9380,6 +9380,17 @@
         "description": "Body for POST /pii-field-policies.\n\n`pattern_id` scopes the override to one pattern; leave it null to cover\nthe field type as a whole.",
         "properties": {
           "field_type": {
+            "enum": [
+              "artifact.body",
+              "claim_value",
+              "external_signal.payload",
+              "external_signal.references",
+              "intent_checkpoint.body",
+              "intent_checkpoint.references",
+              "memory_session_event.body",
+              "workspace_entry.body",
+              "workspace_entry.references"
+            ],
             "title": "Field Type",
             "type": "string"
           },
@@ -9396,6 +9407,11 @@
             "title": "Pattern Id"
           },
           "policy": {
+            "enum": [
+              "advisory",
+              "warn",
+              "block"
+            ],
             "title": "Policy",
             "type": "string"
           }

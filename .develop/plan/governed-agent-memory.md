@@ -6216,7 +6216,7 @@ happens.
 
 ### E10-T6 — The PII vocabularies are closed in the service and open in the contract
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — vendored openapi.json · **Repo:** contextplane
+**Kind:** task · **Status:** done — service side; the UI can drop its copy next · **Blocked by:** none · **Hotspot:** yes — vendored openapi.json · **Repo:** contextplane
 
 Goal: `field_type` and `policy` are published as the closed sets they are.
 
@@ -6269,6 +6269,49 @@ conflict in a generated file is the one kind worth avoiding by ordering.
 Acceptance:
     make contract-tags
     make all
+
+**All three landed, and the middle one was the defect worth the task.**
+
+**`field_type` is validated fail-closed now.** It reaches the insert through a
+published `Literal` *and* a set check against `PILOT_FIELD_TYPES`, because the
+`Literal` is hand-written and the pilot set is what the scanner resolves
+against. A policy for anything else stored, listed, and was consulted by
+nothing.
+
+**The policy vocabulary is read from the scanner.** `POLICY_VALUES` is derived
+from `_POLICY_SEVERITY` — the map that also carries the ordering the maximum is
+taken over — so the list the route checks is now the list that governs. It is
+ordered least severe first, because a caller offering these as a choice should
+present them in the order that decides.
+
+**Both are published as enums**, so `PiiFieldPolicyCreate.field_type` and
+`.policy` carry their values into the contract.
+
+**Publishing created the duplication it removes, so it has a gate.** A `Literal`
+cannot be built from a runtime frozenset, so the vocabulary is necessarily
+written a second time — safe only while something holds the two in agreement.
+`tests/conformance/test_pii_vocabularies_published.py` is that something, and it
+names both directions of a divergence. Mutation-checked: one character in the
+`Literal` fails it. That is `PROHIBITED_CLASSES`'s principle applied where the
+second list is unavoidable — where it cannot be derived, it gets a gate.
+
+**One behaviour change.** An invalid `policy` is now refused by the schema
+rather than by the route's own check. Over HTTP that is the same 422; the unit
+test called the handler directly, so it now asserts the schema refuses it, which
+is stronger — the refusal happens before the handler runs.
+
+**A third gate classified the change.** `test_every_module_naming_a_pilot_field_reaches_admission`
+fired, because `admin_pii.py` now names pilot field types and never calls
+`admit`. Adding it to `defining` would have been false: it does not define the
+vocabulary, it *governs* it, and calling `admit` there would scan a policy row
+carrying no content. Classified as that third category with the reason written
+down.
+
+**What the UI can now drop.** E10-T3 wrote nine field-type strings into
+`PiiFieldPolicyEditor.tsx` because the contract typed `field_type` as a bare
+string. On the next contract pin bump that component can read the generated
+union instead, and the comment explaining why it was duplicated comes out with
+it.
 
 ### E10-T7 — Who may approve: the approval-verifier surface
 

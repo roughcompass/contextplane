@@ -67,6 +67,19 @@ _POLICY_SEVERITY: dict[str, int] = {
     "block": 2,
 }
 
+#: The policy vocabulary, read off the severity map rather than restated.
+#:
+#: Public because two other modules need it and both had written their own copy:
+#: `api/routers/admin_pii.py` held a hand-written `_VALID_POLICIES`, and a
+#: hand-written second list disagrees first in the direction that silently
+#: admits -- the same reason `PROHIBITED_CLASSES` is derived from the shipped
+#: detectors rather than typed beside them.
+#:
+#: Ordered least severe first, because `_POLICY_SEVERITY` is what the scanner
+#: takes the maximum over: a caller offering these as a choice should present
+#: them in the order that decides.
+POLICY_VALUES: tuple[str, ...] = tuple(sorted(_POLICY_SEVERITY, key=_POLICY_SEVERITY.__getitem__))
+
 _POLICY_VALUES = frozenset(_POLICY_SEVERITY)
 
 # Chunk size for large-input streaming (bytes, treated as UTF-8 chars for simplicity).
