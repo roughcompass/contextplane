@@ -371,5 +371,129 @@ async def test_the_preview_reaches_what_the_apply_would_without_withholding_anyt
 
     previewed = await world.quarantine().preview(world.ctx(), selector=SELECTOR_CONNECTOR_RUN, value="run-42")
 
-    assert previewed == (cid,)
+    assert previewed.matched == (cid,)
     assert await _served(world) == {cid}, "a preview must not withhold anything"
+
+
+# --- E4-T3: the preview says what depends on what it would withhold -----------
+#
+# Two sets that mean different things. `matched` is exact and is what would be
+# withheld; `downstream` is advisory and is withheld by nothing. The traversal
+# behind it is the one that already exists, called once per seed -- not a
+# widened one and not a second one, which is the failure this task named.
+
+
+class _RecordingBlastRadius:
+    """The closure traversal, stubbed, recording exactly how it was called.
+
+    A stub rather than a real graph because what is under test is the *seeding*:
+    which roots the preview picks, how many, in which direction and to what
+    depth. Building an edge graph would test the traversal instead, which has
+    its own tests and is deliberately not re-proved here.
+    """
+
+    def __init__(self, reach: dict[uuid.UUID, list[uuid.UUID]]) -> None:
+        self._reach = reach
+        self.calls: list[tuple[uuid.UUID, str, int]] = []
+
+    async def get_blast_radius(
+        self, ctx: TenantContext, entity_id: uuid.UUID, direction: str = "reverse", depth: int = 5
+    ) -> object:
+        del ctx
+        self.calls.append((entity_id, direction, depth))
+        nodes = [_Node(reached) for reached in self._reach.get(entity_id, [])]
+        return _Traversal(nodes)
+
+
+class _Node:
+    def __init__(self, entity_id: uuid.UUID) -> None:
+        self.entity_id = entity_id
+
+
+class _Traversal:
+    def __init__(self, nodes: list[_Node]) -> None:
+        self.nodes = nodes
+
+
+async def _subject_of(world: _World, claim_id: uuid.UUID) -> uuid.UUID:
+    async with world.factory() as session:
+        row = await session.execute(
+            text("SELECT subject_entity_id FROM memory_claims WHERE claim_id = :c"), {"c": claim_id}
+        )
+        return uuid.UUID(str(row.scalar_one()))
+
+
+@pytest.mark.asyncio
+async def test_the_preview_reports_what_depends_on_the_claims_it_would_withhold(world: _World) -> None:
+    first = await world.claim(strategy="extract.v1", namespace="team/a", run="run-42")
+    second = await world.claim(strategy="extract.v1", namespace="team/a", run="run-42")
+    subjects = sorted({await _subject_of(world, first), await _subject_of(world, second)})
+    dependant = uuid.uuid4()
+    radius = _RecordingBlastRadius({subjects[0]: [dependant], subjects[1]: [dependant]})
+
+    previewed = await QuarantineService(world.factory, clock=FakeClock(_QUARANTINED), blast_radius=radius).preview(
+        world.ctx(), selector=SELECTOR_CONNECTOR_RUN, value="run-42"
+    )
+
+    assert previewed.matched == tuple(sorted((first, second)))
+    assert previewed.subjects == tuple(subjects)
+    assert previewed.downstream == (dependant,), "one dependant reached twice is one dependant"
+    assert not previewed.truncated
+
+
+@pytest.mark.asyncio
+async def test_the_preview_seeds_the_existing_traversal_once_per_subject(world: _World) -> None:
+    """Reverse, at the traversal's own depth cap. A claim four hops downstream
+    rests on the withheld content exactly as much as one hop does."""
+    claim_id = await world.claim(strategy="extract.v1", namespace="team/a", run="run-42")
+    subject = await _subject_of(world, claim_id)
+    radius = _RecordingBlastRadius({})
+
+    await QuarantineService(world.factory, clock=FakeClock(_QUARANTINED), blast_radius=radius).preview(
+        world.ctx(), selector=SELECTOR_CONNECTOR_RUN, value="run-42"
+    )
+
+    assert radius.calls == [(subject, "reverse", 5)]
+
+
+@pytest.mark.asyncio
+async def test_a_subject_is_not_reported_as_downstream_of_itself(world: _World) -> None:
+    """It is already in `matched`'s subjects. Counting it twice would inflate
+    the advisory set with the exact set beside it."""
+    claim_id = await world.claim(strategy="extract.v1", namespace="team/a", run="run-42")
+    subject = await _subject_of(world, claim_id)
+    radius = _RecordingBlastRadius({subject: [subject]})
+
+    previewed = await QuarantineService(world.factory, clock=FakeClock(_QUARANTINED), blast_radius=radius).preview(
+        world.ctx(), selector=SELECTOR_CONNECTOR_RUN, value="run-42"
+    )
+
+    assert previewed.downstream == ()
+
+
+@pytest.mark.asyncio
+async def test_a_preview_with_no_traversal_wired_says_its_answer_is_incomplete(world: _World) -> None:
+    """Rather than reporting an empty downstream set as though it were the
+    answer. `truncated` is what tells the two apart."""
+    await world.claim(strategy="extract.v1", namespace="team/a", run="run-42")
+
+    previewed = await world.quarantine().preview(world.ctx(), selector=SELECTOR_CONNECTOR_RUN, value="run-42")
+
+    assert previewed.downstream == ()
+    assert previewed.seeds_total == 1
+    assert previewed.seeds_traversed == 0
+    assert previewed.truncated, "an untraversed subject is not a subject with no dependants"
+
+
+@pytest.mark.asyncio
+async def test_a_predicate_matching_nothing_previews_an_untruncated_empty_answer(world: _World) -> None:
+    radius = _RecordingBlastRadius({})
+
+    previewed = await QuarantineService(world.factory, clock=FakeClock(_QUARANTINED), blast_radius=radius).preview(
+        world.ctx(), selector=SELECTOR_CONNECTOR_RUN, value="run-nothing"
+    )
+
+    assert previewed.matched == ()
+    assert previewed.seeds_total == 0
+    assert not previewed.truncated, "nothing to traverse is a complete answer, not a capped one"
+    assert radius.calls == []

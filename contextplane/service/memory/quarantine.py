@@ -31,14 +31,14 @@ import dataclasses
 import datetime
 import json
 import uuid
-from typing import Final
+from typing import Final, Protocol
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.retention import derivatives, policies
-from contextplane.types import Clock, TenantContext
+from contextplane.types import Clock, TenantContext, TraversalResult
 
 #: Who may quarantine. The same bar the curation actions set, and for the same
 #: reason: withholding content other people are relying on is a decision, not
@@ -77,6 +77,56 @@ _MATCH_SQL: Final[dict[str, str]] = {
 }
 
 
+#: How many distinct subject entities a preview will seed the traversal from.
+#: Each seed is one closure lookup, so an unbounded match set would turn a
+#: preview into a scan. The result reports both figures, because a truncated
+#: answer that does not say it was truncated reads as a complete one.
+_MAX_PREVIEW_SEEDS: Final = 50
+
+#: Hops the preview follows. The traversal caps at 5 itself; asking for the cap
+#: rather than a smaller number is deliberate -- a claim four hops downstream
+#: rests on the withheld content exactly as much as one hop does.
+_PREVIEW_DEPTH: Final = 5
+
+
+class BlastRadius(Protocol):
+    """The traversal a preview borrows, narrowed to what it needs.
+
+    A `Protocol` rather than an import of the closure service, so this module
+    does not acquire a dependency on the retrieval stack to ask one question of
+    it -- and so a test can answer that question without a graph.
+    """
+
+    async def get_blast_radius(
+        self, ctx: TenantContext, entity_id: uuid.UUID, direction: str = ..., depth: int = ...
+    ) -> TraversalResult: ...
+
+
+@dataclasses.dataclass(frozen=True)
+class QuarantinePreview:
+    """What a predicate reaches, and what depends on what it reaches.
+
+    Two different questions, kept apart. `matched` is what the quarantine would
+    withhold -- it is decided by the predicate and is exact. `downstream` is
+    what those claims' subjects are depended on by, which is a statement about
+    the catalog graph and is advisory: nothing there is withheld by applying
+    this quarantine.
+    """
+
+    matched: tuple[uuid.UUID, ...]
+    subjects: tuple[uuid.UUID, ...]
+    downstream: tuple[uuid.UUID, ...]
+    #: Seeds actually traversed, and seeds there were. Unequal means the
+    #: downstream set is a floor rather than the answer.
+    seeds_traversed: int
+    seeds_total: int
+
+    @property
+    def truncated(self) -> bool:
+        """Whether `downstream` is incomplete because the seed cap was hit."""
+        return self.seeds_traversed < self.seeds_total
+
+
 @dataclasses.dataclass(frozen=True)
 class Quarantine:
     """One applied quarantine, and what it reached."""
@@ -96,23 +146,102 @@ class Quarantine:
 class QuarantineService:
     """Apply and revert provenance-scoped quarantines."""
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession], *, clock: Clock) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        *,
+        clock: Clock,
+        blast_radius: BlastRadius | None = None,
+    ) -> None:
         self._factory = session_factory
         self._clock = clock
+        self._blast_radius = blast_radius
 
     # -- preview -----------------------------------------------------------
 
-    async def preview(self, ctx: TenantContext, *, selector: str, value: str) -> tuple[uuid.UUID, ...]:
+    async def preview(self, ctx: TenantContext, *, selector: str, value: str) -> QuarantinePreview:
         """What applying this predicate would reach, right now.
 
         **A point-in-time answer, and callers must present it as one.** The
         graph moves between a preview and an apply, so a preview acted on ten
-        minutes later reached a different set. This returns the ids rather than
-        a count so a caller that wants to show the difference can.
+        minutes later reached a different set. This returns ids rather than
+        counts so a caller that wants to show the difference can.
+
+        Two sets, and they mean different things. `matched` is what would be
+        withheld: the predicate decides it and it is exact. `downstream` is what
+        depends on those claims' subjects -- advisory, because applying this
+        quarantine withholds none of it.
         """
         self._require_operator(ctx)
         async with self._factory() as session:
-            return await self._match(session, ctx, selector=selector, value=value)
+            matched = await self._match(session, ctx, selector=selector, value=value)
+            subjects = await self._subjects_of(session, ctx, matched)
+        downstream, traversed = await self._downstream_of(ctx, subjects)
+        return QuarantinePreview(
+            matched=matched,
+            subjects=subjects,
+            downstream=downstream,
+            seeds_traversed=traversed,
+            seeds_total=len(subjects),
+        )
+
+    @staticmethod
+    async def _subjects_of(
+        session: AsyncSession, ctx: TenantContext, claims: tuple[uuid.UUID, ...]
+    ) -> tuple[uuid.UUID, ...]:
+        """The distinct entities the matched claims are about.
+
+        Tenant-scoped in the query for the reason `_match` is: a subject read
+        that could reach another tenant's rows leaks the shape of their catalog
+        through a preview nobody thought of as a read.
+        """
+        if not claims:
+            return ()
+        rows = await session.execute(
+            text(
+                "SELECT DISTINCT subject_entity_id FROM memory_claims "
+                " WHERE owning_tenant_id = :tid AND claim_id = ANY(:ids) "
+                "   AND subject_entity_id IS NOT NULL"
+            ),
+            {"ids": list(claims), "tid": ctx.tenant_id},
+        )
+        return tuple(sorted(rows.scalars().all()))
+
+    async def _downstream_of(
+        self, ctx: TenantContext, subjects: tuple[uuid.UUID, ...]
+    ) -> tuple[tuple[uuid.UUID, ...], int]:
+        """Entities depending on any subject, through the traversal that exists.
+
+        **The existing traversal, called once per seed -- not a second one, and
+        not a widened one.** `get_blast_radius` is single-root by construction:
+        `closure_cache` is keyed by root, and the CTE recurses from one. Teaching
+        it about sets would rewrite a cached path that REST and MCP both serve,
+        to answer a question an operator asks occasionally. Calling it per seed
+        costs one cache lookup each and agrees with the promotion path about what
+        "downstream" means by being the same code.
+
+        **`promotion_eligibility.blast_radius_for` is deliberately not this.** It
+        counts direct dependants over three edge types in its own statement, and
+        says why: the count is a review threshold an owner can verify by looking,
+        not a correctness property. A quarantine asks the other question -- what
+        content rests on this -- and a claim two hops away is as affected as one
+        hop away. The two disagree on purpose; collapsing them would break
+        whichever one lost.
+
+        Returns the reached ids and how many seeds were traversed, so the caller
+        can tell a complete answer from a capped one.
+        """
+        if not subjects or self._blast_radius is None:
+            return (), 0
+        seeds = subjects[:_MAX_PREVIEW_SEEDS]
+        reached: set[uuid.UUID] = set()
+        for seed in seeds:
+            result = await self._blast_radius.get_blast_radius(ctx, seed, "reverse", _PREVIEW_DEPTH)
+            reached.update(node.entity_id for node in result.nodes)
+        # A subject is not downstream of itself, and reporting it as such would
+        # double-count the match set inside the advisory set beside it.
+        reached.difference_update(subjects)
+        return tuple(sorted(reached)), len(seeds)
 
     # -- apply -------------------------------------------------------------
 
