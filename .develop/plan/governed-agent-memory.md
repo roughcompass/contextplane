@@ -5961,7 +5961,7 @@ all.
 
 ### E5-T5 — Decay as a trust-class transition, with materiality frozen
 
-**Kind:** task · **Status:** pending · **Blocked by:** E5-T4 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** pending — grounded; scope and one name changed · **Blocked by:** E5-T4 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a claim losing trust to age is recorded as a transition between trust
 classes, at a materiality frozen when the decay happened — not as a
@@ -5987,6 +5987,49 @@ the entry should note it so the transition record is not read as universal.
 Acceptance:
     .venv/bin/python -m pytest tests/unit -q -k "decay"
     make all
+
+**Grounded, as the entry asked, and four things changed.**
+
+**1. The premise holds. Decay is read-time.** `effective_confidence` in
+`confidence_decay.py` computes from `stored`, `confidence_scored_at`, the
+half-life and an optional hold, and `confidence_read.serve` is what callers get.
+No decayed value is stored anywhere, so "not a supersession, and not a number
+that quietly moves" is already structurally true and needs nothing built.
+
+**2. "Trust class" is the five confidence buckets**, and they already exist:
+`unreliable`, `weak`, `moderate`, `strong`, `confirmed` in `confidence.py`,
+"none narrower than the accuracy tolerance a calibration check can verify". So
+the transition this task wants is a *downward bucket crossing*, which is a thing
+the codebase can already name.
+
+**3. And that is where the task actually gets hard, which the entry does not
+say.** Because decay is read-time, **nothing happens when a claim crosses a
+boundary.** There is no moment to hang a record on: the claim is `strong` on one
+read and `moderate` on the next, and no code ran in between. A transition record
+therefore needs an *observer* — a sweep that evaluates claims and records
+crossings — and that is most of the work, not the table.
+
+That also means the sweep's own cadence decides what `transitioned_at` means. A
+daily sweep records "the day we noticed", not "the day it crossed", and those
+differ by up to the interval. Whichever is stamped, the entry has to say which,
+because a review asking "when did we let this decay" will read it as the second.
+
+**4. `materiality` is now a reserved noun and this entry may not use it.**
+E4-T5b took it for the reporting obligation's classification, and
+`scripts/check_reserved_vocabulary.py` refuses a second governed meaning — which
+is the third collision that rule has caught and the first it caught *before* the
+code was written.
+
+The resolution is better than a new word: **the thing being frozen is already
+called `confidence`.** What a review wants is the effective confidence at the
+crossing plus the inputs it was computed from, and `memory_claims` already
+carries `confidence_inputs` for exactly that purpose. So this entry needs no new
+noun at all; it reached for one because "materiality" is what the sentence
+wanted, not because the value lacked a name.
+
+**Note, as the entry asked:** `NON_DECAYING_VALUE_TYPES` is `{"prose"}`, so
+prose claims never enter this path and the transition record is not universal.
+Whether that exemption is right is still not this task's question.
 
 ### E5-T6 — The reviewer cockpit
 
