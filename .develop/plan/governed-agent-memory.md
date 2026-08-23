@@ -6007,6 +6007,22 @@ record field at all. Both are defensible and the codebase currently asserts
 both. Whichever wins, the other's call sites change, so picking after starting
 is how this becomes two rewrites.
 
+**Decided, so this is a move and not a decision: `(record, key)` for field
+readers, `(value, label)` for container checks** — which is what `parse.ts`
+already does, and what three of the five remaining modules already do.
+
+Two reasons, and the second is the one that matters. `(value, field)` makes the
+caller write the field name twice — `requiredString(value.rate, "rate")` — and
+nothing holds the two together, so a copy-paste that updates one and not the
+other produces a refusal naming the wrong field. `(record, key)` cannot drift
+that way because there is only one name.
+
+And the case `(value, field)` exists to serve — validating something that is not
+a record field — is already served: `requiredArray` and `stringArray` take a
+value and a label precisely because a container is not always read off a key.
+So nothing is lost by converting `agents.ts` and `audit.ts`; their call sites
+become `requiredString(record, "key")` and the second name disappears.
+
 `agents.ts` was added by E20-T10 with its own copies — the duplication was still
 growing while the task to stop it was open, which is the argument for a lint
 rule over a sweep. Consider whether one is cheap here: a `no-restricted-syntax`
