@@ -163,7 +163,7 @@ E2-T2 deliberately declined to pre-empt it.
 
 ### E3 — Resolve-as-receipt fused retrieval
 
-**Kind:** epic · **Status:** pending · **Blocked by:** E2, E9 ⚙ · **Repo:** contextplane
+**Kind:** epic · **Status:** done — every task closed, two amended on the record · **Blocked by:** E2, E9 ⚙ · **Repo:** contextplane
 
 Extend `/v1/context/resolve` (no fourth surface): three concurrent
 visibility-predicated candidate generators, RRF merge, batched hydration.
@@ -241,6 +241,18 @@ synchronous transaction, the read surfaces never presenting a `pending` receipt
 as evidence, hydration lag alerting against an SLO, trust state in the vector
 index key, and the adversarial-selectivity benchmark. Those are the epic's real
 content and none of them was checked against a wrong premise.
+
+**Closed.** All eight tasks are done, two of them as amendments rather than
+implementations: E3-T1 struck the RRF merge because fusing the blocks discards
+the question this product exists to answer, and E3-T3 kept the synchronous
+receipt write on a measurement — p95 12.9ms against a 150ms budget — with the
+conditions that would reopen it written into the entry.
+
+The two ranking improvements this body's audit named as "still open and not
+this" — ordering within a block, and telling the caller how much of each block
+the item cap removed — are deliberately not cut as E3 tasks. They are real and
+they are a different epic's subject; recorded here so they are not mistaken for
+E3 remnants.
 
 ### E4 — Provenance-scoped quarantine + DORA wiring
 
@@ -445,7 +457,7 @@ without asking.
 
 ### E8 — Memory-quality eval harness
 
-**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane
+**Kind:** epic · **Status:** done — except `eval_score`, blocked on procedural memory · **Blocked by:** none · **Repo:** contextplane
 
 Not greenfield, and the earlier claim that the core product claim was
 unfalsifiable was wrong. `eval/fixtures/` already holds 50 pre-authored
@@ -489,9 +501,19 @@ close.** Two of the four things this body says remain are still remaining:
 So E8 stays open on E8-T4, and its last clause stays blocked on procedural
 memory with the reason written down rather than rediscovered.
 
+**Closed on everything buildable.** E8-T4 shipped the multi-session recall
+measurement this body's audit found missing.
+
+`eval_score` stays blocked, and the reason is recorded rather than left to be
+rediscovered: a held-out replay suite is held out *from mining*, and nothing
+mines procedures, so there is no artifact to score. E8-T3 built the Wilson bound
+the gate will rest on and said plainly it had no consumer, which was the right
+order. This reopens when procedural memory exists — not before, because a pass
+rate over an empty suite is a number with no referent.
+
 ### E10 — UI/IA workstream
 
-**Kind:** epic · **Status:** pending · **Blocked by:** E5 (screens), none (bug fixes) · **Repo:** contextplane, contextplane-ui
+**Kind:** epic · **Status:** done — all thirteen tasks closed · **Blocked by:** E5 (screens), none (bug fixes) · **Repo:** contextplane, contextplane-ui
 
 Ordered: cockpit dispositions + quarantine/suspend screens → nav/DESIGN.md
 repositioning + ARC/PII operations out of the raw console → canon copy.
@@ -504,6 +526,19 @@ copies of the wrong value pass. What remains of E10 is the ordered UI work
 above. Catalog-side authoring is **E19**, cut separately rather than folded in
 here: it is unblocked by E5, and it belongs to the catalog domain rather than
 to this epic's memory-governance screens.
+
+**Closed.** Thirteen tasks: the cockpit dispositions and quarantine screens, the
+navigation and DESIGN repositioning, the PII and ARC operations off the raw
+console, the validator convergence across nine adapters, and canon copy last —
+which is the order this body set, and the reason it set it. Copy written before
+the screens describes an intention; the one defect canon copy found was a claim
+about the audit log that four earlier passes had read past.
+
+Two things this epic surfaced that outlive it. **E14-T1** — thirteen of fourteen
+ARC admin paths are write-only — was found by building E10-T7 and shaped four
+screens; three of them ship saying so on the page rather than papering over it.
+And the ARC exception grant form turned out to transcribe an approval rather
+than make one, which is a property of the contract no entry here had noticed.
 
 ### E11 — Consumption legibility (suppression-compliant)
 
@@ -528,7 +563,7 @@ below-minimum-sample halt rather than defining a second sampling regime.
 
 ### E13 — Surface consolidation and deprecation
 
-**Kind:** epic · **Status:** pending · **Blocked by:** E2, E3, E7 · **Repo:** contextplane
+**Kind:** epic · **Status:** done — except the deprecation clause, blocked on a usage corpus · **Blocked by:** E2, E3, E7 · **Repo:** contextplane
 
 Simplicity is subtraction, not just profiling. Once the two-call
 remember/recall loop (E7) is the served default: consolidate the five
@@ -553,9 +588,20 @@ and retiring a tool on absence of evidence is refused. The dual-alias window is
 **struck** — this is a greenfield repository with no external consumers, so
 surfaces that consolidate are replaced, not aliased.
 
+**Closed on what the metrics allow.** Default-profile tool count was already
+met at exactly 8, so this epic keeps it shrunk rather than shrinking it. The REST
+target was 8 against ≤ 6 and E13-T1 named both candidate pairs. The dual-alias
+window is struck: greenfield repository, no external consumers, so surfaces that
+consolidate are replaced rather than aliased.
+
+Deprecated-surface count stays blocked, deliberately and on the record (E13-T3):
+there is no usage corpus because nothing has been released, and retiring a tool
+on absence of evidence is refused. That is a precondition, not a task somebody
+skipped.
+
 ### E15 — Salience: deciding what is worth keeping
 
-**Kind:** epic · **Status:** pending · **Blocked by:** none · **Repo:** contextplane, contextplane-ui
+**Kind:** epic · **Status:** done — except the retention threshold, which needs observed volume · **Blocked by:** none · **Repo:** contextplane, contextplane-ui
 
 Nothing today decides what is worth remembering, so everything is kept — which
 is the assumption that fails first at machine write volume. Salience is a
@@ -611,6 +657,17 @@ only one that is not (T3), the weights and now their saturation ceilings are
 governed magnitudes (T4, E9-T4), the reliability diagram and Brier score ship
 (T5), and learned weights stay out of scope with the missing citation-to-outcome
 join as the stated reason.
+
+**Closed, including the audit finding this body raised against itself.**
+E15-T6 and E15-T7 carried the rename through to the wire and its contract pin,
+so `SearchResultItem` now says `fused_rank_score` and no bare `score` survives —
+which is what the original clause claimed and did not deliver.
+
+The retention threshold remains deliberately uncut. Choosing a precision/recall
+operating point needs observed volume no development tree has, and unlike the
+validation refusal in E9 a wrong threshold here fails *open in the destructive
+direction*: it discards memories. E15-T5 built the label data it would be chosen
+from, which was the right order to stop at.
 
 ### E16 — Truth confidence: corroboration and measured volatility
 
@@ -5145,7 +5202,7 @@ Acceptance:
 
 ### E4-T5c — A reserved-vocabulary gate, so the next collision is caught by a machine
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a governed noun that already means something else fails a gate, not a
 grep.
@@ -5197,6 +5254,22 @@ the failure.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "incident or deadline"
     make all
+
+**Shipped with an empty allowlist, which is the part worth noting.** Nothing on
+the scanned surfaces violated it, so every entry that ever appears in
+`ALLOWLIST` will be a decision somebody wrote a reason for rather than debt
+somebody inherited.
+
+Scope is the two surfaces where a second meaning does damage: wire schemas —
+ADR-0015's refusal was about a *field* named `severity`, and the wire name is the
+one a UI author reads — and migration columns and CHECK values, which is where
+`incident` already lives twice. Internal locals are deliberately out of scope: a
+`severity` local inside the PII scanner is that module's own word for its own
+concept, and a gate that fired on it would be switched off within a week.
+
+The reservations are checked against their owners rather than restated, so a
+reserved word whose meaning moves fails instead of quietly reserving a word
+nothing uses.
 
 ### E4-T7 — Evidence-bundle export, scoped to one case
 
@@ -6052,7 +6125,7 @@ Acceptance:
 
 ### E10-T1 — Quarantine and suspend screens
 
-**Kind:** task · **Status:** pending · **Blocked by:** E4-T8 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — shipped in contextplane-ui#29 · **Blocked by:** E4-T8 · **Hotspot:** no · **Repo:** contextplane-ui
 
 **Retargeted.** This entry named E4-T2 and E4-T3 as its blockers, and both were
 done while this stayed unbuildable: a screen cannot call a service with no
@@ -6075,6 +6148,13 @@ works at all.
 
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**Landed.** Preview is a separate call from apply, so a caller cannot withhold
+content by getting a boolean wrong. The screen keeps `matched` and the advisory
+`downstream` set apart, because merging them would tell an operator that
+applying makes the downstream list disappear. Revert is a primary action, not a
+menu item: an operator who cannot see how to undo a quarantine will not run one
+on a real incident.
 
 ### E10-T2 — Navigation and DESIGN.md repositioning
 
@@ -6279,7 +6359,7 @@ be text", "is not a string", "is not nullable text".
 
 ### E10-T13 — `catalog.ts` speaks a different validator dialect
 
-**Kind:** task · **Status:** pending · **Blocked by:** E10-T12 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — shipped in contextplane-ui#30 · **Blocked by:** E10-T12 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: the catalog adapter refuses in the same words as every other adapter.
 
@@ -6302,6 +6382,18 @@ is the smaller half of this task and worth doing even if the vocabulary stays.
 
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**The entry asked whether catalog had a reason to differ. It did, and it was
+not the wording.** Its labels are *qualified* — `Capability created_at` locates
+a failure that `created_at` does not, and `created_at` sits on five catalog
+objects. Converting straight to `requiredString(record, key)` would have deleted
+a real diagnostic, so the label moved into `parse.ts` as an optional third
+argument and the eight already-converted adapters were left untouched.
+
+Also folded in: `quarantine.ts` carried a tenth copy of `stringArray` under the
+name `stringIds`, introduced one PR earlier by E10-T1. And `stringArray` now
+names the offending index rather than saying the list "contains data", which is
+true and no help on a list of a hundred.
 
 ### E10-T3 — ARC and PII operations out of the raw console
 
@@ -6449,7 +6541,7 @@ it.
 
 ### E10-T7 — Who may approve: the approval-verifier surface
 
-**Kind:** task · **Status:** pending · **Blocked by:** E10-T3 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — shipped in contextplane-ui#31 · **Blocked by:** E10-T3 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: enrolling, challenging and revoking an approval verifier has a screen.
 
@@ -6486,9 +6578,25 @@ reader has, and one read is not a destination.
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
 
+**The entry's question is answered on the screen.** Enrolment is *not*
+separated from approving, so the page says so rather than implying a control
+that does not exist.
+
+Two things the entry did not anticipate, both consequences of E14-T1:
+
+- **No list endpoint**, so revoke takes a pasted id and the screen shows the
+  verifier id once, telling the operator to record it.
+- **Signing cannot happen in the browser.** The proof is a signature by the key
+  being enrolled, so the screen hands over the canonical bytes and the signing
+  domain and takes back a signature. A test asserts no private-key field exists.
+
+Conditional fields follow `binding_kind`: the service forbids the provider pair
+on an exact binding, so offering all six invites a refusal naming a field the
+operator was handed.
+
 ### E10-T8 — Proof that an approval happened, and withdrawing it
 
-**Kind:** task · **Status:** pending · **Blocked by:** E10-T7 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — shipped in contextplane-ui#34 · **Blocked by:** E10-T7 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: attaching and revoking approval evidence has a screen, and so does
 invalidating a revision.
@@ -6527,9 +6635,19 @@ evidence citing verifiers nobody can enrol is half a workflow.
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
 
+**Shipped on the finding above: neither ending is reversible.** The screen
+asks which of the two statements is true — the rule stopped applying, or the
+content was wrong — and will not act until one is chosen. There is no default,
+because the two request bodies are byte-identical and a default would be a
+silent choice between opposite claims about the past.
+
+Two adapter functions rather than one taking a flag, for the same reason: the
+path is the entire difference, so a boolean is precisely how they get swapped. A
+test asserts the invalidate path is used and the revoke path is not.
+
 ### E10-T9 — Documented deviations: the exception surface
 
-**Kind:** task · **Status:** pending · **Blocked by:** E10-T3 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — shipped in contextplane-ui#32; the register waits on E14-T1 · **Blocked by:** E10-T3 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: granting and revoking an ARC exception has a screen.
 
@@ -6573,9 +6691,18 @@ already in force. Re-scope back when E14-T1 lands.
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
 
+**Shipped rescoped, as the amendment above says.** The open-ended warning is
+on the screen and disappears once an end date is given, and a blank end date is
+*omitted* from the body rather than sent as null — an absent field is the
+contract's own way of saying "no end".
+
+The register of standing exceptions is not built and cannot be until E14-T1
+lands. The screen states that at the top rather than presenting a grant form
+with no list beside it.
+
 ### E10-T10 — Where ARC's inputs come from: source governance
 
-**Kind:** task · **Status:** pending · **Blocked by:** E10-T3 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — shipped in contextplane-ui#33 · **Blocked by:** E10-T3 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: registering source connectors, upload policies and replay corpora has a
 screen.
@@ -6595,9 +6722,25 @@ that this belongs beside it rather than apart from it.
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
 
+**The entry's placement question, answered by reading what it asked me to
+read.** `ArcSourceEvidenceSection` is titled "2. Bind approved source evidence"
+— step 2 of authoring one artifact. These three registrations are deployment
+configuration every such binding afterwards inherits. Different job, different
+reader, and the dependency runs one way.
+
+What makes the blast radius real is `allowed_verifier_ids`: it decides who may
+approve material the connector fetches, for every future fetch. It is one field
+among six and the only one granting authority over material that does not exist
+yet, so it is called out on its own.
+
+One accessibility defect found by writing the tests: three forms on one page
+shared four label texts, `Owning scope` three times. Renamed per section rather
+than worked around in the test — the tests could not address them
+unambiguously, and neither could a screen reader.
+
 ### E10-T4 — Canon copy
 
-**Kind:** task · **Status:** pending · **Blocked by:** E10-T3 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — shipped in contextplane-ui#35 · **Blocked by:** E10-T3 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: the words the product uses about itself are true and consistent.
 
@@ -6614,11 +6757,93 @@ author is the person most likely to reach for the stronger word.
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
 
+## Task decomposition — fifteenth wave (CI is the bottleneck, measured)
+
+One task, filed against the standing instruction that CI must not become a
+bottleneck. It is not a guess: the numbers are below.
+
+### E15b-T1 — The critical path is twice what it needs to be, and one tier runs twice
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a PR's checks finish in about the time the slowest tier takes, not the sum
+of two of them.
+
+**Measured, from `.github/workflows/ci.yml` and the run history:**
+
+| job | duration | depends on |
+|---|---|---|
+| `unit` (`make test-coverage`) | 8.5–11.5 min | `changes` |
+| `integration` (`make test-integration`) | ~8 min | **`unit`** |
+| `conformance` (`make test-conformance`) | ~4 min | **`unit`** |
+| `image` | — | **`unit`** |
+
+So the critical path is `unit` **then** `integration`: **17–20 minutes**, on
+every code PR.
+
+**Nothing is passed between those jobs.** Each does its own `actions/checkout`
+and its own `make install-dev`. `needs: unit` buys fail-fast — do not spend an
+integration runner if unit is already broken — and costs eight minutes of
+wall-clock on every PR that passes, which is nearly all of them.
+
+**The repository has already accepted this argument once**, one level down. The
+`conformance` job carries this comment:
+
+> *Depends on unit, not integration. There is no artifact passing between the
+> two and conformance does not consume anything integration produces, so
+> chaining them only serialized two independent jobs and put the slowest tier in
+> front of a contract-drift gate that would have failed in a fraction of the
+> time.*
+
+Every clause of that applies again with `unit` in place of `integration`.
+Fanning all three out from `changes` puts the path at `max(unit, integration)`
+≈ **11.5 minutes**.
+
+**Second finding, independent of the first: the conformance tier runs twice.**
+`unit` runs `make test-coverage`, which is
+`pytest tests/unit tests/conformance --cov ...`. The `conformance` job runs
+`make test-conformance`, which is `pytest tests/conformance -v`. Same directory,
+no marker filter, no file list — the second adds `-v` and a shorter timeout and
+nothing else. That is a whole tier of duplicated work on every PR, on a job that
+is *also* serialized behind the job that already ran it.
+
+Deciding which of the two should keep the tier is the real content of this task
+and is not obvious: the coverage run needs conformance included to hit its
+ratchet, and the separate job exists so a conformance failure is legible rather
+than buried in a coverage summary. Both are good reasons; they just do not both
+need to execute it.
+
+**What this task must not do:** trade correctness for speed. No tier is dropped,
+no test is deselected, no timeout is loosened. The whole change is topology and
+one duplication.
+
+Acceptance:
+    make all
+    # and: a PR's `gate` job completes in materially less wall-clock than
+    # the 17-20 minutes measured above, with the same set of checks reported.
+
 ## Task decomposition — fourteenth wave (ARC's admin surface has no read side)
 
 Found by building E10-T7 and then checking E10-T9's premise. Not a defect in
 either screen: it is the same absence twice, and counting the surface showed it
 is the same absence thirteen times.
+
+**One finding, and it is the kind ADR-0012 exists to catch.** The audit page
+claimed "Immutable history", "Trace immutable service activity" and "This
+history is append-only". None is true: `audit_log` is an ordinary table with no
+hash chain, no signature and no append-only trigger, and `audit/emit.py`
+swallows its own write failures by design so a mutation can succeed with no
+audit row. The claim implied both unchangeability and completeness and delivered
+neither, to the one reader who would act on it.
+
+Replaced with the two limits stated plainly rather than the claim deleted, and
+pinned by a test that also asserts the word does not reappear. The workspaces
+page drew a contrast against "an immutable audit history", implying something
+here provides one; corrected too.
+
+The rest of the UI copy was scanned for the same class of claim and is clean.
+The other uses of "immutable" — a source locator, a profile revision, a `seq` —
+are accurate and left alone.
 
 ### E14-T1 — Every ARC governance object is invisible the moment it is created
 
@@ -6858,7 +7083,7 @@ exception is the fix rather than a seventh exemption.
 
 ### E20 — Agent authorship, outcome grading, and prompt-retraining feedback loop
 
-**Kind:** epic · **Status:** open · **Blocked by:** none · **Repo:** contextplane
+**Kind:** epic · **Status:** done — all ten tasks closed · **Blocked by:** none · **Repo:** contextplane
 
 `contextplane` today improves the *content* of the memory store (consolidation, promotion, calibration of extraction-provider confidence) but has no mechanism for tracking whether a specific agent's own contributions are accurate, or for feeding that back into anything the agent does differently next time. The request driving this epic: track which agent authored each claim, grade claim outcomes, aggregate per-agent accuracy, support a "prompt retraining" loop that turns failure patterns into improved agent instructions, and measure whether accuracy improves after a new instruction version activates.
 
@@ -6869,6 +7094,15 @@ Two decisions were made explicitly by the user before this plan was finalized, b
 **Decision 2: `actor_kind` classification (human vs. agent vs. degree of autonomy) has no reliable source signal today, and inventing one is out of scope for this epic.** Investigation (not the initial design) found that `upsert_entitlement_actor` — the one function both the REST and MCP auth paths actually call — takes only `(session, tenant_id, oidc_subject, display_name)`. There is no machine-identity signal anywhere in `contextplane/auth/entitlements/resolver.py` to source a kind from, and the `WorkloadIdentity` concept that looks like a fit lives entirely inside ARC's autonomy-envelope subsystem with no connection to this code path. Worse, a human driving Claude Code or VSCode Copilot connects through the *identical* MCP transport an unattended agent would use, so even a transport-based classification would misclassify human-in-the-loop coding sessions as autonomous. This epic does **not** attempt to fix `actor_kind`. Per-agent tracking is built entirely on `author_actor_id`, which is already populated correctly on every claim regardless of what `actor_kind` says about the row it points to.
 
 A related, more valuable insight surfaced during design and is now a first-class part of this epic: **a human's mid-session correction of an agent that was expected to complete autonomously is itself a strong, real-time failure signal** — arguably better than a reviewer's after-the-fact `correct`/`incorrect` verdict, because it pinpoints exactly where the agent needed steering. This is not a new concept to invent: `memory_session_events.kind` already distinguishes `user_message` (human) from `agent_action` (agent-initiated) from `tool_invocation`, ordered by `(tenant_id, actor_id, session_id, seq)`. A mid-session intervention is simply a `user_message` event with a `seq` between two `agent_action` events instead of only at the session's start. Nothing today computes anything from that pattern. This epic adds an **autonomy-rate** metric derived from it, as a second, independent dimension alongside adjudicated correctness — an agent can be accurate-but-needy (lots of hand-holding) or fast-but-wrong, and those are different problems requiring different prompt fixes.
+
+**Closed.** All ten tasks are done, including both decisions this body
+recorded as overriding existing convention: the per-actor privacy floor removed
+uniformly with ADR-0017 recording the reversal, and `actor_kind` classification
+left alone with the investigation that found no source signal written down.
+
+The autonomy-rate metric derived from mid-session `user_message` interventions
+shipped as the second dimension alongside adjudicated correctness, which was the
+insight this epic gained during design rather than started with.
 
 ### E20-T1 — ADR 0017: the per-actor privacy floor is removed, for every actor kind
 
