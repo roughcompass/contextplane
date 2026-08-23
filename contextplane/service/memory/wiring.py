@@ -37,6 +37,7 @@ from contextplane.service.memory.claim_serving import ClaimServingService
 from contextplane.service.memory.claim_writer import ClaimService
 from contextplane.service.memory.confirmation import ConfirmationService
 from contextplane.service.memory.consolidation import ConsolidationService
+from contextplane.service.memory.curation_cases import CurationCaseService
 from contextplane.service.memory.curation_queue import CurationQueueService
 from contextplane.service.memory.promotion import PromotionService
 from contextplane.service.memory.promotion_guardrails import GuardrailService
@@ -95,6 +96,9 @@ class MemoryServices:
     #: rather than each caller deriving its own budget.
     sampling_policy: SamplingPolicyService
     curation_queue: CurationQueueService
+    #: The write half. Separate object, because `CurationQueueService` promises
+    #: reads only and a class cannot promise that while holding `record_disposition`.
+    curation_cases: CurationCaseService
     capability_requests: CapabilityRequestService
     source_governance: SourceGovernanceService
     source_ingest: SourceIngestService
@@ -164,6 +168,7 @@ def build_memory_services(
         promotion_guardrails=GuardrailService(session_factory, clock=clock),
         sampling_policy=SamplingPolicyService(session_factory, clock=clock),
         curation_queue=CurationQueueService(session_factory),
+        curation_cases=CurationCaseService(session_factory),
         # The loop's return path: what consuming teams need, routed to whoever
         # owns the capability. One place the lifecycle rules live.
         capability_requests=CapabilityRequestService(session_factory, clock=clock),

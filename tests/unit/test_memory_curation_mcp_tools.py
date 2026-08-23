@@ -44,7 +44,8 @@ from contextplane.service.memory.claim_authority import StagedClaim
 from contextplane.service.memory.claim_history import BelievedClaim, ClaimVisibility
 from contextplane.service.memory.confirmation import Confirmation, ConfirmationService
 from contextplane.service.memory.contest import ContradictionGroup
-from contextplane.service.memory.curation_queue import DISPOSITIONS, CurationCase, QueueItem
+from contextplane.service.memory.curation_cases import DISPOSITIONS, CurationCase
+from contextplane.service.memory.curation_queue import QueueItem
 from contextplane.service.memory.promotion import Proposal
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import tenant_context
@@ -83,6 +84,10 @@ def _services_ns(**kwargs: Any) -> Any:
     None)` -- how every tool's service accessor reads this -- returns `None`
     for an attribute nobody set, exactly the "not configured" case each
     accessor already handles, without a mock auto-vivifying one instead.
+
+    Case tests pass one object as both `curation_queue` and `curation_cases`.
+    E5-T3b split the read half from the write half into two services; what these
+    tests assert is what the tool does, not which service held the method.
     """
     return SimpleNamespace(**kwargs)
 
@@ -521,7 +526,12 @@ async def test_list_curation_queue_counts() -> None:
     mcp = _build_mcp()
 
     with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())):
-        raw = await _call(mcp, "list_curation_queue", {"counts": True}, services=_services_ns(curation_queue=queue_svc))
+        raw = await _call(
+            mcp,
+            "list_curation_queue",
+            {"counts": True},
+            services=_services_ns(curation_queue=queue_svc, curation_cases=queue_svc),
+        )
 
     payload = json.loads(raw)
     assert payload["counts"] == {"unlinked": 3, "contested": 1}
@@ -535,7 +545,9 @@ async def test_list_curation_queue_returns_items_and_available_actions() -> None
     mcp = _build_mcp()
 
     with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())):
-        raw = await _call(mcp, "list_curation_queue", {}, services=_services_ns(curation_queue=queue_svc))
+        raw = await _call(
+            mcp, "list_curation_queue", {}, services=_services_ns(curation_queue=queue_svc, curation_cases=queue_svc)
+        )
 
     payload = json.loads(raw)
     assert payload["next_cursor"] is None
@@ -552,7 +564,12 @@ async def test_list_curation_queue_next_cursor_round_trips() -> None:
     mcp = _build_mcp()
 
     with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())):
-        raw = await _call(mcp, "list_curation_queue", {"page_size": 1}, services=_services_ns(curation_queue=queue_svc))
+        raw = await _call(
+            mcp,
+            "list_curation_queue",
+            {"page_size": 1},
+            services=_services_ns(curation_queue=queue_svc, curation_cases=queue_svc),
+        )
 
     payload = json.loads(raw)
     assert len(payload["items"]) == 1
@@ -1322,7 +1339,7 @@ async def test_open_curation_case_returns_the_case() -> None:
             mcp,
             "open_curation_case",
             {"subject_reference": "svc:payments", "predicate": "owned_by_team"},
-            services=_services_ns(curation_queue=queue_svc),
+            services=_services_ns(curation_queue=queue_svc, curation_cases=queue_svc),
         )
 
     payload = json.loads(raw)
@@ -1342,7 +1359,7 @@ async def test_open_curation_case_maps_an_unnamed_axis_to_a_tool_error() -> None
             mcp,
             "open_curation_case",
             {"subject_reference": "", "predicate": "owned_by_team"},
-            services=_services_ns(curation_queue=queue_svc),
+            services=_services_ns(curation_queue=queue_svc, curation_cases=queue_svc),
         )
 
 
@@ -1356,7 +1373,12 @@ async def test_list_curation_cases_pages_with_a_round_tripping_cursor() -> None:
     mcp = _build_mcp()
 
     with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())):
-        raw = await _call(mcp, "list_curation_cases", {"page_size": 1}, services=_services_ns(curation_queue=queue_svc))
+        raw = await _call(
+            mcp,
+            "list_curation_cases",
+            {"page_size": 1},
+            services=_services_ns(curation_queue=queue_svc, curation_cases=queue_svc),
+        )
 
     payload = json.loads(raw)
     assert len(payload["items"]) == 1
@@ -1374,7 +1396,7 @@ async def test_list_curation_cases_rejects_an_unknown_status() -> None:
             mcp,
             "list_curation_cases",
             {"status": "nearly_done"},
-            services=_services_ns(curation_queue=queue_svc),
+            services=_services_ns(curation_queue=queue_svc, curation_cases=queue_svc),
         )
 
 
@@ -1388,7 +1410,10 @@ async def test_get_curation_case_rejects_a_non_uuid_case_id() -> None:
 
     with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())), pytest.raises(ToolError):
         await _call(
-            mcp, "get_curation_case", {"case_id": "not-a-uuid"}, services=_services_ns(curation_queue=queue_svc)
+            mcp,
+            "get_curation_case",
+            {"case_id": "not-a-uuid"},
+            services=_services_ns(curation_queue=queue_svc, curation_cases=queue_svc),
         )
     queue_svc.case.assert_not_awaited()
 
@@ -1400,7 +1425,12 @@ async def test_get_curation_case_answers_another_tenants_case_as_missing() -> No
     mcp = _build_mcp()
 
     with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())), pytest.raises(ToolError):
-        await _call(mcp, "get_curation_case", {"case_id": str(_CASE)}, services=_services_ns(curation_queue=queue_svc))
+        await _call(
+            mcp,
+            "get_curation_case",
+            {"case_id": str(_CASE)},
+            services=_services_ns(curation_queue=queue_svc, curation_cases=queue_svc),
+        )
 
 
 @pytest.mark.asyncio
@@ -1416,7 +1446,7 @@ async def test_route_curation_case_names_the_owner() -> None:
             mcp,
             "route_curation_case",
             {"case_id": str(_CASE), "owner_id": "platform-rota"},
-            services=_services_ns(curation_queue=queue_svc),
+            services=_services_ns(curation_queue=queue_svc, curation_cases=queue_svc),
         )
 
     payload = json.loads(raw)
@@ -1435,7 +1465,7 @@ async def test_route_curation_case_refuses_a_resolved_case() -> None:
             mcp,
             "route_curation_case",
             {"case_id": str(_CASE), "owner_id": "another-rota"},
-            services=_services_ns(curation_queue=queue_svc),
+            services=_services_ns(curation_queue=queue_svc, curation_cases=queue_svc),
         )
 
 
@@ -1456,7 +1486,7 @@ async def test_record_case_disposition_reports_the_recorded_authority(dispositio
             mcp,
             "record_case_disposition",
             {"case_id": str(_CASE), "disposition": disposition},
-            services=_services_ns(curation_queue=queue_svc),
+            services=_services_ns(curation_queue=queue_svc, curation_cases=queue_svc),
         )
 
     payload = json.loads(raw)
@@ -1480,7 +1510,7 @@ async def test_record_case_disposition_refuses_a_caller_who_is_not_the_owner() -
             mcp,
             "record_case_disposition",
             {"case_id": str(_CASE), "disposition": "confirm"},
-            services=_services_ns(curation_queue=queue_svc),
+            services=_services_ns(curation_queue=queue_svc, curation_cases=queue_svc),
         )
 
 
@@ -1495,5 +1525,5 @@ async def test_record_case_disposition_refuses_an_unknown_disposition() -> None:
             mcp,
             "record_case_disposition",
             {"case_id": str(_CASE), "disposition": "promote_everything"},
-            services=_services_ns(curation_queue=queue_svc),
+            services=_services_ns(curation_queue=queue_svc, curation_cases=queue_svc),
         )

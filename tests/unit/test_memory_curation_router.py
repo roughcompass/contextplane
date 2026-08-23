@@ -101,7 +101,8 @@ from contextplane.service.memory.claim_authority import StagedClaim
 from contextplane.service.memory.claim_history import BelievedClaim, ClaimVisibility
 from contextplane.service.memory.confirmation import Confirmation
 from contextplane.service.memory.contest import ContradictionGroup
-from contextplane.service.memory.curation_queue import DISPOSITIONS, CurationCase, QueueItem
+from contextplane.service.memory.curation_cases import DISPOSITIONS, CurationCase
+from contextplane.service.memory.curation_queue import QueueItem
 from contextplane.service.memory.promotion import Proposal
 from tests.helpers.context import tenant_context
 
@@ -440,6 +441,10 @@ def _build_app(
 
     app.state.services = MagicMock(
         curation_queue=queue,
+        # One mock under both names. E5-T3b split the read half from the write
+        # half into two services; these tests assert behaviour rather than which
+        # attribute carried it, so the existing assertions stay meaningful.
+        curation_cases=queue,
         claims=claims,
         promotion=promotion,
         confirmations=confirmations,

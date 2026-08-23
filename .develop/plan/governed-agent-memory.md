@@ -5866,7 +5866,7 @@ a recent one, end to end through the route — because nothing did.
 
 ### E5-T3b — `curation_queue.py` holds two concerns, and the ceiling found the seam
 
-**Kind:** task · **Status:** pending · **Blocked by:** E5-T3 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E5-T3 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the curation-case lifecycle lives beside the queue read, not inside it.
 
@@ -5895,6 +5895,22 @@ read.
 Acceptance:
     .venv/bin/python -m pytest tests/unit -q -k "curation"
     make all
+
+**Split, and the allowlist entry drained rather than reworded.**
+`curation_queue.py` is 300 lines and `curation_cases.py` is 584 — both under the
+ceiling, so the file-size allowlist loses its only memory-area entry.
+
+`CurationCaseService` is a separate class, not a second module holding the same
+one. That is the point: `CurationQueueService`'s docstring promises *"reads
+only… so the queue cannot become a second write path into claims"*, and a class
+cannot promise that while holding `record_disposition`. Both transports reach
+the write half through their own accessor, so a read route cannot arrive at a
+disposition by holding the wrong object.
+
+The tests moved with it rather than being pointed at a compatibility shim:
+fourteen unit tests construct `CurationCaseService` now, and the router and MCP
+suites pass one mock under both names, because what they assert is what the
+transport does and not which service held the method.
 
 ### E5-T4 — `disposition_actor`, and what changes once a policy can dispose
 
@@ -6817,6 +6833,50 @@ author is the person most likely to reach for the stronger word.
 
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+## Task decomposition — sixteenth wave (the integration tier is flaky under CI capacity)
+
+### E15b-T2 — Four workers, four CPUs, and a Postgres each
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: an integration run that fails means a test is wrong.
+
+**Three unrelated flakes in one afternoon**, each green on a re-run of the same
+commit:
+
+- `test_extraction_end_to_end.py::test_an_extracted_claim_is_inference_tier_not_extraction_tier` — `IndexError`
+- `test_reporting_obligations.py::test_a_nomination_lands_unclassified_and_says_so` — hung in `epoll_wait`
+- `test_reporting_obligations.py::test_the_backlog_reports_the_age_of_the_longest_wait` — same run
+
+**The runner already diagnoses this itself**, in a line it prints on every CI
+run:
+
+> *4 CPU(s) available; running 4 worker(s) instead of 8. The committed count was
+> measured on an 18-core host, and each worker also runs its own Postgres
+> container — past capacity this does not merely slow the tier, it raises
+> CancelledError out of connection acquisition and fails unrelated tests.*
+
+So the failure mode is known, named, and printed — and the clamp still lands on
+*four workers, four CPUs, four Postgres containers*. The wall-clock evidence
+agrees: the same tier took **6:35** on one PR and **14:37** on the next, with no
+change to what it runs.
+
+**Why this belongs beside E15b-T1 rather than inside it.** That task cut the
+critical path by removing a dependency nothing needed. This one is the other
+half of the same instruction: a flaky tier costs a full re-run, which is worse
+than a slow one, and it also teaches a reader that red does not mean broken —
+after which nobody reads the red.
+
+**What this task must not do:** clamp by guessing. `workers_supported` is
+deliberate, documented, and bound into a sealed control precisely so *"a run
+that quietly used a count the repository did not commit"* cannot happen. Whatever
+number replaces four has to arrive the same way the eight did — measured, and
+committed as the count.
+
+Acceptance:
+    # the tier passes on three consecutive CI runs of one unchanged commit
+    make all
 
 ## Task decomposition — fifteenth wave (CI is the bottleneck, measured)
 

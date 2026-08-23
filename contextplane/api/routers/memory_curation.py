@@ -211,7 +211,8 @@ from contextplane.service.memory.claim_history import BelievedClaim, ClaimHistor
 from contextplane.service.memory.claim_writer import ClaimService
 from contextplane.service.memory.confirmation import Confirmation, ConfirmationService
 from contextplane.service.memory.contest import ContradictionGroup, groups_for
-from contextplane.service.memory.curation_queue import CurationCase, CurationQueueService, QueueItem
+from contextplane.service.memory.curation_cases import CurationCase, CurationCaseService
+from contextplane.service.memory.curation_queue import CurationQueueService, QueueItem
 from contextplane.service.memory.curation_ranking import QueueCursor
 from contextplane.service.memory.promotion import PromotionService, Proposal
 from contextplane.types import TenantContext
@@ -230,6 +231,13 @@ _MAX_PAGE_SIZE = 500
 def _curation_queue(request: Request) -> CurationQueueService:
     services: Services = request.app.state.services
     return services.curation_queue
+
+
+def _curation_cases(request: Request) -> CurationCaseService:
+    """The write half. A separate accessor, so a read route cannot reach a
+    disposition by holding the wrong object."""
+    services: Services = request.app.state.services
+    return services.curation_cases
 
 
 def _claims(request: Request) -> ClaimService:
@@ -536,7 +544,7 @@ async def open_curation_case(
     """
     services: Services = request.app.state.services
     try:
-        case = await _curation_queue(request).open_case(
+        case = await _curation_cases(request).open_case(
             ctx,
             subject_reference=body.subject_reference,
             predicate=body.predicate,
@@ -565,8 +573,6 @@ async def list_curation_cases(
     because `status` is this module's imported `fastapi.status`, and shadowing it
     inside one handler would break the `build_error` calls in the same function.
     """
-    queue = _curation_queue(request)
-
     cursor_pair: tuple[datetime.datetime, uuid.UUID] | None = None
     if cursor is not None:
         try:
@@ -583,7 +589,9 @@ async def list_curation_cases(
             ) from exc
 
     try:
-        cases = await queue.cases_for(ctx.tenant_id, status=case_status, cursor=cursor_pair, page_size=page_size)
+        cases = await _curation_cases(request).cases_for(
+            ctx.tenant_id, status=case_status, cursor=cursor_pair, page_size=page_size
+        )
     except ValidationError as exc:
         raise map_catalog_error(exc) from exc
 
@@ -612,7 +620,7 @@ async def get_curation_case(
     case id cannot confirm that somebody else is reviewing a contradiction.
     """
     try:
-        case = await _curation_queue(request).case(ctx, case_id)
+        case = await _curation_cases(request).case(ctx, case_id)
     except (NotFoundError, ValidationError) as exc:
         raise map_catalog_error(exc) from exc
     return _to_case_response(case)
@@ -636,7 +644,7 @@ async def route_curation_case(
     """
     services: Services = request.app.state.services
     try:
-        case = await _curation_queue(request).route_case(
+        case = await _curation_cases(request).route_case(
             ctx,
             case_id=case_id,
             owner_id=body.owner_id,
@@ -668,7 +676,7 @@ async def record_case_disposition(
     """
     services: Services = request.app.state.services
     try:
-        case = await _curation_queue(request).record_disposition(
+        case = await _curation_cases(request).record_disposition(
             ctx,
             case_id=case_id,
             disposition=body.disposition,

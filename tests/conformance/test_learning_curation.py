@@ -30,7 +30,7 @@ from pathlib import Path
 
 import pytest
 
-from contextplane.service.memory.curation_queue import (
+from contextplane.service.memory.curation_cases import (
     CASE_OPEN,
     CASE_RESOLVED,
     CASE_ROUTED,
