@@ -120,6 +120,7 @@ from contextplane.service.memory.claim_serving import ClaimServingService
 from contextplane.service.memory.claim_writer import ClaimService
 from contextplane.service.memory.confirmation import ConfirmationService
 from contextplane.service.memory.consolidation import ConsolidationService
+from contextplane.service.memory.curation_cases import CurationCaseService
 from contextplane.service.memory.curation_queue import CurationQueueService
 from contextplane.service.memory.promotion import PromotionService
 from contextplane.service.memory.promotion_guardrails import GuardrailService
@@ -200,6 +201,7 @@ class Services:
     promotion_guardrails: GuardrailService
     sampling_policy: SamplingPolicyService
     curation_queue: CurationQueueService
+    curation_cases: CurationCaseService
     capability_requests: CapabilityRequestService
     source_governance: SourceGovernanceService
     source_ingest: SourceIngestService

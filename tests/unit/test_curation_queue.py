@@ -38,21 +38,24 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
-from contextplane.service.memory.curation_queue import (
-    _QUEUE_BASE,
-    ACTIONS_BY_REASON,
+from contextplane.service.memory.curation_cases import (
     CASE_OPEN,
     CASE_RESOLVED,
     CASE_ROUTED,
     DISPOSITION_CONFIRM,
     DISPOSITION_PROPOSE_ARC,
     DISPOSITIONS,
+    CurationCase,
+    CurationCaseService,
+)
+from contextplane.service.memory.curation_queue import (
+    _QUEUE_BASE,
+    ACTIONS_BY_REASON,
     ESCALATION_AGE_DAYS,
     REASON_AWAITING_OWNER,
     REASON_BELOW_FLOOR,
     REASON_CONTESTED,
     REASON_UNLINKED,
-    CurationCase,
     CurationQueueService,
     QueueCursor,
     QueueItem,
@@ -440,7 +443,7 @@ async def test_open_case_returns_the_already_open_case_on_the_same_axis() -> Non
     existing = _case_row(tenant_id=tenant, status=CASE_ROUTED, owner_id="platform-rota", routed_at=_NOW)
     factory, calls = _case_session(existing=existing)
 
-    case = await CurationQueueService(factory).open_case(
+    case = await CurationCaseService(factory).open_case(
         _ctx(tenant), subject_reference="svc:payments", predicate="owned_by_team", now=_NOW
     )
 
@@ -454,7 +457,7 @@ async def test_open_case_writes_the_case_and_its_audit_row_together() -> None:
     tenant = uuid.uuid4()
     factory, calls = _case_session(existing=None)
 
-    case = await CurationQueueService(factory).open_case(
+    case = await CurationCaseService(factory).open_case(
         _ctx(tenant), subject_reference="svc:payments", predicate="owned_by_team", now=_NOW
     )
 
@@ -469,7 +472,7 @@ async def test_open_case_refuses_an_axis_it_cannot_name() -> None:
     """A case with no subject or no predicate names no disagreement, so there is
     nothing for an owner to decide."""
     factory, calls = _case_session(existing=None)
-    service = CurationQueueService(factory)
+    service = CurationCaseService(factory)
 
     with pytest.raises(ValidationError):
         await service.open_case(_ctx(uuid.uuid4()), subject_reference="", predicate="owned_by_team", now=_NOW)
@@ -486,7 +489,7 @@ async def test_route_case_records_the_previous_owner_on_an_escalation() -> None:
     locked = _case_row(tenant_id=tenant, status=CASE_ROUTED, owner_id="first-owner", routed_at=_NOW)
     factory, calls = _case_session(locked=locked)
 
-    case = await CurationQueueService(factory).route_case(
+    case = await CurationCaseService(factory).route_case(
         _ctx(tenant), case_id=locked["case_id"], owner_id="second-owner", now=_NOW
     )
 
@@ -510,7 +513,7 @@ async def test_route_case_refuses_a_resolved_case() -> None:
     factory, calls = _case_session(locked=locked)
 
     with pytest.raises(ConflictError, match="resolved"):
-        await CurationQueueService(factory).route_case(
+        await CurationCaseService(factory).route_case(
             _ctx(tenant), case_id=locked["case_id"], owner_id="another-owner", now=_NOW
         )
     assert calls["update"] == []
@@ -523,7 +526,7 @@ async def test_route_case_answers_a_case_in_another_tenant_as_missing() -> None:
     factory, _ = _case_session(locked=None)
 
     with pytest.raises(NotFoundError):
-        await CurationQueueService(factory).route_case(
+        await CurationCaseService(factory).route_case(
             _ctx(uuid.uuid4()), case_id=uuid.uuid4(), owner_id="an-owner", now=_NOW
         )
 
@@ -537,7 +540,7 @@ async def test_record_disposition_refuses_a_caller_who_is_not_the_routed_owner()
     factory, calls = _case_session(locked=locked)
 
     with pytest.raises(PermissionError, match="another owner"):
-        await CurationQueueService(factory).record_disposition(
+        await CurationCaseService(factory).record_disposition(
             _ctx(tenant), case_id=locked["case_id"], disposition=DISPOSITION_CONFIRM, now=_NOW
         )
     assert calls["update"] == []
@@ -553,7 +556,7 @@ async def test_record_disposition_refuses_an_unrouted_case() -> None:
     factory, calls = _case_session(locked=locked)
 
     with pytest.raises(ConflictError, match="accountable owner"):
-        await CurationQueueService(factory).record_disposition(
+        await CurationCaseService(factory).record_disposition(
             _ctx(tenant), case_id=locked["case_id"], disposition=DISPOSITION_CONFIRM, now=_NOW
         )
     assert calls["update"] == []
@@ -567,7 +570,7 @@ async def test_record_disposition_stores_the_targets_authority_and_threshold() -
     locked = _case_row(tenant_id=tenant, status=CASE_ROUTED, owner_id=str(actor), routed_at=_NOW)
     factory, calls = _case_session(locked=locked)
 
-    case = await CurationQueueService(factory).record_disposition(
+    case = await CurationCaseService(factory).record_disposition(
         _ctx(tenant, actor), case_id=locked["case_id"], disposition=DISPOSITION_PROPOSE_ARC, now=_NOW
     )
 
@@ -593,7 +596,7 @@ async def test_record_disposition_loses_a_race_rather_than_overwriting() -> None
     factory, calls = _case_session(locked=locked, updated=False)
 
     with pytest.raises(ConflictError, match="another writer"):
-        await CurationQueueService(factory).record_disposition(
+        await CurationCaseService(factory).record_disposition(
             _ctx(tenant, actor), case_id=locked["case_id"], disposition=DISPOSITION_CONFIRM, now=_NOW
         )
     assert calls["audit"] == [], "a refused decision still wrote an audit row"
@@ -606,7 +609,7 @@ async def test_record_disposition_refuses_an_unknown_disposition_before_reading(
     factory, calls = _case_session(locked=None)
 
     with pytest.raises(ValidationError, match="unknown disposition"):
-        await CurationQueueService(factory).record_disposition(
+        await CurationCaseService(factory).record_disposition(
             _ctx(uuid.uuid4()), case_id=uuid.uuid4(), disposition="promote_everything", now=_NOW
         )
     assert calls["sql"] == []
@@ -617,7 +620,7 @@ async def test_cases_for_rejects_an_unknown_status() -> None:
     factory, _ = _case_session()
 
     with pytest.raises(ValidationError, match="unknown case status"):
-        await CurationQueueService(factory).cases_for(uuid.uuid4(), status="nearly_done")
+        await CurationCaseService(factory).cases_for(uuid.uuid4(), status="nearly_done")
 
 
 @pytest.mark.asyncio
@@ -635,7 +638,7 @@ async def test_cases_for_pages_by_keyset_and_fetches_one_extra() -> None:
         return result
 
     cursor = (_NOW, uuid.uuid4())
-    cases = await CurationQueueService(_session_factory(execute)).cases_for(tenant, cursor=cursor, page_size=2)
+    cases = await CurationCaseService(_session_factory(execute)).cases_for(tenant, cursor=cursor, page_size=2)
 
     sql, params = captured[0]
     assert params["limit"] == 3
@@ -649,7 +652,7 @@ async def test_case_answers_another_tenants_case_as_missing() -> None:
     factory, _ = _case_session(existing=None)
 
     with pytest.raises(NotFoundError):
-        await CurationQueueService(factory).case(_ctx(uuid.uuid4()), uuid.uuid4())
+        await CurationCaseService(factory).case(_ctx(uuid.uuid4()), uuid.uuid4())
 
 
 def test_a_case_with_no_disposition_names_no_target() -> None:

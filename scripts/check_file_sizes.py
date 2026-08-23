@@ -161,20 +161,6 @@ class AllowlistEntry:
 #: what changed between the two measurements.
 ALLOWLIST: tuple[AllowlistEntry, ...] = (
     AllowlistEntry(
-        path="contextplane/service/memory/curation_queue.py",
-        reason=(
-            "Crossed the ceiling when E5-T3 made the queue ranked. The ordering itself was "
-            "already extracted to curation_ranking.py -- that was the seam the new code created, "
-            "and taking it is what kept this to 29 lines over instead of 111. What remains is a "
-            "second, older seam this ceiling is correctly pointing at: the file holds a read-only "
-            "queue and a read-write curation-case lifecycle (open, route, dispose), and its own "
-            "class docstring already draws the line by calling the queue 'reads only'. Splitting "
-            "that is a ~300-line move touching both transports, which does not belong in the same "
-            "change as a ranking rewrite -- bundling them would make one diff nobody can review as "
-            "either. Tracked as E5-T3b."
-        ),
-    ),
-    AllowlistEntry(
         path="scripts/seed.py",
         reason=(
             "Generic seed-bundle loader, already factored into one function per domain "

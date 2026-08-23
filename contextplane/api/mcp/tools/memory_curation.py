@@ -54,7 +54,8 @@ from contextplane.service.memory.claim_history import ClaimHistoryService, Claim
 from contextplane.service.memory.claim_writer import ClaimService
 from contextplane.service.memory.confirmation import ConfirmationService
 from contextplane.service.memory.contest import ContradictionGroup, groups_for
-from contextplane.service.memory.curation_queue import CurationCase, CurationQueueService, QueueItem
+from contextplane.service.memory.curation_cases import CurationCase, CurationCaseService
+from contextplane.service.memory.curation_queue import CurationQueueService, QueueItem
 from contextplane.service.memory.curation_ranking import QueueCursor
 from contextplane.service.memory.promotion import PromotionService, Proposal
 from contextplane.types import Clock, JSONValue, TenantContext
@@ -114,6 +115,11 @@ def _service(name: str, *, label: str) -> object:
 
 def _curation_queue() -> CurationQueueService:
     return cast(CurationQueueService, _service("curation_queue", label="the curation queue"))
+
+
+def _curation_cases() -> CurationCaseService:
+    """The write half, reached separately so a read tool cannot dispose a case."""
+    return cast(CurationCaseService, _service("curation_cases", label="curation cases"))
 
 
 def _claims() -> ClaimService:
@@ -1021,7 +1027,7 @@ async def open_curation_case(
     """
     ctx = await context._resolve_tenant(session_factory, clock)
     try:
-        case = await _curation_queue().open_case(
+        case = await _curation_cases().open_case(
             ctx,
             subject_reference=subject_reference,
             predicate=predicate,
@@ -1059,7 +1065,7 @@ async def list_curation_cases(
     _check_page_size(page_size)
     cursor_pair = _decode_cursor_pair(cursor, created_at_key="created_at", id_key="case_id")
     try:
-        cases = await _curation_queue().cases_for(ctx.tenant_id, status=status, cursor=cursor_pair, page_size=page_size)
+        cases = await _curation_cases().cases_for(ctx.tenant_id, status=status, cursor=cursor_pair, page_size=page_size)
     except ValidationError as exc:
         raise _map_error(exc) from exc
 
@@ -1095,7 +1101,7 @@ async def get_curation_case(
     """
     ctx = await context._resolve_tenant(session_factory, clock)
     try:
-        case = await _curation_queue().case(ctx, uuid.UUID(case_id))
+        case = await _curation_cases().case(ctx, uuid.UUID(case_id))
     except ValueError as exc:
         raise ToolError(f"case_id must be a UUID: {exc}") from exc
     except (NotFoundError, ValidationError) as exc:
@@ -1127,7 +1133,7 @@ async def route_curation_case(
     """
     ctx = await context._resolve_tenant(session_factory, clock)
     try:
-        case = await _curation_queue().route_case(
+        case = await _curation_cases().route_case(
             ctx,
             case_id=uuid.UUID(case_id),
             owner_id=owner_id,
@@ -1172,7 +1178,7 @@ async def record_case_disposition(
     """
     ctx = await context._resolve_tenant(session_factory, clock)
     try:
-        case = await _curation_queue().record_disposition(
+        case = await _curation_cases().record_disposition(
             ctx,
             case_id=uuid.UUID(case_id),
             disposition=disposition,
