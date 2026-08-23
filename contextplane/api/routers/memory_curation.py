@@ -212,6 +212,7 @@ from contextplane.service.memory.claim_writer import ClaimService
 from contextplane.service.memory.confirmation import Confirmation, ConfirmationService
 from contextplane.service.memory.contest import ContradictionGroup, groups_for
 from contextplane.service.memory.curation_queue import CurationCase, CurationQueueService, QueueItem
+from contextplane.service.memory.curation_ranking import QueueCursor
 from contextplane.service.memory.promotion import PromotionService, Proposal
 from contextplane.types import TenantContext
 from contextplane.usage.results import stash_result_count
@@ -305,13 +306,16 @@ async def get_curation_queue(
         tally = await queue.counts_for(ctx.tenant_id)
         return QueueCountsResponse(counts=tally)
 
-    cursor_pair: tuple[datetime.datetime, uuid.UUID] | None = None
+    queue_cursor: QueueCursor | None = None
     if cursor is not None:
         try:
             payload = decode_cursor(cursor, strict=True)
-            cursor_pair = (
-                datetime.datetime.fromisoformat(payload["created_at"]),
-                uuid.UUID(payload["claim_id"]),
+            queue_cursor = QueueCursor(
+                claim_id=uuid.UUID(payload["claim_id"]),
+                created_at=datetime.datetime.fromisoformat(payload["created_at"]),
+                escalation_rank=int(payload["escalation_rank"]),
+                neg_dependants=int(payload["neg_dependants"]),
+                neg_sampling=int(payload["neg_sampling"]),
             )
         except (InvalidCursorError, KeyError, ValueError) as exc:
             raise build_error(
@@ -320,13 +324,21 @@ async def get_curation_queue(
                 message="invalid cursor",
             ) from exc
 
-    items = await queue.items_for(ctx.tenant_id, cursor=cursor_pair, page_size=page_size)
+    items = await queue.items_for(ctx.tenant_id, cursor=queue_cursor, page_size=page_size)
 
     next_cursor: str | None = None
     if len(items) > page_size:
         items = items[:page_size]
         last = items[-1]
-        next_cursor = encode_cursor({"created_at": last.created_at.isoformat(), "claim_id": str(last.claim_id)})
+        next_cursor = encode_cursor(
+            {
+                "claim_id": str(last.claim_id),
+                "created_at": last.created_at.isoformat(),
+                "escalation_rank": last.cursor().escalation_rank,
+                "neg_dependants": last.cursor().neg_dependants,
+                "neg_sampling": last.cursor().neg_sampling,
+            }
+        )
 
     stash_result_count(request, len(items))
     return QueueListResponse(

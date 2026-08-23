@@ -39,7 +39,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.audit import actions
 from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
-from contextplane.types import TenantContext
+from contextplane.service.memory.curation_ranking import (
+    _RANK_JOIN,
+    _RANK_ORDER,
+    ESCALATION_AGE_DAYS,
+    QueueCursor,
+    SystemClock,
+)
+from contextplane.types import Clock, TenantContext
 
 REASON_UNLINKED: Final[str] = "unlinked"
 REASON_CONTESTED: Final[str] = "contested"
@@ -250,45 +257,89 @@ class QueueItem:
     human_backed: bool
     proposal_id: uuid.UUID | None = None
 
+    #: Why this row sits where it does. The consequence preview belongs on the
+    #: item rather than behind a second call: a rank a reviewer cannot
+    #: interrogate is a rank they learn to ignore, and these three are exactly
+    #: the ordering's inputs.
+    dependant_count: int = 0
+    sampling_priority: int = 0
+    #: Past the governed escalation age, so ordered ahead of everything younger
+    #: whatever its leverage. This is the flag that makes the queue's
+    #: reachability promise visible to the person relying on it.
+    escalated: bool = False
+
     @property
     def available_actions(self) -> tuple[str, ...]:
         """Actions the current reason permits; empty when no action applies."""
         return ACTIONS_BY_REASON.get(self.reason, ())
+
+    def cursor(self) -> QueueCursor:
+        """Where a next page should resume from, if this is the last row read."""
+        return QueueCursor(
+            escalation_rank=0 if self.escalated else 1,
+            neg_dependants=-self.dependant_count,
+            neg_sampling=-self.sampling_priority,
+            created_at=self.created_at,
+            claim_id=self.claim_id,
+        )
 
 
 class CurationQueueService:
     """Reads only. Acting on an item goes through the service that owns that
     decision, so the queue cannot become a second write path into claims."""
 
-    def __init__(self, factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(self, factory: async_sessionmaker[AsyncSession], *, clock: Clock | None = None) -> None:
         self._factory = factory
+        # Optional so the existing construction sites keep working: every method
+        # but the ranked read is timeless, and `items_for` accepts an explicit
+        # `now` for callers that hold one. A service that demanded a clock for
+        # nine methods that never ask the time would be a worse contract than
+        # this narrow default.
+        self._clock = clock or SystemClock()
 
     async def items_for(
         self,
         tenant_id: uuid.UUID,
         *,
-        cursor: tuple[datetime.datetime, uuid.UUID] | None = None,
+        cursor: QueueCursor | None = None,
         page_size: int = 100,
+        now: datetime.datetime | None = None,
     ) -> tuple[QueueItem, ...]:
-        """Everything needing attention in one tenant, oldest first.
+        """Everything needing attention in one tenant, most consequential first.
 
-        Oldest first because the alternative -- highest confidence, or largest blast
-        radius -- means the tail is never reached, and an item nobody will ever see
-        is one that should not have been queued.
+        This was arrival order, and the docstring here argued for it: ranking
+        "means the tail is never reached". That was right about ranking and
+        wrong only in assuming ranking has to starve. `curation_ranking` holds
+        why it does not have to, what the ordering is, and why confidence is
+        deliberately absent from it.
 
-        Keyset-paginated on `(created_at, claim_id)`. `cursor` is the already-decoded
-        pair from the last row of the previous page; the caller (the REST route)
-        owns encoding and decoding the opaque token, the same split
-        `admin_audit.py`'s query route uses. Fetches `page_size + 1` rows so the
-        caller can tell whether another page follows without a second query.
+        Keyset-paginated on the whole sort tuple. `cursor` is the decoded
+        `QueueCursor` from the last row of the previous page; the caller owns
+        encoding it, the same split `admin_audit.py`'s query route uses. Fetches
+        `page_size + 1` rows so the caller can tell whether another page follows
+        without a second query.
         """
-        params: dict[str, Any] = {"tid": tenant_id, "limit": page_size + 1}
-        sql = _QUEUE_BASE
+        moment = now if now is not None else self._clock.now()
+        params: dict[str, Any] = {
+            "escalation_cutoff": moment - datetime.timedelta(days=ESCALATION_AGE_DAYS),
+            "limit": page_size + 1,
+            "tid": tenant_id,
+        }
+        # A CTE, so the cursor can compare the *computed* sort columns rather
+        # than recomputing a correlated subquery inside its own predicate.
+        sql = f"WITH ranked AS ({_QUEUE_BASE}{_RANK_JOIN}\n) SELECT * FROM ranked"  # noqa: S608 - fixed module constants; every value is bound
         if cursor is not None:
-            sql += " AND (c.created_at, c.claim_id) > (:cursor_created_at, :cursor_claim_id)"
-            params["cursor_created_at"] = cursor[0]
-            params["cursor_claim_id"] = cursor[1]
-        sql += " ORDER BY c.created_at, c.claim_id LIMIT :limit"
+            sql += (
+                " WHERE (escalation_rank, neg_dependants, neg_sampling, created_at, claim_id)"
+                " > (:cursor_escalation, :cursor_dependants, :cursor_sampling,"
+                "    :cursor_created_at, :cursor_claim_id)"
+            )
+            params["cursor_claim_id"] = cursor.claim_id
+            params["cursor_created_at"] = cursor.created_at
+            params["cursor_dependants"] = cursor.neg_dependants
+            params["cursor_escalation"] = cursor.escalation_rank
+            params["cursor_sampling"] = cursor.neg_sampling
+        sql += _RANK_ORDER + " LIMIT :limit"
 
         async with self._factory() as session:
             rows = (
@@ -313,6 +364,12 @@ class CurationQueueService:
                 created_at=row["created_at"],
                 human_backed=bool(row["human_backed"]),
                 proposal_id=row["proposal_id"],
+                # The consequence preview, from the same read rather than a
+                # traversal per row: a rank a reviewer cannot interrogate is a
+                # rank they learn to ignore.
+                dependant_count=-int(row["neg_dependants"]),
+                sampling_priority=-int(row["neg_sampling"]),
+                escalated=int(row["escalation_rank"]) == 0,
             )
             for row in rows
         )

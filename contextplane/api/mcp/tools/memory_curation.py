@@ -55,6 +55,7 @@ from contextplane.service.memory.claim_writer import ClaimService
 from contextplane.service.memory.confirmation import ConfirmationService
 from contextplane.service.memory.contest import ContradictionGroup, groups_for
 from contextplane.service.memory.curation_queue import CurationCase, CurationQueueService, QueueItem
+from contextplane.service.memory.curation_ranking import QueueCursor
 from contextplane.service.memory.promotion import PromotionService, Proposal
 from contextplane.types import Clock, JSONValue, TenantContext
 from contextplane.usage.results import set_mcp_result_count
@@ -372,16 +373,16 @@ async def list_curation_queue(
         return json.dumps({"counts": tally})
 
     _check_page_size(page_size)
-    cursor_pair = _decode_cursor_pair(cursor, created_at_key="created_at", id_key="claim_id")
-    items = await queue.items_for(ctx.tenant_id, cursor=cursor_pair, page_size=page_size)
+    # The queue is ranked, so a cursor is the whole sort tuple rather than an
+    # arrival pair -- see `QueueCursor` for why every component of it is either
+    # fixed or moves only toward the front.
+    cursor_position = _decode_queue_cursor(cursor)
+    items = await queue.items_for(ctx.tenant_id, cursor=cursor_position, page_size=page_size)
 
     next_cursor: str | None = None
     if len(items) > page_size:
         items = items[:page_size]
-        last = items[-1]
-        next_cursor = _encode_cursor_pair(
-            last.created_at, last.claim_id, created_at_key="created_at", id_key="claim_id"
-        )
+        next_cursor = _encode_queue_cursor(items[-1].cursor())
 
     set_mcp_result_count(len(items))
     return json.dumps({"items": [_serialize_queue_item(i) for i in items], "next_cursor": next_cursor})
@@ -1447,3 +1448,36 @@ __all__: list[str] = [
     "record_case_disposition",
     "register",
 ]
+
+
+def _encode_queue_cursor(position: QueueCursor) -> str:
+    """One ranked-queue position as an opaque token."""
+    return encode_cursor(
+        {
+            "claim_id": str(position.claim_id),
+            "created_at": position.created_at.isoformat(),
+            "escalation_rank": position.escalation_rank,
+            "neg_dependants": position.neg_dependants,
+            "neg_sampling": position.neg_sampling,
+        }
+    )
+
+
+def _decode_queue_cursor(cursor: str | None) -> QueueCursor | None:
+    """The position a token names, or `None` for the first page."""
+    if not cursor:
+        return None
+    try:
+        payload = decode_cursor(cursor, strict=True)
+    except InvalidCursorError as exc:
+        raise ToolError("invalid cursor") from exc
+    try:
+        return QueueCursor(
+            claim_id=uuid.UUID(payload["claim_id"]),
+            created_at=datetime.datetime.fromisoformat(payload["created_at"]),
+            escalation_rank=int(payload["escalation_rank"]),
+            neg_dependants=int(payload["neg_dependants"]),
+            neg_sampling=int(payload["neg_sampling"]),
+        )
+    except (KeyError, ValueError) as exc:
+        raise ToolError("invalid cursor") from exc
