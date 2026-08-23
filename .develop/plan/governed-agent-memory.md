@@ -7013,6 +7013,13 @@ failed depended on how many claims the run happened to have seeded before it.
 Which is the lesson worth keeping — **a flaky-looking integration failure is a
 hypothesis, not a diagnosis**, and this entry filed the hypothesis as one.
 
+**A second pattern, and it is not slowness.** Twice now the `integration` job
+has sat in `make test-integration` for **34-36 minutes** against a 6-7 minute
+norm, on branches whose tier passes locally in under three, and both times a
+re-run of the same commit finished normally. A stall of five times the norm that
+clears on retry is a different failure from a flaky assertion, and the runner's
+CancelledError warning is at least consistent with it.
+
 **What is left of the original finding.** Two flakes are still unexplained:
 `test_an_extracted_claim_is_inference_tier_not_extraction_tier` (IndexError) and
 `test_a_nomination_lands_unclassified_and_says_so` (hung in `epoll_wait`). Both
@@ -7135,7 +7142,7 @@ where before it was merely unnoticed.
 
 ### E14-T1 — Every ARC governance object is invisible the moment it is created
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — api/routers/, arc/service/ · **Repo:** contextplane
+**Kind:** task · **Status:** decomposed — the design question is answered; E14-T1a/b/c carry the work · **Blocked by:** none · **Hotspot:** yes — api/routers/, arc/service/ · **Repo:** contextplane
 
 Goal: the governance objects the ARC admin surface creates can be read back.
 
@@ -7195,6 +7202,128 @@ None of these is E4. All three were found by reading the servability and
 propagation machinery closely enough to decide ADR-0016, and all three are
 pre-existing. Filed separately so a quarantine PR does not quietly carry three
 unrelated fixes.
+
+**The scope note asked to decide index-versus-per-object before writing routes.
+Decided: per-object reads sharing one response shape, not one index over a
+union.** The evidence is that the six objects share *intent* and not *schema*.
+
+| object | scope column | tenant column | in force? |
+|---|---|---|---|
+| `arc_approval_verifiers` | `scope_kind` | `scope_tenant_id` | `revoked_at`, `valid_from`/`valid_to` |
+| `arc_approved_exceptions` | — (`lower_scope_kind`) | `lower_scope_tenant_id` | `effective_from`/`effective_until` |
+| `arc_source_connectors` | `owning_scope` | `tenant_id` | **nothing** |
+| `arc_source_upload_policies` | `owning_scope` | `tenant_id` | **nothing** |
+| `arc_observation_replay_corpora` | `owning_scope` | `target_tenant_id` | `approved_at`/`expires_at` |
+
+Three spellings of scope, three of tenant, and three different notions of "still
+in force" — one of which is absent. A single index would have to normalise across
+that, and normalising "in force" for an object that **cannot be revoked** means
+inventing a state the schema does not have. The shared shape is worth having as a
+*response contract* so four screens read alike; it is not a query.
+
+**Second finding, and it is larger than the read side.** `arc_source_connectors`
+and `arc_source_upload_policies` have no revocation column, no `ALTER` adding
+one, and no `UPDATE` or `DELETE` anywhere in the tree — only an `INSERT` and a
+by-id `SELECT`. **A source connector, once registered, is permanent.**
+
+E10-T10's screen describes these accurately as standing grants whose
+`allowed_verifier_ids` decides who may approve every future fetch. Both halves of
+that are true and together they are the problem: the widest control in the
+governance surface is the one that cannot be withdrawn. Filed as **E14-T2**.
+
+Third, smaller: a by-id read already exists at the query layer
+(`arc/service/queries/source_admission.py` selects a connector by id). The read
+side is not absent everywhere — it is unexposed, which makes the remaining work
+smaller than "six endpoints" and is why this decomposes rather than growing.
+
+### E14-T1a — Read back what may approve: verifiers and exceptions
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: an operator can list enrolled approval verifiers and standing exceptions,
+at a scope, with whether each is still in force.
+
+These two first because they are the two a shipped screen already apologises
+for: E10-T7 tells an operator to write an id down because nothing can look it
+up, and E10-T9 says on the page that it cannot show what is already in force.
+
+The response carries the shared shape — id, scope, target tenant, in-force,
+created — plus the object's own fields. In force is computed from each table's
+own columns and never faked: an exception with no `effective_until` is in force
+indefinitely and says so rather than being given an invented expiry.
+
+Both transports.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "arc and (verifier or exception)"
+    make all
+
+### E14-T1b — Read back what ARC may ingest: connectors, policies, corpora
+
+**Kind:** task · **Status:** pending · **Blocked by:** E14-T1a · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the three source-governance objects can be listed and read by id.
+
+After E14-T1a because it inherits the response shape that task settles, and
+because a shape agreed once and applied twice is cheaper than two shapes
+reconciled later.
+
+**The in-force column is the interesting one here and it must not be invented.**
+Connectors and upload policies have no revocation and no expiry, so their honest
+answer is "permanent" — which is exactly the fact E14-T2 exists to change, and
+exactly what an operator reading this list needs to see.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "arc and source"
+    make all
+
+### E14-T1c — Approval evidence, read back
+
+**Kind:** task · **Status:** pending · **Blocked by:** E14-T1a · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the evidence attached to a revision can be read without already holding
+its id.
+
+Last of the three because `arc_approval_evidence_revocations` is a separate
+table, so "is this evidence still good" is a join rather than a column — the
+only one of the six where in-force is not readable from the row.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "arc and evidence"
+    make all
+
+### E14-T2 — A source connector cannot be withdrawn
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — arc/service/, storage/migrations/ · **Repo:** contextplane
+
+Goal: a connector or upload policy registered in error can be stopped.
+
+`arc_source_connectors` and `arc_source_upload_policies` have no revocation
+column, no `ALTER` adding one, and no `UPDATE` or `DELETE` in the tree. Once
+registered, they are permanent.
+
+**Why that is worse than it sounds.** These are not narrow settings. A connector
+names the schemes, hosts, media types and sizes ARC may fetch, and in
+`allowed_verifier_ids` it names *who may approve what it fetches* — for every
+future fetch, not the next one. So the widest control in this surface is the one
+with no off switch, and the failure it invites is the ordinary one: a connector
+registered permissively during a migration, then never narrowed because nobody
+can.
+
+Every neighbouring object already has the shape to copy. `arc_approval_verifiers`
+carries `revoked_at`; ARC's own vocabulary has `revoke` on four other surfaces.
+Nothing here needs inventing.
+
+**Decide one thing deliberately:** what happens to material already admitted
+through a revoked connector. Revoking the connector must not silently invalidate
+past admissions — those were valid when made — and it must not leave them looking
+current either. `receipt_withheld` and the two obligation tombstone codes are
+both precedents for saying "this was fine then and is not now" without rewriting
+what happened.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "connector and revoke"
+    make all
 
 ### E3-T6 — `discard` leaves the claim's vectors in the index
 
