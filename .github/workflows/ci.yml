@@ -188,7 +188,19 @@ jobs:
   # reported under one name. A parity claim needs both members pinned.
   integration:
     runs-on: ubuntu-latest
-    needs: unit
+    # `needs: changes`, not `needs: unit`. Nothing is passed between these two
+    # jobs -- each does its own checkout and its own `make install-dev` -- so
+    # chaining them only serialized two independent tiers, which is the argument
+    # the `conformance` job below already makes one level down. Measured: `unit`
+    # runs 8.5-11.5 min and `integration` about 8, so the chain put a PR's
+    # critical path at 17-20 minutes where `max(unit, integration)` is ~11.5.
+    #
+    # The cost is real and deliberate: a PR whose unit tier is already broken now
+    # burns an integration runner before anyone knows. That trade buys back eight
+    # minutes on every PR that passes, which is nearly all of them, and CI wall
+    # clock is the thing that was actually hurting.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     env:
       CONTEXTPLANE_TEST_PG: testcontainers
     steps:
@@ -201,13 +213,23 @@ jobs:
       - run: make install-dev
       - run: make test-integration
 
-  # Depends on unit, not integration. There is no artifact passing between the two
-  # and conformance does not consume anything integration produces, so chaining
-  # them only serialized two independent jobs and put the slowest tier in front of
-  # a contract-drift gate that would have failed in a fraction of the time.
+  # Depended on integration once, then on unit, and now on neither. There is no
+  # artifact passing anywhere in this chain and conformance consumes nothing
+  # either job produces, so each link only serialized two independent jobs and
+  # put a slower tier in front of a contract-drift gate that would have failed in
+  # a fraction of the time. The argument did not stop being true at `unit`.
+  #
+  # This tier *is* also executed inside `unit`, because `make test-coverage` runs
+  # `tests/unit` and `tests/conformance` together and the coverage ratchet counts
+  # on both. The duplication is kept on purpose rather than removed: this job
+  # reports a conformance failure as a conformance failure, where the same
+  # failure inside the coverage run arrives buried in a summary of ten thousand
+  # tests. Now that it runs beside `unit` instead of behind it, the duplication
+  # costs runner minutes and no wall clock at all.
   conformance:
     runs-on: ubuntu-latest
-    needs: unit
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -376,7 +398,9 @@ jobs:
   # the cache and fail verification — the manifest stays the trust anchor.
   image:
     runs-on: ubuntu-latest
-    needs: unit
+    # Same reasoning as `integration`: the build consumes nothing `unit` makes.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
