@@ -85,19 +85,39 @@ def test_confidence_is_served_but_is_not_a_rank_term() -> None:
     assert "confidence" not in _RANK_TERMS
 
 
-def test_every_disposition_the_service_accepts_has_its_consequences_served() -> None:
+def test_every_disposition_a_person_may_record_has_its_consequences_served() -> None:
     """Six buttons, six different approval authorities and rollback stories.
 
     A client that restated them would be a second copy of a governance rule,
     diverging from this one silently the first time a policy changed — which is
     what the design guide means by not inventing client-only governance gates.
     """
-    accepted = set(curation_cases.DISPOSITIONS)
+    recordable = set(curation_cases.OPERATOR_DISPOSITIONS)
     literal = router_module.RecordDispositionRequest.model_fields["disposition"].annotation
     offered = set(getattr(literal, "__args__", ()))
-    assert offered == accepted, (
-        "the disposition the endpoint accepts and the vocabulary the service knows have diverged; "
-        f"accepted={sorted(accepted)} offered={sorted(offered)}"
+    assert offered == recordable, (
+        "the disposition the endpoint accepts and the vocabulary a person may record have diverged; "
+        f"recordable={sorted(recordable)} offered={sorted(offered)}"
+    )
+
+
+def test_the_operator_surface_does_not_offer_a_disposition_a_service_writes() -> None:
+    """The one exclusion, and why it is not an oversight.
+
+    `migrated_canonical` is written by `MigrationAcceptanceService` after the
+    lot's sample has cleared `require_minimum_sample`. Offering it here would let
+    somebody mark a claim migrated without a lot, without a sample and without
+    the halt — the self-marking batch ADR 0022 refuses, reachable by one POST.
+    """
+    literal = router_module.RecordDispositionRequest.model_fields["disposition"].annotation
+    offered = set(getattr(literal, "__args__", ()))
+
+    assert curation_cases.POLICY_ONLY_DISPOSITIONS, "the exclusion is empty; this test proves nothing"
+    assert offered.isdisjoint(curation_cases.POLICY_ONLY_DISPOSITIONS)
+    # And the two names between them are the whole vocabulary, so a seventh
+    # cannot be added to neither and quietly reach no surface at all.
+    assert set(curation_cases.OPERATOR_DISPOSITIONS) | curation_cases.POLICY_ONLY_DISPOSITIONS == set(
+        curation_cases.DISPOSITIONS
     )
 
 

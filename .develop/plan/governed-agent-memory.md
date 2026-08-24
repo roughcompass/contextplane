@@ -1261,7 +1261,7 @@ Acceptance:
 
 ### E15-T2 — UI contract pin bump for the rename
 
-**Kind:** task · **Status:** deferred — nothing to do · **Blocked by:** E15-T1 · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — closed without a code change; the rename never reached the wire, and the drift gate holds that · **Blocked by:** E15-T1 · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
 
 Goal: one PR updating the vendored contract pin and the regenerated client
 together, per the contract-bump procedure in `contracts/README.md`. No UI code
@@ -3967,7 +3967,7 @@ Acceptance:
 
 ### E3-T3 — The receipt intent commits synchronously; the rest hydrates after
 
-**Kind:** task · **Status:** amended — not built, on a measurement · **Blocked by:** E3-T2 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done — measured, and the measurement says do not build it; E3's body amended, reopen conditions recorded · **Blocked by:** E3-T2 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the synchronous path writes a chained receipt-intent row and returns;
 arms, items and exclusions hydrate asynchronously; receipt-loss RPO is zero.
@@ -7032,7 +7032,7 @@ Acceptance:
 
 ### E12-T3 — The migrated-canonical disposition, and a halt E5 has not defined
 
-**Kind:** task · **Status:** blocked — on a governance decision, now named · **Blocked by:** E12-T4, E12-T5 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done — ADR 0022 decided it, and the sampled audit is E5's halt inherited rather than redefined · **Blocked by:** E12-T4, E12-T5 · **Hotspot:** no · **Repo:** contextplane
 
 **The halt this entry was blocked on now exists**, as E5-T2b, defined where this
 entry said it had to be. Two other blockers took its place, and both were found
@@ -7111,7 +7111,7 @@ Acceptance:
 
 ### E12-T4 — Nothing writes a policy disposition
 
-**Kind:** task · **Status:** blocked — on E12-T5 · **Blocked by:** E12-T5 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done — `MigrationAcceptanceService` is `DISPOSITION_BY_POLICY`'s first caller · **Blocked by:** E12-T5 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a connector run opens curation cases for what it imported and disposes
 them under a stated rule, recorded as `policy` rather than as a person.
@@ -7141,7 +7141,7 @@ Acceptance:
 
 ### E12-T5 — What a migrated claim's disposition commits to
 
-**Kind:** task · **Status:** blocked — on a decision nobody here can make · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done — ADR 0022 · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `migrated_canonical` exists in the disposition vocabulary with its five
 dimensions decided and written down.
@@ -7172,6 +7172,33 @@ migration is allowed to assert about data nobody read.
 
 Acceptance:
     an ADR under `.develop/adr/`, and `make all`
+
+**Decided in ADR 0022, and the deferral above was wrong.** This entry was filed
+saying the answer had to come from outside the repo. It did not, and the reason
+it looked that way is worth keeping: stated as *"a policy decides that unreviewed
+material is canonical"*, it reads as handing a batch job the authority a person
+holds, and refusing it on those terms is right.
+
+That is not what the mechanisms do. `require_minimum_sample` raises unless a
+**person** has inspected the category's floor, and `inspected_dispositions`
+excludes automated disposals — so no amount of automation shortens the sample. A
+migration is a lot, a person inspects its sample, and the policy disposition
+records the same outcome across the uninspected remainder. That is ordinary
+acceptance sampling, and the halt's own docstring says *"E12 inherits this halt"*
+— the consumer was anticipated by name.
+
+Four of the five dimensions then follow from the target being the canonical
+graph and match `propose_canonical` exactly; a migration answering them
+differently would be writing into a second canonical graph. The one that is
+genuinely this disposition's own is the evidence threshold, which is a statement
+about a **lot** rather than about one claim.
+
+**The distinction from E4-T6 is the one that matters.** DORA thresholds are an
+external legal fact no reasoning here produces. What a disposition in *this*
+system's vocabulary commits to is this system's own semantics, and every
+mechanism that constrains the answer was already built and already pointed one
+way. "Blocked on a decision" is not the same as "blocked on somebody else", and
+this entry conflated them.
 
 ### E10-T1 — Quarantine and suspend screens
 
@@ -8110,7 +8137,7 @@ where before it was merely unnoticed.
 
 ### E14-T1 — Every ARC governance object is invisible the moment it is created
 
-**Kind:** task · **Status:** decomposed — the design question is answered; E14-T1a/b/c carry the work · **Blocked by:** none · **Hotspot:** yes — api/routers/, arc/service/ · **Repo:** contextplane
+**Kind:** task · **Status:** done — through E14-T1a, E14-T1b and E14-T1c, all shipped · **Blocked by:** none · **Hotspot:** yes — api/routers/, arc/service/ · **Repo:** contextplane
 
 Goal: the governance objects the ARC admin surface creates can be read back.
 
@@ -9955,19 +9982,28 @@ statements encode a rule that is not in the schema.
 ## What holds after the eighteenth wave, and why
 
 Named on the same convention the section above follows: a wave is the claimable
-frontier and not the scope. What is different this time is the *kind* of thing
-left. Every item below is blocked on a decision, and none is blocked on a read,
-a surface or a mechanism — which is the first time that has been true in this
-file.
+frontier and not the scope.
 
-- **What a migrated claim's disposition commits to** (E12-T5, and E12-T4 and
-  E12-T3 behind it). Five dimensions — approval authority, evidence threshold,
-  scope, supersession, rollback — answering on whose authority material nobody
-  read becomes canonical, and what reverses it. Wants an ADR. Everything
-  downstream of it is buildable the day it is answered, and nothing downstream of
-  it is honest before.
-- **Ratified DORA thresholds** (E4-T6), unchanged: a deadline this system makes
-  loud has to be a deadline somebody outside it agreed to.
+**This list is shorter than its first draft, and the reason is worth keeping.**
+It opened with E12-T5 on it — what a migrated claim's disposition commits to —
+described as needing an answer from outside the repo. That was wrong, and
+re-reading the mechanisms is what showed it: `require_minimum_sample` already
+required a person's inspection, `inspected_dispositions` already excluded
+automated disposals, and the halt's own docstring already named E12 as its
+consumer. Every constraint on the answer was built and every one pointed the same
+way. ADR 0022 records it.
+
+The distinction that entry blurred is the one worth carrying: **"blocked on a
+decision" is not the same as "blocked on somebody else."** A decision about this
+system's own semantics is an ADR waiting to be written. A decision about a legal
+threshold is not.
+
+- **Ratified DORA thresholds** (E4-T6). The only task in this file still
+  blocked, and the only one blocked on something no amount of reasoning here
+  produces. Deadlines stamp at classification time, nothing can classify without
+  the thresholds, and ADR-0015's own dissent is why the clock was not half-built
+  against a placeholder — it would be a mechanism nothing consults, authored
+  deliberately. The useful half was cut out and shipped as E4-T5b.
 - **Whether ADR 0018 gains a fifth exception class.** E23-T7 took the baseline
   from 66 to 28 and stopped at one shape it could not classify: a stable slug
   minted on a create form. It passes the ADR's own test — a list of the slugs
