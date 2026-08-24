@@ -9138,7 +9138,7 @@ Acceptance:
 
 ### E22-T4 — The resource picker, and the check that keeps identifiers out of text boxes
 
-**Kind:** task · **Status:** pending · **Blocked by:** E22-T1 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E22-T1 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: one `ResourcePicker` in `packages/ui` and a lint rule that fails the build on a new free-text identifier field.
 
@@ -9178,7 +9178,7 @@ Acceptance:
 
 ### E22-T6 — The shell stops calling every reader Morgan Morris
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: the header renders the signed-in principal from `whoami`, and the role label stops changing with the route.
 
@@ -9395,7 +9395,7 @@ Two defects the regrouping surfaced, neither predictable from the entry. `AppSid
 
 ### E22-T11 — `/revisions` becomes a revision, and the two endings become actions on it
 
-**Kind:** task · **Status:** pending · **Blocked by:** E22-T8, E22-T10 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E22-T8, E22-T10 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: the reader finds a revision in a list, opens it, sees its state, evidence and what was decided under it, and revokes or invalidates it from there.
 
@@ -9407,9 +9407,17 @@ Acceptance:
     pnpm --filter admin-dashboard test -- -t "revision"
     pnpm lint && pnpm type-check && pnpm test && pnpm build
 
+**Shipped in contextplane-ui#42. Two things the entry could not have known.**
+
+**`resolutions_under_revision` is what turns the argument into a decision.** The entry asked for context and named the acts; the column that changes what somebody does is the count of resolutions the revision is under, which E22-T8 had been returning and nothing rendered. Invalidating says *everything decided under it is now in question* — and the size of that was known to the service and unstated on the screen. Absent renders as "Not counted", never `0`: telling a reader that invalidating costs nothing is a stronger claim than the service made.
+
+**The two `Revision` fields are gone rather than becoming pickers.** The panel renders only once a revision has been chosen from the index, so a text box there would be a second way to name a choice already made — and the one way somebody could name a different revision than the one they are looking at. That is a third disposition ADR 0018 does not enumerate and this screen needed: not *chosen from a list*, but *not asked for at all*.
+
+The argument survives verbatim, as the entry required, and both halves of it are now under test.
+
 ### E22-T12 — Ownership & profiles: eleven identifier fields, one read path
 
-**Kind:** task · **Status:** pending · **Blocked by:** E22-T7, E22-T10 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E22-T7, E22-T10 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: the densest screen in the tree gets the read path the design standard asks for first.
 
@@ -9423,9 +9431,17 @@ Acceptance:
     pnpm --filter admin-dashboard test -- -t "ownership"
     pnpm lint && pnpm type-check && pnpm test && pnpm build
 
+**Shipped in contextplane-ui#42. The entry's third claim was wrong, and that is the finding.**
+
+It says `Profile revision UUID` ×2 and `Target core revision UUID` resolve against `/v1/profiles/revisions`, "which exists". It exists as a **`POST`**. There is no way to list profile revisions, so three of the eleven fields have no read behind them — not because nobody built the UI, but because nobody cut the service read. That is the same shape this file has recorded before: an entry presuming a read that is not there.
+
+Four fields became pickers: two `Owner principal` over E22-T7's actor roster, two `Target` over the catalog. The roster shows the kind with the name and says when nobody has declared a principal, because choosing an owner is a decision about accountability and *"nobody has said what this is"* is a fact the chooser needs.
+
+The remaining five carry their disposition inline — three for the missing list, two for the missing collection — which is what the entry asked for rather than shipping text boxes among pickers and letting the inconsistency read as an oversight.
+
 ### E22-T13 — Sources stop being three forms and become a registry
 
-**Kind:** task · **Status:** pending · **Blocked by:** E22-T5, E22-T10 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E22-T5, E22-T10 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: connectors, upload policies and replay corpora are records with lives — listed, inspected, revoked — and registering one is an action from the list rather than the screen's only content.
 
@@ -9436,6 +9452,14 @@ The corpus digest stays free text under ADR 0018's exception class, annotated wi
 Acceptance:
     pnpm --filter admin-dashboard test -- -t "sources"
     pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**Shipped in contextplane-ui#42.**
+
+The revoke paths were in the committed contract and unreachable from the dashboard, which is another instance of a mechanism built and consulted by nothing. `revokeArcSourceGrant` builds the item path from a kind the caller names, so a call site cannot assemble the collection path — E19-T7's defect, which mints a second record instead of ending one and passes a test that asserts the body but not the path.
+
+**Only two of the six collections get the button**, and that is a decision rather than a gap: approval evidence and verifiers are ended from their own screens, where the argument about what revoking means is already made, and a button on a table that did not carry that argument would be the same act with the warning removed.
+
+The corpus digest stays free text under ADR 0018's exception class, as the entry required, and now says which class — the value the server has not assigned yet, because approving a corpus is the act that first tells Contextplane the digest exists.
 
 ### E22-T14 — The declared instruction set reaches the resolver
 
@@ -9495,7 +9519,7 @@ The shape was chosen against a specific failure the entry did not anticipate. A 
 
 ### E22-T16 — Canon copy, last, and with one more false sentence than E10 knew about
 
-**Kind:** task · **Status:** pending · **Blocked by:** E22-T11, E22-T12, E22-T13 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E22-T11, E22-T12, E22-T13 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: the words the product uses about itself are true and consistent, once the screens they describe exist.
 
@@ -9507,6 +9531,17 @@ What E10-T4 could not have known: the `SourceGovernancePanel` notice is a fourth
 
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**Shipped in contextplane-ui#43. Three instances, all of the third shape, and none of the other two.**
+
+The entry predicted one more false sentence than E10-T4 knew about. There were three, all describing a missing capability the product has:
+
+- **The exception register.** The service's own read calls itself *"the register an exception is supposed to have"* and says an exception "was invisible from the moment it was granted" until it existed. It existed; nothing called it; three files asserted its absence. The register is now the page's first content, ahead of the grant form.
+- **Two sentences on the verifiers screen**, both saying no directory of enrolled verifiers exists — true until E22-T5 built the table on that very page. One told operators to write the identifier down or lose it; the other explained why the revoke field could not be a picker, three commits after it became one.
+
+**Two of the three had passing tests behind them**, which is why the sweep had to read tests: a false claim with a test is one somebody has to argue with rather than notice. Both are inverted rather than deleted, so what replaced each claim is now the thing under test.
+
+**Nothing of the other two shapes survived.** No navigating copy, no naming-collision disclaimers. `Notebooks` diverges from the contract's `workspace` by an explicit E21 decision and needs no apology. Several uses of "immutable" were checked and are accurate, and `AuditPage` already says the audit history is *not* immutable because it is not. `WorkspacesPage`'s "this console does not expose a restore operation" was checked against the contract and is true, so it stays — the standard is about false claims, not about the shape of a sentence.
 
 ## What holds for the eighteenth wave, and why
 
