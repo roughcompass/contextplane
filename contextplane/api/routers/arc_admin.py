@@ -247,6 +247,7 @@ class _Accepted(BaseModel):
     revision_id: uuid.UUID | None = None
     evidence_id: uuid.UUID | None = None
     exception_id: uuid.UUID | None = None
+    binding_id: uuid.UUID | None = None
 
 
 def _translate(exc: Exception) -> Exception:

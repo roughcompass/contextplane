@@ -6905,6 +6905,187 @@
         "title": "EntryUpdateRequest",
         "type": "object"
       },
+      "EnvelopeBindingResponse": {
+        "description": "One binding, as the operating surface reports it.",
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "binding_id": {
+            "format": "uuid",
+            "title": "Binding Id",
+            "type": "string"
+          },
+          "effective_from": {
+            "format": "date-time",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "is_in_force": {
+            "description": "Whether the binding itself is switched on. Says nothing about the revision's lifecycle.",
+            "title": "Is In Force",
+            "type": "boolean"
+          },
+          "principal_issuer": {
+            "title": "Principal Issuer",
+            "type": "string"
+          },
+          "principal_subject": {
+            "title": "Principal Subject",
+            "type": "string"
+          },
+          "revision_id": {
+            "format": "uuid",
+            "title": "Revision Id",
+            "type": "string"
+          },
+          "revision_lifecycle_state": {
+            "description": "The bound revision's own state. A binding is only checked for `active` at grant time, so a live binding to a superseded or revoked governance document is a state this reports rather than hides.",
+            "title": "Revision Lifecycle State",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "suspended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suspended At"
+          },
+          "suspension_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suspension Reason"
+          }
+        },
+        "required": [
+          "binding_id",
+          "revision_id",
+          "artifact_id",
+          "principal_issuer",
+          "principal_subject",
+          "state",
+          "effective_from",
+          "revision_lifecycle_state",
+          "is_in_force"
+        ],
+        "title": "EnvelopeBindingResponse",
+        "type": "object"
+      },
+      "EnvelopeFlipRequest": {
+        "description": "Suspend, reinstate or revoke one binding.",
+        "properties": {
+          "reason": {
+            "description": "Required. A binding switched off with no reason leaves the next reader to work out why an agent stopped being able to act, during the incident where that matters most.",
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "EnvelopeFlipRequest",
+        "type": "object"
+      },
+      "EnvelopeGrantRequest": {
+        "description": "Bind one principal to one envelope revision.",
+        "properties": {
+          "audit_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audit Reference"
+          },
+          "effective_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Defaults to now. Backdating is refused by the service: an envelope cannot be made to have governed a decision it did not.",
+            "title": "Effective From"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "principal_issuer": {
+            "minLength": 1,
+            "title": "Principal Issuer",
+            "type": "string"
+          },
+          "principal_subject": {
+            "minLength": 1,
+            "title": "Principal Subject",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why this principal is being governed by this envelope.",
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "revision_id": {
+            "format": "uuid",
+            "title": "Revision Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision_id",
+          "principal_issuer",
+          "principal_subject",
+          "reason"
+        ],
+        "title": "EnvelopeGrantRequest",
+        "type": "object"
+      },
       "EventResponse": {
         "properties": {
           "body": {
@@ -17976,6 +18157,18 @@
       },
       "_Accepted": {
         "properties": {
+          "binding_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Binding Id"
+          },
           "evidence_id": {
             "anyOf": [
               {
@@ -22427,6 +22620,285 @@
           }
         },
         "summary": "Revoke Approval Verifier",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/envelopes/bindings": {
+      "get": {
+        "description": "The envelope covering one principal, suspended or not.\n\n`null` when no binding covers the instant, which a caller must not read as\n\"suspended\": one is a principal nobody has governed, the other is a posture\nsomebody chose, and collapsing them is what would let an ungoverned agent\nlook controlled.",
+        "operationId": "resolve_envelope_v1_arc_admin_envelopes_bindings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "principal_issuer",
+            "required": true,
+            "schema": {
+              "title": "Principal Issuer",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "principal_subject",
+            "required": true,
+            "schema": {
+              "title": "Principal Subject",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "At"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/EnvelopeBindingResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Resolve Envelope V1 Arc Admin Envelopes Bindings Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Envelope",
+        "tags": [
+          "arc: admin"
+        ]
+      },
+      "post": {
+        "description": "Bind a principal to an envelope revision.",
+        "operationId": "grant_envelope_v1_arc_admin_envelopes_bindings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvelopeGrantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_Accepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Grant Envelope",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/envelopes/bindings/{binding_id}/reinstate": {
+      "post": {
+        "description": "Turn a suspended envelope back on.\n\nAuthorised like a grant rather than like a suspension, which the service\ndecides: putting authority back in force at tenant scope would let a tenant\nadmin undo a deployment operator's suspension of a global envelope.",
+        "operationId": "reinstate_envelope_v1_arc_admin_envelopes_bindings__binding_id__reinstate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "binding_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Binding Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvelopeFlipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_Accepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reinstate Envelope",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/envelopes/bindings/{binding_id}/revoke": {
+      "post": {
+        "description": "End the binding, closing its interval.\n\nNot the same act as suspending. A suspension is a posture somebody can\nreverse; this closes the interval, and the difference is what an auditor\nreading the record afterwards is trying to tell apart.",
+        "operationId": "revoke_envelope_v1_arc_admin_envelopes_bindings__binding_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "binding_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Binding Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvelopeFlipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_Accepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Envelope",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/envelopes/bindings/{binding_id}/suspend": {
+      "post": {
+        "description": "Turn an envelope off without ending it.\n\nThe instant-suspend path. Nothing the principal begins after this commits is\nauthorised by the envelope, on any replica, because no replica holds a copy \u2014\nwhich is what replaced the wall-clock SLO the plan originally carried.",
+        "operationId": "suspend_envelope_v1_arc_admin_envelopes_bindings__binding_id__suspend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "binding_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Binding Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvelopeFlipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_Accepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Suspend Envelope",
         "tags": [
           "arc: admin"
         ]
