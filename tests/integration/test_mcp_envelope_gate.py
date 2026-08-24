@@ -32,7 +32,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from contextplane.api.mcp.context import _request_app, _request_token, _request_x_tenant_id
-from contextplane.api.mcp.server import create_contextplane_mcp_server
+from contextplane.api.mcp.server import core_tool_names, create_contextplane_mcp_server
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,
@@ -216,3 +216,82 @@ async def test_the_envelope_gate_runs_before_the_pii_scan(
             )
         ).scalar_one()
     assert scanned == 0, "the body was scanned for a write the envelope had already refused"
+
+
+# --- the listing, which is the other half of the same decision ----------------
+
+
+async def _listed(gate: _Gate) -> set[str]:
+    """The tool names this connection's principal is shown."""
+    harness, mcp, persona, _ = gate
+    harness.configure_fetcher_for(persona)
+    cv_token = _request_token.set("harness.dummy.jwt")
+    cv_app = _request_app.set(harness.app)
+    cv_tenant = _request_x_tenant_id.set(persona.slug)
+    try:
+        with patch_validator_for_actor(persona):
+            return {tool.name for tool in await mcp.list_tools()}  # type: ignore[attr-defined]
+    finally:
+        _request_x_tenant_id.reset(cv_tenant)
+        _request_app.reset(cv_app)
+        _request_token.reset(cv_token)
+
+
+@pytest.mark.asyncio
+async def test_an_advisory_principal_is_shown_everything(gate: _Gate) -> None:
+    """The rollout bargain again, on the listing.
+
+    A listing that hid verbs in advisory would be a refusal in advisory — on one
+    transport only, which is the hardest version of this to attribute. Every
+    deployment starts here, so if this were wrong it would be wrong everywhere
+    the moment it shipped.
+    """
+    listed = await _listed(gate)
+
+    assert "record_session_event" in listed, "a core verb is missing from an unfiltered listing"
+    assert "assert_claim" in listed, "an extended verb is hidden from an advisory principal"
+
+
+@pytest.mark.asyncio
+async def test_an_enforcing_principal_with_no_envelope_sees_the_core_tier_only(
+    gate: _Gate, factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """The whole of E7-T3 in one assertion.
+
+    Nobody has granted this principal an envelope, so no extended verb is
+    permitted — and it is shown none of them. The eight core verbs remain,
+    because a principal that could not see them could not open the two-call loop
+    at all, and an envelope has no business deciding whether an agent may say
+    who it is.
+    """
+    _, _, _, tenant_id = gate
+    await _graduate(factory, tenant_id)
+
+    listed = await _listed(gate)
+
+    assert listed <= core_tool_names(), (
+        f"an enforcing principal with no envelope was shown {sorted(listed - core_tool_names())}, "
+        "which the extended tier says requires an envelope that names it"
+    )
+    assert "whoami" in listed
+    assert "record_session_event" in listed
+
+
+@pytest.mark.asyncio
+async def test_hiding_a_verb_is_not_what_stops_it_being_called(
+    gate: _Gate, factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """The property that makes the filter safe to have at all.
+
+    A tool hidden from the list and still callable would be obscurity, and
+    FastMCP shares one `_tool_cache` across connections — so the listing could
+    never be the boundary even if it were meant to be. `record_session_event` is
+    *in* the filtered listing above and is still refused here, by the guard
+    E7-T3a put on the call path.
+    """
+    _, _, _, tenant_id = gate
+    await _graduate(factory, tenant_id)
+
+    assert "record_session_event" in await _listed(gate)
+    with pytest.raises(ToolError, match="envelope_absent"):
+        await _record(gate)
