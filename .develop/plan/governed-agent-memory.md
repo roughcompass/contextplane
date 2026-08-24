@@ -9672,7 +9672,7 @@ Three scopes rather than a predicate language: a delta corrects one declared set
 
 ### E23-T3 — The identifier fields whose read already exists
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — shipped in contextplane-ui#44; 66 baselined fields became 47 · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: the ~31 fields that name something already listable stop asking for a UUID.
 
@@ -9690,7 +9690,7 @@ Acceptance:
 
 ### E23-T4 — The identifier fields the new reads unblock
 
-**Kind:** task · **Status:** pending · **Blocked by:** E23-T1 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — shipped in contextplane-ui#46; 47 became 41 · **Blocked by:** E23-T1 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: intent, tenant and receipt fields become pickers over the reads E23-T1 cuts.
 
@@ -9702,7 +9702,7 @@ Acceptance:
 
 ### E23-T5 — Quarantine and suspend screens
 
-**Kind:** task · **Status:** in progress — the service half landed; the screen is contextplane-ui · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui and contextplane
+**Kind:** task · **Status:** done — contextplane#139 routed the four acts, contextplane-ui#45 shipped the screen · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui and contextplane
 
 **Why this had a service half at all, which the entry did not anticipate.**
 E10-T1 recorded that "suspend is the half that remains", and the reason it
@@ -9733,7 +9733,7 @@ Acceptance:
 
 ### E23-T6 — The three surfaces whose internals E22-T10 did not cut
 
-**Kind:** task · **Status:** pending · **Blocked by:** E23-T4 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — shipped in contextplane-ui#47, and it was not the task this entry described · **Blocked by:** E23-T4 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: Served, Judgement and Agents get the reads their questions imply, now that
 the decisions they were waiting on have been taken.
@@ -9747,4 +9747,91 @@ Last because it consumes the other five, and because a surface assembled before
 its fields are pickers is one that has to be revisited when they become pickers.
 
 Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**The reads were already there, and two defects were underneath them.** Grounding
+found E5-T6a's disposition policies consumed by the cockpit, E11-T2's receipts
+explorer complete, and Sessions and Analytics both answering on arrival. What was
+not there was the surface itself, on the destination this wave's predecessor
+created.
+
+**`/memory/review` announced the wrong surface.** It and `/memory` are one page
+and two destinations listed in two different surfaces. `routeDefinitions` maps
+one route to one surface and both addresses resolved to `memory`, whose surface
+is `Sources` — so **Needs review**, under Judgement, told its reader they were in
+Sources. That is precisely the failure the surface slot replaced 21 per-page
+eyebrow strings to prevent, surviving on the one destination E22-T10 created.
+
+**Two nav items claimed to be current at once**, because `AppSidebar`'s prefix
+rule matched both an href and its parent. Longest match wins now, computed across
+sections because the pair that collided was split across two.
+
+**The area switcher was a tablist and is now links.** As buttons it wrote the
+address with `pushState`, which the shell never hears — the mechanism that keeps
+the eyebrow and the navigation agreeing cannot see a navigation it is not told
+about. Two addresses in two surfaces are links, which is also the WAI pattern.
+
+**One false-limitation claim survived the sweep that recorded fixing it.**
+`ExceptionsPage`'s docstring said E22-T16 corrected three files asserting the
+exception register could not exist. It corrected two: the grant panel still told
+an operator to write down a UUID because *"nothing lists exceptions"*, with the
+register rendered above it and a picker below it reading the same endpoint. So
+the record of the sweep was the last false claim standing — the fourth instance
+of this pattern in two waves, and the first where the correction itself was wrong.
+
+### E23-T7 — The fields ADR 0018 does not reach
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: the third row of this epic's own arithmetic — values the server never
+assigned — are annotated with their class and leave the baseline.
+
+**Filed because the epic named this row and no task carried it.** The table above
+gives it ~16 fields and says "annotate and remove from the baseline"; E23-T3 and
+E23-T4 own the other two rows. Four have gone (two verifier principal fields, a
+source event id, and this wave's own envelope subject), so the remainder is what
+is left of 40.
+
+**One field does not fit any of the four classes, and that is a finding rather
+than a gap to paper over.** A stable slug minted on a create form passes ADR
+0018's own test — *would a list of existing values be the right answer, or would
+offering one invert the control?* — because offering the slugs of policies that
+already exist, on the form for naming one that does not, inverts it. But the four
+named classes are `asserted-digest`, `external-locator`, `external-id` and
+`free-prose`, and a slug is none of them.
+
+The ADR anticipates exactly this: *"If it grows past that, the rule is being used
+to justify the status quo rather than to protect a safety property, and this ADR
+is what should be revisited."* So the slug fields are **not** annotated under a
+stretched class. They stay on the baseline, and whether ADR 0018 gains a fifth
+class is a decision for an ADR amendment rather than for a sweep.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E23-T8 — The envelope directory
+
+**Kind:** task · **Status:** pending · **Blocked by:** E23-T5 · **Hotspot:** no · **Repo:** contextplane and contextplane-ui
+
+Goal: an operator can see who is governed, without already knowing their name.
+
+**Filed from E23-T5's own shortfall.** That task gave the autonomy envelope its
+four acts over a transport, and `resolve` answers about a principal the caller
+can already name. Nothing tells them the names. An operator during an incident
+has to already hold the exact `(issuer, subject)` pair of the agent they are
+trying to stop, which is the same as not having the control — the same failure
+ADR 0018 is about, one level up: a surface that presumes the reader arrived
+carrying the answer.
+
+Its own path rather than the resolve route with its parameters made optional. One
+answers "is this agent governed" and the other "who is", and a route returning an
+object or a page depending on which query parameters arrived would be two
+contracts wearing one URL.
+
+Suspended and revoked bindings are in it. "Was this agent ever governed" is a
+question about closed intervals, and a list of only open ones answers "no" where
+the truth is "yes, until Tuesday".
+
+Acceptance:
+    make lint typecheck && make test-coverage && make test-integration
     pnpm lint && pnpm type-check && pnpm test && pnpm build

@@ -6905,6 +6905,35 @@
         "title": "EntryUpdateRequest",
         "type": "object"
       },
+      "EnvelopeBindingPage": {
+        "description": "One page of the directory, with the bookmark for the next.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EnvelopeBindingResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Send back as `cursor` for the next page. Opaque -- it is not a timestamp to compare, decode or store, and treating it as one is how a client starts depending on an ordering nobody promised it.",
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "EnvelopeBindingPage",
+        "type": "object"
+      },
       "EnvelopeBindingResponse": {
         "description": "One binding, as the operating surface reports it.",
         "properties": {
@@ -22737,6 +22766,66 @@
           }
         },
         "summary": "Grant Envelope",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/envelopes/bindings/directory": {
+      "get": {
+        "description": "Who is governed in this tenant, and how.\n\n**The read the operating surface was missing.** `resolve` answers about a\nprincipal the caller can already name; until this, nothing told them the\nnames. An operator during an incident had to already know the exact\n`(issuer, subject)` pair of the agent they were trying to stop, which is the\nsame as not having the control.\n\nA separate path from the single-principal resolve rather than that route\nwith its parameters made optional: one answers \"is this agent governed\" and\nthe other \"who is\", and a route that returned an object or a page depending\non which query parameters arrived would be two contracts wearing one URL.\n\nSuspended and revoked bindings are included. A closed interval is exactly\nwhat an operator asking \"was this agent ever governed\" is looking for.",
+        "operationId": "list_envelope_bindings_v1_arc_admin_envelopes_bindings_directory_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeBindingPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Envelope Bindings",
         "tags": [
           "arc: admin"
         ]

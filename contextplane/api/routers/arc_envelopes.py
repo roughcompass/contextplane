@@ -26,11 +26,12 @@ would belong together at any file length.
 
 from __future__ import annotations
 
+import base64
 import datetime
 import uuid
-from typing import Annotated
+from typing import Annotated, Any, cast
 
-from fastapi import APIRouter, Depends, Path, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 from pydantic import BaseModel, Field
 
 from contextplane.api.container import Services
@@ -198,6 +199,106 @@ async def revoke_envelope(
     return _Accepted(status="revoked", binding_id=binding_id)
 
 
+class EnvelopeBindingPage(BaseModel):
+    """One page of the directory, with the bookmark for the next."""
+
+    items: list[EnvelopeBindingResponse]
+    next_cursor: str | None = Field(
+        default=None,
+        description=(
+            "Send back as `cursor` for the next page. Opaque -- it is not a timestamp to "
+            "compare, decode or store, and treating it as one is how a client starts "
+            "depending on an ordering nobody promised it."
+        ),
+    )
+
+
+def _encode_cursor(effective_from: datetime.datetime, binding_id: uuid.UUID) -> str:
+    return base64.urlsafe_b64encode(f"{effective_from.isoformat()}|{binding_id}".encode()).decode()
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime.datetime, uuid.UUID]:
+    """A malformed cursor is the caller's fault, and says only that.
+
+    No detail on which half failed: a cursor is this service's own bookmark, and
+    a caller constructing one is already outside the contract.
+    """
+    try:
+        raw = base64.urlsafe_b64decode(cursor.encode()).decode()
+        stamp, _, identifier = raw.partition("|")
+        return datetime.datetime.fromisoformat(stamp), uuid.UUID(identifier)
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise build_error(
+            status.HTTP_400_BAD_REQUEST,
+            code="invalid_cursor",
+            message="cursor is not one this service issued",
+        ) from exc
+
+
+def _binding_response(found: object) -> EnvelopeBindingResponse:
+    """One mapper, so the directory and the resolve read cannot disagree.
+
+    Two copies would be two chances for a field to appear on one and not the
+    other, and `revision_lifecycle_state` is the one that matters: a list that
+    dropped it would show a row as governed while the document behind it is not.
+    """
+    binding = cast(Any, found)
+    return EnvelopeBindingResponse(
+        artifact_id=binding.artifact_id,
+        binding_id=binding.binding_id,
+        effective_from=binding.effective_from,
+        effective_to=binding.effective_to,
+        is_in_force=binding.is_in_force,
+        principal_issuer=binding.principal.issuer,
+        principal_subject=binding.principal.subject,
+        revision_id=binding.revision_id,
+        revision_lifecycle_state=binding.revision_lifecycle_state,
+        state=binding.state,
+        suspended_at=binding.suspended_at,
+        suspension_reason=binding.suspension_reason,
+    )
+
+
+@router.get("/envelopes/bindings/directory", response_model=EnvelopeBindingPage)
+async def list_envelope_bindings(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    cursor: str | None = None,
+    limit: int = 50,
+) -> EnvelopeBindingPage:
+    """Who is governed in this tenant, and how.
+
+    **The read the operating surface was missing.** `resolve` answers about a
+    principal the caller can already name; until this, nothing told them the
+    names. An operator during an incident had to already know the exact
+    `(issuer, subject)` pair of the agent they were trying to stop, which is the
+    same as not having the control.
+
+    A separate path from the single-principal resolve rather than that route
+    with its parameters made optional: one answers "is this agent governed" and
+    the other "who is", and a route that returned an object or a page depending
+    on which query parameters arrived would be two contracts wearing one URL.
+
+    Suspended and revoked bindings are included. A closed interval is exactly
+    what an operator asking "was this agent ever governed" is looking for.
+    """
+    arc_ctx = _arc_context(request, ctx)
+    try:
+        page, next_cursor = await _envelopes(request).list_bindings(
+            arc_ctx,
+            cursor=None if cursor is None else _decode_cursor(cursor),
+            limit=limit,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _translate(exc) from exc
+    return EnvelopeBindingPage(
+        items=[_binding_response(binding) for binding in page],
+        next_cursor=None if next_cursor is None else _encode_cursor(*next_cursor),
+    )
+
+
 @router.get("/envelopes/bindings", response_model=EnvelopeBindingResponse | None)
 async def resolve_envelope(
     request: Request,
@@ -222,22 +323,7 @@ async def resolve_envelope(
         )
     except Exception as exc:
         raise _translate(exc) from exc
-    if found is None:
-        return None
-    return EnvelopeBindingResponse(
-        artifact_id=found.artifact_id,
-        binding_id=found.binding_id,
-        effective_from=found.effective_from,
-        effective_to=found.effective_to,
-        is_in_force=found.is_in_force,
-        principal_issuer=found.principal.issuer,
-        principal_subject=found.principal.subject,
-        revision_id=found.revision_id,
-        revision_lifecycle_state=found.revision_lifecycle_state,
-        state=found.state,
-        suspended_at=found.suspended_at,
-        suspension_reason=found.suspension_reason,
-    )
+    return None if found is None else _binding_response(found)
 
 
 __all__ = ["router"]

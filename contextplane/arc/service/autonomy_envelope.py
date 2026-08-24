@@ -81,6 +81,7 @@ from sqlalchemy.sql.elements import TextClause
 
 from contextplane.arc.service import audit_outbox
 from contextplane.arc.service.authorization import ArcAuthorizationService, ArtifactScope
+from contextplane.arc.service.queries import autonomy_envelope as queries
 from contextplane.arc.types import ArcRequestContext, AuthorityScope
 from contextplane.audit import actions
 from contextplane.exceptions import NotFoundError, RegistryError, ValidationError
@@ -234,104 +235,6 @@ class BoundEnvelope:
         return self.state == "active"
 
 
-_INSERT = text(
-    """
-    INSERT INTO arc_autonomy_envelope_bindings (
-        binding_id, tenant_id, revision_id, artifact_id, artifact_kind,
-        principal_issuer, principal_subject, state,
-        effective_from, effective_to, actor, reason, audit_reference, recorded_at
-    )
-    VALUES (
-        :binding_id, :tenant_id, :revision_id, :artifact_id, 'policy',
-        :issuer, :subject, 'active',
-        :effective_from, :effective_to, :actor, :reason, :audit_reference, :recorded_at
-    )
-    """
-)
-
-#: The revision, its artifact, the artifact's kind and the revision's lifecycle
-#: state in one read. `kind` and `lifecycle_state` are selected rather than
-#: filtered on so a caller pointing at a `runbook` or a draft is told which it
-#: is, instead of being told the revision does not exist.
-_LOAD_REVISION = text(
-    """
-    SELECT r.artifact_id, r.lifecycle_state, a.kind, a.tenant_id,
-           v.risk_classification
-    FROM arc_revisions AS r
-    JOIN arc_artifacts AS a ON a.artifact_id = r.artifact_id
-    LEFT JOIN arc_authoring_proposal_versions AS v ON v.revision_id = r.revision_id
-    WHERE r.revision_id = :revision_id
-    """
-)
-
-#: The hot read.
-#:
-#: **Active beats suspended, and only then does later beat earlier.** The
-#: exclusion constraint forbids two `active` rows covering one instant, so there
-#: is at most one to prefer -- but a suspended binding and the replacement
-#: granted over the same window both cover `now`, which is exactly what the
-#: widen path produces. Ordering by recency alone picks between them by
-#: whichever happens to sort first, and a suspended envelope winning that tie
-#: would leave a principal reading as suspended immediately after being
-#: regranted. A suspended row is still returned when it is the only candidate,
-#: because "suspended" and "never governed" are different answers.
-_RESOLVE = text(
-    """
-    SELECT b.binding_id, b.revision_id, b.artifact_id, b.principal_issuer, b.principal_subject,
-           b.state, b.effective_from, b.effective_to, b.suspended_at, b.suspension_reason,
-           r.lifecycle_state AS revision_lifecycle_state
-    FROM arc_autonomy_envelope_bindings AS b
-    JOIN arc_revisions AS r ON r.revision_id = b.revision_id
-    WHERE b.tenant_id = :tenant_id
-      AND b.principal_issuer = :issuer
-      AND b.principal_subject = :subject
-      AND b.effective_from <= :at
-      AND (b.effective_to IS NULL OR b.effective_to > :at)
-    ORDER BY (b.state = 'active') DESC, b.effective_from DESC, b.recorded_at DESC
-    LIMIT 1
-    """
-)
-
-#: Both flips also require the interval to still be open. Without that, a
-#: revoked binding -- interval closed, `state` still whatever it was -- could be
-#: suspended and then reinstated, leaving a row reading `active` with
-#: `effective_to` in the past and an audit event claiming authority was restored
-#: when `resolve` returns nothing. The state and the interval are two halves of
-#: one lifecycle, and only the CHECK constraints tie `state` to the suspension
-#: columns; nothing in the schema ties it to the interval.
-_SUSPEND = text(
-    """
-    UPDATE arc_autonomy_envelope_bindings
-    SET state = 'suspended', suspended_at = :now, suspension_reason = :reason
-    WHERE binding_id = :binding_id AND tenant_id = :tenant_id AND state = 'active'
-      AND (effective_to IS NULL OR effective_to > :now)
-    """
-)
-
-_REINSTATE = text(
-    """
-    UPDATE arc_autonomy_envelope_bindings
-    SET state = 'active', suspended_at = NULL, suspension_reason = NULL
-    WHERE binding_id = :binding_id AND tenant_id = :tenant_id AND state = 'suspended'
-      AND (effective_to IS NULL OR effective_to > :now)
-    """
-)
-
-#: `GREATEST` so a binding revoked before it ever took effect -- granted and
-#: withdrawn in the same instant, or future-dated and cancelled first -- closes
-#: to an empty interval rather than an inverted one. Empty is the true record:
-#: it was in force for no time. Inverted is not a state the table should hold,
-#: and the interval CHECK refuses it.
-_REVOKE = text(
-    """
-    UPDATE arc_autonomy_envelope_bindings
-    SET effective_to = GREATEST(:now, effective_from)
-    WHERE binding_id = :binding_id AND tenant_id = :tenant_id
-      AND (effective_to IS NULL OR effective_to > :now)
-    """
-)
-
-
 class AutonomyEnvelopeService:
     """Grants, suspends, reinstates, revokes and resolves envelope bindings."""
 
@@ -370,7 +273,7 @@ class AutonomyEnvelopeService:
             artifact_id = await self._assert_envelope_revision(session, ctx, grant.revision_id, require_active=True)
             try:
                 await session.execute(
-                    _INSERT,
+                    queries.INSERT,
                     {
                         "binding_id": binding_id,
                         "tenant_id": ctx.tenant_id,
@@ -422,7 +325,7 @@ class AutonomyEnvelopeService:
         await self._flip(
             ctx,
             binding_id,
-            statement=_SUSPEND,
+            statement=queries.SUSPEND,
             reason=reason,
             event_type=actions.ARC_ENVELOPE_SUSPENDED,
             absent="no active envelope binding",
@@ -439,7 +342,7 @@ class AutonomyEnvelopeService:
         await self._flip(
             ctx,
             binding_id,
-            statement=_REINSTATE,
+            statement=queries.REINSTATE,
             reason=reason,
             event_type=actions.ARC_ENVELOPE_REINSTATED,
             absent="no suspended envelope binding",
@@ -457,7 +360,7 @@ class AutonomyEnvelopeService:
         await self._flip(
             ctx,
             binding_id,
-            statement=_REVOKE,
+            statement=queries.REVOKE,
             reason=reason,
             event_type=actions.ARC_ENVELOPE_REVOKED,
             absent="no open envelope binding",
@@ -484,7 +387,7 @@ class AutonomyEnvelopeService:
         async with self._session_factory() as session:
             row = (
                 await session.execute(
-                    _RESOLVE,
+                    queries.RESOLVE,
                     {
                         "tenant_id": ctx.tenant_id,
                         "issuer": principal.issuer,
@@ -507,6 +410,64 @@ class AutonomyEnvelopeService:
             suspension_reason=row.suspension_reason,
             revision_lifecycle_state=row.revision_lifecycle_state,
         )
+
+    async def list_bindings(
+        self,
+        ctx: ArcRequestContext,
+        *,
+        cursor: tuple[datetime.datetime, uuid.UUID] | None = None,
+        limit: int = 50,
+    ) -> tuple[list[BoundEnvelope], tuple[datetime.datetime, uuid.UUID] | None]:
+        """Every envelope binding this tenant holds, newest interval first.
+
+        **Why a directory exists at all.** `resolve` answers about a principal
+        the caller can already name, and until this read there was no way to
+        learn the names -- so the operating surface could only be used by
+        somebody who already knew the `(issuer, subject)` pair of the agent they
+        were trying to stop. During an incident that is the same as not having
+        the control.
+
+        Tenant-scoped through the same chokepoint as every other read here, and
+        unfiltered by state: suspended and revoked bindings are what an operator
+        asking "what happened to this agent" is looking for.
+        """
+        self._authorization.assert_request_tenant(ctx)
+        bounded = max(1, min(limit, queries.MAX_BINDING_PAGE))
+        async with self._session_factory() as session:
+            rows = (
+                await session.execute(
+                    queries.LIST,
+                    {
+                        "tenant_id": ctx.tenant_id,
+                        "cursor_from": None if cursor is None else cursor[0],
+                        "cursor_id": None if cursor is None else cursor[1],
+                        # One more than asked for, so "is there another page" is
+                        # answered by what came back rather than by a second
+                        # count query racing the first.
+                        "limit": bounded + 1,
+                    },
+                )
+            ).all()
+
+        page = [
+            BoundEnvelope(
+                artifact_id=row.artifact_id,
+                binding_id=row.binding_id,
+                effective_from=row.effective_from,
+                effective_to=row.effective_to,
+                principal=WorkloadIdentity(issuer=row.principal_issuer, subject=row.principal_subject),
+                revision_id=row.revision_id,
+                revision_lifecycle_state=row.revision_lifecycle_state,
+                state=row.state,
+                suspended_at=row.suspended_at,
+                suspension_reason=row.suspension_reason,
+            )
+            for row in rows[:bounded]
+        ]
+        if len(rows) <= bounded or not page:
+            return page, None
+        last = page[-1]
+        return page, (last.effective_from, last.binding_id)
 
     # -- internals ------------------------------------------------------------
 
@@ -534,7 +495,7 @@ class AutonomyEnvelopeService:
         global envelope and grant deployment-wide authority with a tenant admin
         role.
         """
-        row = (await session.execute(_LOAD_REVISION, {"revision_id": revision_id})).first()
+        row = (await session.execute(queries.LOAD_REVISION, {"revision_id": revision_id})).first()
         if row is None:
             msg = f"revision {revision_id} not found"
             raise NotFoundError(msg)

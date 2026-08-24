@@ -72,6 +72,7 @@ async def _get(surface: dict[str, Any], path: str) -> httpx.Response:
         ("POST", "/v1/arc/admin/envelopes/bindings/{binding}/reinstate"),
         ("POST", "/v1/arc/admin/envelopes/bindings/{binding}/revoke"),
         ("GET", "/v1/arc/admin/envelopes/bindings"),
+        ("GET", "/v1/arc/admin/envelopes/bindings/directory"),
     ],
 )
 def test_every_envelope_act_is_mounted(method: str, path: str) -> None:
@@ -130,6 +131,38 @@ async def test_resolving_an_ungoverned_principal_answers_null_rather_than_suspen
 
     assert response.status_code == 200, response.text
     assert response.json() is None
+
+
+@pytest.mark.asyncio
+async def test_the_directory_answers_a_page_rather_than_an_object(
+    surface: dict[str, Any],
+) -> None:
+    """Its own path, not the resolve route with optional parameters.
+
+    One answers "is this agent governed" and the other "who is". A route that
+    returned an object or a page depending on which query parameters arrived
+    would be two contracts wearing one URL, and a client would branch on the
+    shape it happened to get.
+    """
+    response = await _get(surface, "/v1/arc/admin/envelopes/bindings/directory")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["items"] == []
+    assert body["next_cursor"] is None
+
+
+@pytest.mark.asyncio
+async def test_a_cursor_this_service_did_not_issue_is_refused(surface: dict[str, Any]) -> None:
+    """Not a 500, and not silently treated as the first page.
+
+    Starting over on a bad bookmark is the failure mode that matters: an
+    operator paging a directory during an incident would silently re-read rows
+    they had already cleared and believe they had reached the end.
+    """
+    response = await _get(surface, "/v1/arc/admin/envelopes/bindings/directory?cursor=not-a-cursor")
+
+    assert response.status_code == 400, response.text
 
 
 @pytest.mark.asyncio
