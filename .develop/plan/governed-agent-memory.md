@@ -4491,7 +4491,7 @@ re-grant-after-revoke. That is E7-T5, below.
 
 ### E7-T5 — Participation is one-shot per actor, and fails as a 500
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done — already shipped; this entry was the thing left behind · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: an actor who was granted, revoked, and granted again gets participation
 back, and no reachable input produces an unhandled `IntegrityError`.
@@ -4521,6 +4521,36 @@ constraint violation into a 500.
 Acceptance:
     .venv/bin/python -m pytest tests/integration/test_intent_memory_surfaces.py -q
     make all
+
+**Already done, and the entry is what was stale.** Migration
+`0070_grant_temporal_exclusion.py` names E7-T5 in its own docstring; both
+adapters catch `ConflictError`, the REST one with a comment saying *"Before
+E7-T5 it was neither — the constraint violation reached the caller as a 500."*
+Verified rather than taken on trust: 82 participation and audience integration
+tests pass, and the grant → revoke → grant sequence is exercised.
+
+**The implementation took a third option this entry did not offer, and it is
+better than either.** The two shapes here were "re-grant reactivates the row"
+(loses history) and "expiry joins the uniqueness key" (keeps history, but every
+audience read has to remember to ignore dead rows — *"a missed predicate is a
+revoked participant who can still read"*).
+
+What shipped is a **temporal exclusion constraint**: rows accumulate, so the
+history is kept, and the database guarantees at most one window contains any
+instant — so a read narrowed to a moment is single-valued *by construction*
+rather than by every predicate remembering. The cost that made option two
+unattractive is the cost the exclusion removes.
+
+Worth keeping as a pattern: when a choice is between losing history and
+policing a predicate everywhere, a constraint that makes the predicate
+unnecessary is the third answer, and Postgres has one.
+
+**And a process note.** The work landed and the entry did not move, so the plan
+carried a live 500 as outstanding against code that had already fixed it. Two
+tasks this session have now turned out to be already-done-but-unrecorded
+(E5-T3's status and this one). Both were caught by picking the task up and
+reading the code first — which is the argument for doing that before writing
+anything, rather than after.
 
 ### E7-T3 — The full surface is opt-in, per envelope
 
