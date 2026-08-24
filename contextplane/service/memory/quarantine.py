@@ -43,7 +43,12 @@ from contextplane.types import Clock, TenantContext, TraversalResult
 #: Who may quarantine. The same bar the curation actions set, and for the same
 #: reason: withholding content other people are relying on is a decision, not
 #: something a machine's own evidence implies.
-_OPERATOR_ROLES: Final[frozenset[str]] = frozenset({"producer", "admin"})
+#:
+#: Public because `quarantine_evidence.py` derives its export roles from it.
+#: That coupling is deliberate: whoever may withhold content must be able to
+#: read back what they withheld, so a role added here should gain the export
+#: rather than have to be remembered in a second place.
+OPERATOR_ROLES: Final[frozenset[str]] = frozenset({"producer", "admin"})
 
 #: The provenance dimensions a quarantine may select on, and the only ones.
 #:
@@ -400,7 +405,7 @@ class QuarantineService:
 
     @staticmethod
     def _require_operator(ctx: TenantContext) -> None:
-        if not (set(ctx.roles) & _OPERATOR_ROLES):
+        if not (set(ctx.roles) & OPERATOR_ROLES):
             raise PermissionError("quarantining claims requires the producer or admin role")
 
     @staticmethod

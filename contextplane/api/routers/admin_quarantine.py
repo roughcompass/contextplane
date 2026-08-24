@@ -35,14 +35,16 @@ which transport called it.
 
 from __future__ import annotations
 
+import datetime
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, Request
 from pydantic import BaseModel, Field
 
 from contextplane.api.container import Services
 from contextplane.api.errors import map_catalog_error
+from contextplane.api.middleware.tenant import get_tenant_context
 from contextplane.api.routers._admin_common import _admin_required
 from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.service.memory.quarantine import SELECTORS
@@ -184,3 +186,81 @@ async def revert_quarantine(
     except (ConflictError, NotFoundError) as exc:
         raise map_catalog_error(exc) from exc
     return QuarantineRevertResponse(quarantine_id=quarantine_id, restored_count=restored)
+
+
+class WithheldReceiptResponse(BaseModel):
+    """One receipt this quarantine withheld, and when."""
+
+    receipt_id: uuid.UUID
+    withheld_at: datetime.datetime
+
+
+class QuarantineEvidenceResponse(BaseModel):
+    """Everything recorded about one quarantine, as one document.
+
+    `matched_count` is the ledger's figure from apply time and `members` is the
+    recorded set; both are returned rather than one derived from the other,
+    because if they ever disagree that disagreement is the finding and a bundle
+    that computed one from the other could not show it.
+
+    `members` carries ids and not claim content, deliberately. This export says
+    *which* claims were withheld, not *what they said* — serving the withheld
+    content back through a new surface would be a way around the withholding.
+    """
+
+    quarantine_id: uuid.UUID
+    predicate: dict[str, Any]
+    reason: str
+    matched_count: int
+    applied_by: uuid.UUID
+    applied_at: datetime.datetime
+    reverted_by: uuid.UUID | None
+    reverted_at: datetime.datetime | None
+    is_reverted: bool
+    members: list[uuid.UUID]
+    withheld_receipts: list[WithheldReceiptResponse]
+    provenance: str = Field(
+        description="What this document evidences, stated in the document because it travels away from this API."
+    )
+
+
+@router.get("/claim-quarantines/{quarantine_id}:evidence", response_model=QuarantineEvidenceResponse)
+async def export_quarantine_evidence(
+    request: Request,
+    quarantine_id: Annotated[uuid.UUID, Path()],
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> QuarantineEvidenceResponse:
+    """One quarantine's ledger row, recorded members, and withheld receipts.
+
+    Guarded in the service rather than here, because the roles differ from the
+    rest of this router: an auditor may export but may not withhold, so the
+    route admits any tenant context and `QuarantineEvidenceService` refuses
+    anything outside its own `EVIDENCE_ROLES` with a `403`. Putting that check in a
+    dependency would leave it out of the MCP transport, which is where a
+    router-only guard always goes missing.
+
+    A reverted quarantine still exports. The ledger keeps its row and its
+    members after revert by design, and the period during which content was
+    withheld is exactly what somebody asking for this document is asking about.
+    """
+    try:
+        bundle = await _services(request).quarantine_evidence.bundle_for(ctx, quarantine_id=quarantine_id)
+    except NotFoundError as exc:
+        raise map_catalog_error(exc) from exc
+    return QuarantineEvidenceResponse(
+        quarantine_id=bundle.quarantine_id,
+        predicate=bundle.predicate,
+        reason=bundle.reason,
+        matched_count=bundle.matched_count,
+        applied_by=bundle.applied_by,
+        applied_at=bundle.applied_at,
+        reverted_by=bundle.reverted_by,
+        reverted_at=bundle.reverted_at,
+        is_reverted=bundle.is_reverted,
+        members=list(bundle.members),
+        withheld_receipts=[
+            WithheldReceiptResponse(receipt_id=r.receipt_id, withheld_at=r.withheld_at)
+            for r in bundle.withheld_receipts
+        ],
+        provenance=bundle.provenance,
+    )

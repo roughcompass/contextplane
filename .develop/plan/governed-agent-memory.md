@@ -5200,6 +5200,28 @@ what somebody would say while building the wrong thing.
 
 **Kind:** task · **Status:** blocked — on a decision nobody here can make · **Blocked by:** E4-T5, E4-T5b, ratified DORA thresholds · **Hotspot:** no · **Repo:** contextplane
 
+Goal: classification-as-major stamps initial, intermediate and final deadlines
+on the incident case, and their approach and breach are visible without anybody
+asking.
+
+Three deadlines, stamped as distinct instants at classification time rather than
+computed on read. Computed deadlines drift when the classification timestamp is
+corrected, and "when was this due" is precisely the question an audit asks.
+
+The case machinery exists: `CASE_OPEN`/`CASE_ROUTED`/`CASE_RESOLVED`, with a
+disposition recording its approver at disposition time — the same discipline
+this needs.
+
+**At-risk escalation is a gauge, not a log line**, and ADR-0012's assumption 2
+is the precedent: a scheduled job that silently stops turns a deadline into
+"whenever somebody looks". Anchor age was the analogous case there. Deadline
+state must be observable when nothing is happening, because nothing happening is
+the failure.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "incident or deadline"
+    make all
+
 **Picked up, and stopped before writing code. ADR-0015's own dissent is why:**
 
 > *"Without thresholds there is no clock, without a clock there are no deadlines,
@@ -5327,30 +5349,6 @@ Filed so it stops being nobody's.
 Acceptance:
     make all
 
-
-
-Goal: classification-as-major stamps initial, intermediate and final deadlines
-on the incident case, and their approach and breach are visible without anybody
-asking.
-
-Three deadlines, stamped as distinct instants at classification time rather than
-computed on read. Computed deadlines drift when the classification timestamp is
-corrected, and "when was this due" is precisely the question an audit asks.
-
-The case machinery exists: `CASE_OPEN`/`CASE_ROUTED`/`CASE_RESOLVED`, with a
-disposition recording its approver at disposition time — the same discipline
-this needs.
-
-**At-risk escalation is a gauge, not a log line**, and ADR-0012's assumption 2
-is the precedent: a scheduled job that silently stops turns a deadline into
-"whenever somebody looks". Anchor age was the analogous case there. Deadline
-state must be observable when nothing is happening, because nothing happening is
-the failure.
-
-Acceptance:
-    .venv/bin/python -m pytest tests/integration -q -k "incident or deadline"
-    make all
-
 **Shipped with an empty allowlist, which is the part worth noting.** Nothing on
 the scanned surfaces violated it, so every entry that ever appears in
 `ALLOWLIST` will be a decision somebody wrote a reason for rather than debt
@@ -5369,7 +5367,27 @@ nothing uses.
 
 ### E4-T7 — Evidence-bundle export, scoped to one case
 
-**Kind:** task · **Status:** pending · **Blocked by:** E4-T6 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** blocked — and the blocker is not the one recorded · **Blocked by:** E4-T6, an obligation→subject reference nothing shipped · **Hotspot:** no · **Repo:** contextplane
+
+**Picked up, and the buildable half is cut out as E4-T7b rather than smuggled in
+here.** E4-T6 sets that discipline explicitly — the useful part of a blocked
+entry becomes its own task — and this entry is the second time it applies.
+
+**The second blocker was found by grounding and is the real one.**
+`reporting_obligations` (migration 0076) carries **no reference column to
+anything**: its `summary` is free text precisely so an obligation can be
+nominated before anybody knows which record it concerns. So a bundle scoped to
+an obligation would contain the four fields
+`GET /v1/admin/reporting-obligations/{id}` already returns and no evidence at
+all — a compliance-shaped rename, which is the failure mode this plan keeps
+catching. ADR-0015's Consequences say an obligation *may reference an incident*;
+nothing implemented that, and no task covered it. **That is the third time an
+ADR's Consequences named an artefact nobody filed** (E5-T1b and E4-T5b were the
+first two), so it is recorded here as a blocker rather than discovered again.
+
+What remains for this entry once both blockers clear: an obligation-scoped
+bundle that reaches evidence *through* the reference, of which E4-T7b's
+quarantine export is one member.
 
 Goal: everything a regulator asks for about one incident, exported as one
 bundle, with the scope enforced rather than described.
@@ -5393,6 +5411,62 @@ says why, and says it expecting this task to be where somebody is tempted.
 
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "evidence_bundle"
+
+### E4-T7b — The evidence export that needs no classification
+
+**Kind:** task · **Status:** done · **Blocked by:** E4-T2 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: everything recorded about one quarantine, exported as one bundle, with the
+scope enforced by the query and checked on the boundary.
+
+Carved out of E4-T7 the way E4-T5b was carved out of E4-T6, and the test for
+whether that is honest rather than eager is the one E4-T6's entry sets: does the
+result get consulted, or is it a mechanism awaiting a consumer? **This is the
+first read surface over the quarantine ledger at all.** Nothing in the tree
+selected from `claim_quarantines` outside the write path's own apply and revert
+statements, and `admin_quarantine.py` had `:preview`, `POST` and `:revert` and
+no way to ask what any of them did. An operator answering "what did you withhold
+and why" had the answer in the database and no route to it.
+
+**Scoped by `quarantine_id`, and that is the finding.** E4-T7 says "one case",
+and the case object that actually holds evidence here is the quarantine ledger:
+`claim_quarantines` records the predicate, the matched count, the reason, and
+both actors with both instants — its own migration says the ledger exists
+because a boolean *"would forget when, by whom, and under which predicate, and
+all three are what an incident review asks for first."*
+
+**Two boundary tests, because neither failure is visible in the output.**
+`claim_quarantine_members` has no `tenant_id`, so a members read keyed on
+`quarantine_id` alone is correct for every well-behaved caller and serves
+another tenant's recorded set to anybody who guesses a UUID; the isolation is a
+join, and only a second tenant seeded alongside distinguishes the two
+implementations. In the other direction, a **reverted** quarantine still
+exports: the ledger keeps its row and its members by design, and a filter on
+what is currently withheld would omit exactly the period being asked about.
+
+**The bundle says which claims were withheld, not what they said.** Members are
+ids. Serving withheld content back through a new export would be a route around
+the withholding, which is the one thing the mechanism exists to do — and it
+keeps this module off the claim-content path entirely.
+
+**No tamper-evidence claim, and the honest statement is stronger than E4-T7's
+caution.** ADR-0012's digest chains are on `arc_receipt_events` and
+`arc_operational_event_heads`; neither `claim_quarantines` nor `context_receipts`
+carries a digest column, so none of these rows sits on either chain. Not merely
+bounded-exposure tamper-evidence — unavailable. `BUNDLE_PROVENANCE` says so in
+the document, as a field, because an exported document travels away from every
+docstring explaining it. The banned word is checked over the served strings
+rather than the source, so the module can still name the prohibition in order to
+state it.
+
+`matched_count` and `members` are both returned rather than one derived from the
+other: they should always agree, and if they ever do not, that disagreement is
+the finding.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "quarantine_evidence"
+    make all
+
 ## Task decomposition — eleventh wave (E13, whose headline target E7 already met)
 
 E13 is measured against three tracked metrics, and grounding them first changes
