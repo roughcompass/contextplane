@@ -79,6 +79,7 @@ from contextplane.arc.service.shadow import ShadowService
 from contextplane.arc.service.signing import KeyRecord, ReceiptSigningProvider
 from contextplane.arc.service.source_admission import SourceAdmissionService
 from contextplane.arc.service.source_admission_graph import GraphPromotionAdmissionService
+from contextplane.arc.service.source_grants import SourceGrantService
 from contextplane.arc.service.source_status import SourceStatusService
 from contextplane.arc.service.submission import ArtifactMaterialisationService
 from contextplane.arc.service.verifier_registry import VerifierRegistry
@@ -97,6 +98,7 @@ class ArcServices:
     """
 
     arc_governance_reads: GovernanceReadService
+    arc_source_grants: SourceGrantService
 
     arc_signing: ReceiptSigningProvider
     arc_authorization: ArcAuthorizationService
@@ -423,6 +425,7 @@ def build_arc_services(
 
     return ArcServices(
         arc_governance_reads=GovernanceReadService(session_factory, clock=clock),
+        arc_source_grants=SourceGrantService(session_factory, clock=clock, authorization=authorization),
         arc_signing=signing,
         arc_authorization=authorization,
         arc_receipts=receipts,

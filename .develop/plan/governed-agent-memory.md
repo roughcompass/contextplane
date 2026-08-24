@@ -7352,7 +7352,7 @@ Acceptance:
 
 ### E14-T2 — A source connector cannot be withdrawn
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — arc/service/, storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — arc/service/, storage/migrations/ · **Repo:** contextplane
 
 Goal: a connector or upload policy registered in error can be stopped.
 
@@ -7382,6 +7382,36 @@ what happened.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "connector and revoke"
     make all
+
+**Shipped. The entry's one deliberate decision: a withdrawal reaches forward
+only.**
+
+Material already admitted through a revoked connector stays admitted, because it
+*was* validly admitted — the grant was in force at the time, and rewriting that
+would make the record describe a history that did not happen. `revoked_at` is
+what lets an auditor place any admission on one side of it or the other. That is
+the move a tombstoned revision and a withheld receipt both already make: say
+"this was fine then and is not now" without editing the past.
+
+The refusal sits **before** the scope and verifier checks in the admission path,
+because a withdrawn connector is not a permission question — it grants nothing
+to anybody, and reporting it as a scope failure would send an operator to look
+at the wrong thing.
+
+Attributed, with the floor in the CHECK rather than trusted to the service: the
+three columns are set together or not at all, and a reason under twenty
+characters is refused by the database. A withdrawal nobody is accountable for is
+the kind that gets discovered rather than reviewed. A second withdrawal is
+refused rather than overwriting — the first decision and the first reason are
+the ones somebody acted on.
+
+**Two splits the ceiling forced, both on real seams.** `SourceGrantService` now
+owns the grant lifecycle apart from the path that *uses* a grant — registering
+is an operator action on configuration, admitting is a runtime action — and the
+withdrawal routes are their own router. The registrations stay in `arc_admin.py`
+because they go through `HttpMethodRouter`'s mode contract, which a move would
+have to carry intact; that asymmetry is named in the new module rather than left
+for a reader to notice.
 
 ### E3-T6 — `discard` leaves the claim's vectors in the index
 

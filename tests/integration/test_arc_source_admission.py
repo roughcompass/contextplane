@@ -33,6 +33,7 @@ from contextplane.arc.service.source_admission import (
     UploadAdmission,
     UploadPolicyRegistration,
 )
+from contextplane.arc.service.source_grants import SourceGrantService
 from contextplane.arc.types import ArcRequestContext
 from contextplane.exceptions import NotFoundError
 from contextplane.types import TenantContext
@@ -103,7 +104,13 @@ def _service(factory: async_sessionmaker[AsyncSession], *, clock: FakeClock | No
     return SourceAdmissionService(factory, authorization=authorization, clock=clock or FakeClock(_NOW))
 
 
-async def _register_policy(service: SourceAdmissionService, *, policy_id: str, max_bytes: int = 1024) -> None:
+def _grants(factory: async_sessionmaker[AsyncSession], *, clock: FakeClock | None = None) -> SourceGrantService:
+    """Registering a grant, which E14-T2 moved off the admission service."""
+    authorization = ArcAuthorizationService(visibility=_AllowAll(), global_write_allowlist=((_ISSUER, _OPERATOR),))
+    return SourceGrantService(factory, authorization=authorization, clock=clock or FakeClock(_NOW))
+
+
+async def _register_policy(service: SourceGrantService, *, policy_id: str, max_bytes: int = 1024) -> None:
     await service.register_upload_policy(
         _ctx(),
         UploadPolicyRegistration(
@@ -142,7 +149,7 @@ async def _register_connector(service: SourceAdmissionService, *, connector_id: 
 async def test_upload_admission_and_retrieval_round_trip(factory: async_sessionmaker[AsyncSession]) -> None:
     service = _service(factory)
     policy_id = f"policy-{uuid.uuid4().hex[:8]}"
-    await _register_policy(service, policy_id=policy_id)
+    await _register_policy(_grants(factory), policy_id=policy_id)
 
     data = b"a real document body"
     claim = _claim(source_content_digest=_digest_of(data))
@@ -232,7 +239,7 @@ async def test_unknown_evidence_is_not_found(factory: async_sessionmaker[AsyncSe
 async def test_exceeding_the_ceiling_leaves_no_row_behind(factory: async_sessionmaker[AsyncSession]) -> None:
     service = _service(factory)
     policy_id = f"policy-{uuid.uuid4().hex[:8]}"
-    await _register_policy(service, policy_id=policy_id, max_bytes=8)
+    await _register_policy(_grants(factory), policy_id=policy_id, max_bytes=8)
 
     claim = _claim(source_content_digest=_digest_of(b"way too much data for the ceiling"))
     admission = UploadAdmission(
@@ -272,7 +279,7 @@ async def test_a_caller_supplied_digest_disagreeing_with_the_computed_one_is_ref
 ) -> None:
     service = _service(factory)
     policy_id = f"policy-{uuid.uuid4().hex[:8]}"
-    await _register_policy(service, policy_id=policy_id)
+    await _register_policy(_grants(factory), policy_id=policy_id)
 
     claim = _claim(source_content_digest=_digest_of(b"the wrong bytes entirely"))
     admission = UploadAdmission(
@@ -308,7 +315,7 @@ async def test_a_caller_supplied_digest_disagreeing_with_the_computed_one_is_ref
 async def test_exact_retry_returns_the_first_evidence(factory: async_sessionmaker[AsyncSession]) -> None:
     service = _service(factory)
     policy_id = f"policy-{uuid.uuid4().hex[:8]}"
-    await _register_policy(service, policy_id=policy_id)
+    await _register_policy(_grants(factory), policy_id=policy_id)
 
     data = b"idempotent document"
     claim = _claim(source_content_digest=_digest_of(data))
@@ -345,7 +352,7 @@ async def test_exact_retry_returns_the_first_evidence(factory: async_sessionmake
 async def test_a_changed_retry_under_the_same_key_is_a_conflict(factory: async_sessionmaker[AsyncSession]) -> None:
     service = _service(factory)
     policy_id = f"policy-{uuid.uuid4().hex[:8]}"
-    await _register_policy(service, policy_id=policy_id)
+    await _register_policy(_grants(factory), policy_id=policy_id)
 
     ctx = _ctx()
     key = f"key-{uuid.uuid4().hex[:8]}"
@@ -394,7 +401,7 @@ async def test_two_concurrent_identical_admissions_resolve_to_one_row(
     its own connection, must not race each other into two rows."""
     service = _service(factory)
     policy_id = f"policy-{uuid.uuid4().hex[:8]}"
-    await _register_policy(service, policy_id=policy_id)
+    await _register_policy(_grants(factory), policy_id=policy_id)
 
     ctx = _ctx()
     key = f"race-key-{uuid.uuid4().hex[:8]}"
@@ -438,7 +445,7 @@ async def test_two_concurrent_identical_admissions_resolve_to_one_row(
 async def test_verifier_outside_the_policy_allowlist_is_refused(factory: async_sessionmaker[AsyncSession]) -> None:
     service = _service(factory)
     policy_id = f"policy-{uuid.uuid4().hex[:8]}"
-    await _register_policy(service, policy_id=policy_id)
+    await _register_policy(_grants(factory), policy_id=policy_id)
 
     data = b"document"
     admission = UploadAdmission(

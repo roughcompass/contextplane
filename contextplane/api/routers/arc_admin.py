@@ -69,6 +69,7 @@ from contextplane.arc import (
     ReplayCorpusService,
     SourceAdmissionRefused,
     SourceAdmissionService,
+    SourceGrantService,
     SourceIdempotencyConflict,
     UploadPolicyRegistration,
     UploadPolicyRow,
@@ -140,6 +141,19 @@ def _artifacts(request: Request) -> ArtifactService:
 def _source_admission(request: Request) -> SourceAdmissionService:
     services: Services = request.app.state.services
     return services.arc_source_admission
+
+
+def _source_grants(request: Request) -> SourceGrantService:
+    """The grant lifecycle, separate from the path that uses a grant.
+
+    Registering and withdrawing are operator actions on configuration; admitting
+    material is a runtime action. A route holding the wrong object cannot reach
+    across that line. The withdrawal routes live in `arc_source_grants.py`; the
+    registrations stay here because they go through `HttpMethodRouter`.
+    """
+    services: Services = request.app.state.services
+    grants: SourceGrantService = services.arc_source_grants
+    return grants
 
 
 class _Strict(BaseModel):
@@ -614,7 +628,7 @@ async def register_source_connector(
         credential_ref=body.credential_ref,
     )
     try:
-        row = await _source_admission(request).register_connector(arc_ctx, registration)
+        row = await _source_grants(request).register_connector(arc_ctx, registration)
     except Exception as exc:
         raise _translate(exc) from exc
     return _connector_response(row)
@@ -644,7 +658,7 @@ async def register_source_upload_policy(
         max_bytes=body.max_bytes,
     )
     try:
-        row = await _source_admission(request).register_upload_policy(arc_ctx, registration)
+        row = await _source_grants(request).register_upload_policy(arc_ctx, registration)
     except Exception as exc:
         raise _translate(exc) from exc
     return _upload_policy_response(row)
