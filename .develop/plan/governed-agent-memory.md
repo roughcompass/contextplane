@@ -6209,9 +6209,68 @@ Correction to the entry's arithmetic while building: decay runs toward
 `DECAY_FLOOR`, not toward zero (`floor + (stored - floor) * 2**(-age/half_life)`),
 so a 0.90 claim sits at 0.50 after one half-life rather than 0.45.
 
+### E5-T6a — The cockpit's two inputs, which the wire did not carry
+
+**Kind:** task · **Status:** done · **Blocked by:** E5-T3, E5-T4 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the rank's reasoning and each disposition's consequence reach a client, so
+E5-T6 can show them without restating them.
+
+**Filed because E5-T6 is unbuildable as written, and grounding says so twice.**
+That entry asks for "the rank's reasoning visible" and "the consequence of each
+disposition shown before it is taken". Both are computed by this service today.
+Neither reached the wire.
+
+**The rank.** `curation_ranking.py` orders on exactly three terms —
+`escalation_rank`, `neg_dependants`, `neg_sampling` — and `QueueItem` has
+carried all three as `escalated`, `dependant_count` and `sampling_priority`
+since the ordering landed, with a comment saying why: *"the consequence preview
+belongs on the item rather than behind a second call: a rank a reviewer cannot
+interrogate is a rank they learn to ignore."* `_to_queue_item_response` did not
+copy them. So the queue served an order and withheld its reason, and the only
+way to learn why a row was at the top was to read the SQL.
+
+Pinned as a whole-object rule rather than as three names:
+`test_every_term_the_ordering_uses_reaches_the_caller` fails if *anything*
+`QueueItem` computes is dropped by the mapper — because that is what happened,
+and it went unnoticed for as long as the ordering had shipped.
+
+**The consequence.** `DISPOSITIONS` records, for each of the six, its approval
+authority, evidence threshold, scope, supersession and rollback — five
+dimensions the three proposal targets *deliberately disagree on*, per
+`DispositionPolicy`'s own docstring: *"collapsing them into one 'propose'
+disposition with a free-text note would make all three look equally
+consequential in the queue, and the one that reaches every agent is not."* No
+endpoint served any of it. A client offering six buttons could only describe
+them by restating this table, which is a second copy of a governance rule and
+the thing `DESIGN.md` means by *"do not invent client-only governance gates"*.
+
+`GET /v1/memory/disposition-policies` serves it. No tenant context and no
+authorization: it is the vocabulary the service accepts, identical for every
+caller, disclosing nothing about anybody's data — gating it would only mean a
+reviewer sees buttons whose consequences they cannot read. Declaration order is
+preserved, because the first three settle a disagreement on the curator's own
+authority and the last three ask an approver outside curation, and a client
+sorting alphabetically loses that.
+
+**`audit_action` is deliberately not served.** It is the vocabulary term the
+write emits, not a consequence a reviewer weighs, and putting an internal
+identifier in front of a decision is noise dressed as disclosure.
+
+**What this does not do.** It adds no expected-loss term. E5-T6's caution stands
+and is now checkable: the ordering has three inputs, none of them a cost model,
+so the cockpit must say the queue is ordered by escalation, leverage and
+sampling — not by consequence. `test_confidence_is_served_but_is_not_a_rank_term`
+guards the adjacent misreading, since the response carries a confidence beside a
+position and a reader assumes the first produced the second.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/conformance -q -k "interrogable"
+    make all
+
 ### E5-T6 — The reviewer cockpit
 
-**Kind:** task · **Status:** pending · **Blocked by:** E5-T3, E5-T4 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** pending · **Blocked by:** E5-T3, E5-T4, E5-T6a · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
 
 Goal: the disposition surface a reviewer actually works in, with the rank's
 reasoning visible and the consequence of each disposition shown before it is

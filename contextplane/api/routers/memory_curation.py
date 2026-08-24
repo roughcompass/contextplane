@@ -181,6 +181,8 @@ from contextplane.api.schemas.memory_curation import (
     ConfirmationResponse,
     DiscardClaimRequest,
     DiscardResponse,
+    DispositionPolicyListResponse,
+    DispositionPolicyResponse,
     LinkClaimRequest,
     LinkedClaimResponse,
     LinkRequestToPromotionRequest,
@@ -211,7 +213,7 @@ from contextplane.service.memory.claim_history import BelievedClaim, ClaimHistor
 from contextplane.service.memory.claim_writer import ClaimService
 from contextplane.service.memory.confirmation import Confirmation, ConfirmationService
 from contextplane.service.memory.contest import ContradictionGroup, groups_for
-from contextplane.service.memory.curation_cases import CurationCase, CurationCaseService
+from contextplane.service.memory.curation_cases import DISPOSITIONS, CurationCase, CurationCaseService
 from contextplane.service.memory.curation_queue import CurationQueueService, QueueItem
 from contextplane.service.memory.curation_ranking import QueueCursor
 from contextplane.service.memory.promotion import PromotionService, Proposal
@@ -286,6 +288,46 @@ def _to_queue_item_response(item: QueueItem) -> QueueItemResponse:
         human_backed=item.human_backed,
         proposal_id=item.proposal_id,
         available_actions=list(item.available_actions),
+        escalated=item.escalated,
+        dependant_count=item.dependant_count,
+        sampling_priority=item.sampling_priority,
+    )
+
+
+@router.get("/disposition-policies", response_model=DispositionPolicyListResponse)
+async def list_disposition_policies() -> DispositionPolicyListResponse:
+    """What each disposition commits to, before anybody takes one.
+
+    Served rather than published as documentation, because a reviewer choosing
+    between six dispositions is choosing between six different approval
+    authorities, evidence bars, blast radiuses and rollback stories — and a
+    client that restated them would be a second copy of a governance rule,
+    diverging from this one silently the first time a policy changed.
+
+    No tenant context and no authorization: this is the vocabulary the service
+    accepts, identical for every caller, and it discloses nothing about any
+    tenant's data. Gating it would only mean a reviewer sees a set of buttons
+    whose consequences they cannot read.
+
+    Ordered as `DISPOSITIONS` declares them, which is deliberate: the first
+    three settle a disagreement on the curator's own authority and the last
+    three ask an approver outside curation for a write. That grouping is a
+    property of the vocabulary, and a client sorting alphabetically would lose
+    it — so it is preserved here rather than left to the caller to rediscover.
+    """
+    return DispositionPolicyListResponse(
+        items=[
+            DispositionPolicyResponse(
+                disposition=policy.disposition,
+                approval_authority=policy.approval_authority,
+                evidence_threshold=policy.evidence_threshold,
+                scope=policy.scope,
+                supersession=policy.supersession,
+                rollback=policy.rollback,
+                target_kind=policy.target_kind,
+            )
+            for policy in DISPOSITIONS.values()
+        ]
     )
 
 

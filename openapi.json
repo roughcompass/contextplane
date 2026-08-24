@@ -5730,6 +5730,74 @@
         "title": "DiscardResponse",
         "type": "object"
       },
+      "DispositionPolicyListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DispositionPolicyResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "DispositionPolicyListResponse",
+        "type": "object"
+      },
+      "DispositionPolicyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_authority": {
+            "title": "Approval Authority",
+            "type": "string"
+          },
+          "disposition": {
+            "title": "Disposition",
+            "type": "string"
+          },
+          "evidence_threshold": {
+            "title": "Evidence Threshold",
+            "type": "string"
+          },
+          "rollback": {
+            "title": "Rollback",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "supersession": {
+            "title": "Supersession",
+            "type": "string"
+          },
+          "target_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Kind"
+          }
+        },
+        "required": [
+          "disposition",
+          "approval_authority",
+          "evidence_threshold",
+          "scope",
+          "supersession",
+          "rollback",
+          "target_kind"
+        ],
+        "title": "DispositionPolicyResponse",
+        "type": "object"
+      },
       "DraftPatchResponse": {
         "additionalProperties": false,
         "description": "Result of `POST {PV}/draft`: a proposed partial patch with its\nsupporting citations.",
@@ -11851,6 +11919,14 @@
             "title": "Created At",
             "type": "string"
           },
+          "dependant_count": {
+            "title": "Dependant Count",
+            "type": "integer"
+          },
+          "escalated": {
+            "title": "Escalated",
+            "type": "boolean"
+          },
           "human_backed": {
             "title": "Human Backed",
             "type": "boolean"
@@ -11874,6 +11950,10 @@
           "reason": {
             "title": "Reason",
             "type": "string"
+          },
+          "sampling_priority": {
+            "title": "Sampling Priority",
+            "type": "integer"
           },
           "subject_entity_id": {
             "anyOf": [
@@ -11906,7 +11986,10 @@
           "created_at",
           "human_backed",
           "proposal_id",
-          "available_actions"
+          "available_actions",
+          "escalated",
+          "dependant_count",
+          "sampling_priority"
         ],
         "title": "QueueItemResponse",
         "type": "object"
@@ -28672,6 +28755,28 @@
           }
         },
         "summary": "Get Curation Queue",
+        "tags": [
+          "memory: curation"
+        ]
+      }
+    },
+    "/v1/memory/disposition-policies": {
+      "get": {
+        "description": "What each disposition commits to, before anybody takes one.\n\nServed rather than published as documentation, because a reviewer choosing\nbetween six dispositions is choosing between six different approval\nauthorities, evidence bars, blast radiuses and rollback stories \u2014 and a\nclient that restated them would be a second copy of a governance rule,\ndiverging from this one silently the first time a policy changed.\n\nNo tenant context and no authorization: this is the vocabulary the service\naccepts, identical for every caller, and it discloses nothing about any\ntenant's data. Gating it would only mean a reviewer sees a set of buttons\nwhose consequences they cannot read.\n\nOrdered as `DISPOSITIONS` declares them, which is deliberate: the first\nthree settle a disagreement on the curator's own authority and the last\nthree ask an approver outside curation for a write. That grouping is a\nproperty of the vocabulary, and a client sorting alphabetically would lose\nit \u2014 so it is preserved here rather than left to the caller to rediscover.",
+        "operationId": "list_disposition_policies_v1_memory_disposition_policies_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispositionPolicyListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Disposition Policies",
         "tags": [
           "memory: curation"
         ]
