@@ -21,11 +21,14 @@ from __future__ import annotations
 
 from contextplane.exceptions import ValidationError
 from contextplane.ingest.connector import Connector
+from contextplane.ingest.connectors.backstage import BackstageConnector
+from contextplane.ingest.connectors.cmdb_servicenow import ServiceNowCmdbConnector
 from contextplane.ingest.connectors.docs_corpus import DocsCorpusConnector
 from contextplane.ingest.connectors.markdown_adr_rfc import MarkdownADRRFCConnector
 from contextplane.ingest.connectors.openapi import OpenAPIConnector
 from contextplane.ingest.connectors.package_json import PackageJsonConnector
 from contextplane.ingest.connectors.release_notes import ReleaseNotesConnector
+from contextplane.ingest.connectors.wiki_confluence import ConfluenceWikiConnector
 
 # ---------------------------------------------------------------------------
 # Typed exception
@@ -46,6 +49,15 @@ CONNECTORS: dict[str, type[Connector]] = {
     "markdown_adr_rfc": MarkdownADRRFCConnector,
     "package_json": PackageJsonConnector,
     "docs_corpus": DocsCorpusConnector,
+    # E12's three named sources. Each is a product with a documented API rather
+    # than a category: "CMDB" and "wiki" name markets, and a connector cannot be
+    # written against a market. ServiceNow's Table API and Confluence Cloud's v2
+    # pages API are the two the tree already assumed -- `source_governance.py`
+    # uses a Confluence page as its example of a source whose authority must be
+    # declared before its first write.
+    "backstage": BackstageConnector,
+    "cmdb_servicenow": ServiceNowCmdbConnector,
+    "wiki_confluence": ConfluenceWikiConnector,
 }
 
 

@@ -131,6 +131,7 @@ class AssertionProvenance:
         self._check_derivation()
         self._check_revocation()
         self._check_external_identity()
+        self._check_upstream_record_is_dated()
 
     def _check_derivation(self) -> None:
         """A derived assertion says how it was derived and how much it is trusted.
@@ -195,6 +196,33 @@ class AssertionProvenance:
                 "an external-authority assertion names the upstream revision it came from; without it, two "
                 "different upstream states are indistinguishable here"
             )
+            raise IncompleteProvenance(msg)
+
+    def _check_upstream_record_is_dated(self) -> None:
+        """Naming an upstream record commits you to saying when you saw it.
+
+        Applies to every authority, not only `external_authority`, because the
+        database constraint does: `ck_assertion_provenance_external_record_is_dated`
+        keys off the column rather than off the authority, and a rule this class
+        enforced more narrowly than the table would surface as an `IntegrityError`
+        several frames from the writer instead of as a refusal naming the field.
+        The revocation check above already states the pattern -- *"the database
+        says the same, and this says it earlier and by name."*
+
+        `event_time` is deliberately not required. That is when the thing
+        happened, which an upstream record may genuinely not say; `observed_at`
+        is when we saw it, which whoever read the record always knows. Collapsing
+        `observed_at` into `ingested_at` by omitting it is what makes staleness
+        unmeasurable, and the two differ sharply on a backfill or a replay.
+        """
+        if self.external_record_id and self.observed_at is None:
+            msg = (
+                "an assertion naming an upstream record records when it was observed; without it the citation "
+                "cannot be aged, and when we saw it collapses into when we stored it"
+            )
+            raise IncompleteProvenance(msg)
+        if self.external_revision and not self.external_record_id:
+            msg = "an external revision is a revision of some record; name the record it revises"
             raise IncompleteProvenance(msg)
 
 

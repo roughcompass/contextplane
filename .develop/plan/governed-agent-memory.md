@@ -6577,7 +6577,7 @@ edit that selected a value fails before it reaches the list.
 
 ### E12-T1 — The connector framework exists; three named sources do not
 
-**Kind:** task · **Status:** pending · **Blocked by:** E5-T4 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E5-T4 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: Backstage, CMDB and wiki reach the catalog through the connector
 framework that already ships, not through a second import path.
@@ -6596,9 +6596,60 @@ Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "connector"
     make all
 
+**Outcome.** `backstage`, `cmdb_servicenow` and `wiki_confluence` join
+`CONNECTORS`. The entry was right that this is three connectors and not a
+framework — nothing about `Connector`, `connector_registry` or the runner
+changed.
+
+**The registry keys name products, and that is the first decision.** "CMDB" and
+"wiki" name *markets*, and a connector cannot be written against a market. The
+tree had already made half this choice: `source_governance.py` uses *"A
+Confluence page is not an owner's OpenAPI sync"* as the example of why authority
+is declared before the first write. So: ServiceNow's Table API and Confluence
+Cloud's v2 pages API, each named in the key, so registering a source is choosing
+a protocol rather than a category.
+
+**Each endpoint and envelope was read from the vendor's published reference
+before anything was written against it**, which changed two designs:
+
+- *Backstage entities are keyed on `kind:namespace/name`, not `uid`.* The
+  descriptor format says the uid *"can change over time"* and should not be used
+  as an external reference — so keying on it would mint a new subject here every
+  time the other side re-ingested the same component. It also means
+  `metadata.etag` is a real `content_revision`, which is exactly what that field
+  was added for.
+- *The paged Backstage endpoint is `by-query`, not `entities`.* The older
+  offset-paged form can skip or repeat a row when the catalog changes mid-page.
+
+**Where each connector refuses to invent a timestamp.** A Backstage entity
+states no validity, so `valid_from` stays absent rather than taking this
+process's clock: a server-defaulted instant is indistinguishable afterwards from
+one the source stated, which is the property E12-T2 turns into a schema
+constraint. Confluence states one — `version.createdAt` — and it is used.
+ServiceNow's `sys_updated_on` is used and labelled for what it is: a claim about
+the record, not about the world. Stating it beats omitting it, because a CMDB's
+value is that somebody maintains it and the date is how a reader judges whether
+anybody still does.
+
+**Two absences worth their own note.** ServiceNow gets **no `content_revision`**
+— it is not content-addressed, and `sys_updated_on` answers "when did somebody
+touch this", not "are these the same bytes"; filling the field with a clock
+would make a downstream content comparison silently wrong rather than absent.
+And nothing here sets a source's authority tier: registration does, before the
+first write, and a connector that implied otherwise would be the second place
+that decision lived.
+
+**What the tests do not claim.** That `discover` pages correctly against a real
+Backstage, ServiceNow or Confluence. Nothing in this repository can stand one
+up, and a test against a mock of an API this code also models would agree with
+itself by construction. `parse` is the half the contract requires to be pure, so
+it is the half a fixture can decide — including that it is reproducible, which
+is the contract's own wording and the property a connector minting a fresh id or
+reading a clock would break.
+
 ### E12-T2 — Provenance mapping, following the precedent E2 already set
 
-**Kind:** task · **Status:** pending · **Blocked by:** E12-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E12-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: `observed_time` and `external_record_id` come from the source record and
 are never server-defaulted — enforced by the schema, not by the importer.
@@ -6623,6 +6674,62 @@ default, so an import from an unregistered source is a refusal and not a silent
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "import and provenance"
     make all
+
+**Outcome.** Migration 0082 adds two CHECKs to `assertion_provenance`, and the
+property the entry names is now read off the live schema rather than assumed.
+
+**The table was already the right shape and enforced by nothing.** 0051 keeps
+the three times apart with the reason written into the column comments -- *"when
+it happened, when we saw it, when we stored it. Collapsing them makes staleness
+unmeasurable"* -- and `ingested_at` is `NOT NULL` and server-set while
+`event_time` and `observed_at` are nullable and caller-supplied. Nothing stopped
+a writer naming an upstream record and declining to date it.
+
+**The discriminator had to change, and copying 0067's would have been wrong.**
+That migration keys off `source_namespace IS NOT NULL`; here `source_namespace`
+is `NOT NULL` always, so it cannot say whether a record came from upstream.
+`external_record_id` can: 0051 states it is *"NULL for a record with no upstream
+identity of its own, which is a different statement from an empty external id."*
+So the rule is conditional on it rather than symmetric with it -- an
+`observed_at` with no external id stays legal, because *"we saw this, and the
+source has no record id for it"* is a thing an importer can truthfully say, and
+0067's symmetric shape would refuse it.
+
+**Enforced twice, deliberately.** `AssertionProvenance` refuses it earlier and
+by name -- the pattern `_check_revocation` already states: *"the database says
+the same, and this says it earlier and by name."* The dataclass check applies to
+**every** authority rather than only `external_authority`, because the CHECK
+keys off the column; a narrower class check would let an `observed` assertion
+naming an upstream record reach Postgres and return an `IntegrityError` several
+frames from the writer, where `IncompleteProvenance` is documented as *"a
+programming error in a writer"*.
+
+**Three things the review turned up, all of them mine.**
+
+*The conformance corpus was incomplete.* `_CORPUS[EXTERNAL_AUTHORITY]` was the
+only place in the tree pairing an `external_record_id` with no observation time,
+and the file's own docstring calls the corpus *"one complete fixture per
+authority."* It never had to state one because nothing checked.
+
+*The round-trip test would not have verified it.* Its SELECT did not read
+`observed_at` back, so adding it to the corpus would have proved nothing -- the
+exact shape that test's own docstring warns about: *"a writer that dropped
+`derivation_method` on the floor would still produce one row."* Both times are
+now read back and asserted.
+
+*The migration cited a test that did not exist.* Its docstring claimed
+`test_provenance_is_never_server_defaulted` read the absence of a default off
+the live schema. Nothing by that name existed. It exists now, reading
+`information_schema.columns.column_default` for the caller-supplied columns --
+because a migration claiming a guardrail it does not have is the same class of
+error the migration is arguing against.
+
+**No production write path was affected.** The table has one permitted writer,
+enforced by `make privileged-writes`, and both live call sites pass no
+`external_record_id` at all. The caller-facing schema was already *stricter*
+than this constraint: `AssertionProvenanceInputV1` requires `external_record_id`
+and `observed_time` unconditionally, with the note that *"both are the caller's
+to state; when the platform took delivery is not."*
 
 ### E12-T3 — The migrated-canonical disposition, and a halt E5 has not defined
 
