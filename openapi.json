@@ -11576,6 +11576,103 @@
         "title": "QuarantineApplyRequest",
         "type": "object"
       },
+      "QuarantineEvidenceResponse": {
+        "description": "Everything recorded about one quarantine, as one document.\n\n`matched_count` is the ledger's figure from apply time and `members` is the\nrecorded set; both are returned rather than one derived from the other,\nbecause if they ever disagree that disagreement is the finding and a bundle\nthat computed one from the other could not show it.\n\n`members` carries ids and not claim content, deliberately. This export says\n*which* claims were withheld, not *what they said* \u2014 serving the withheld\ncontent back through a new surface would be a way around the withholding.",
+        "properties": {
+          "applied_at": {
+            "format": "date-time",
+            "title": "Applied At",
+            "type": "string"
+          },
+          "applied_by": {
+            "format": "uuid",
+            "title": "Applied By",
+            "type": "string"
+          },
+          "is_reverted": {
+            "title": "Is Reverted",
+            "type": "boolean"
+          },
+          "matched_count": {
+            "title": "Matched Count",
+            "type": "integer"
+          },
+          "members": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "predicate": {
+            "additionalProperties": true,
+            "title": "Predicate",
+            "type": "object"
+          },
+          "provenance": {
+            "description": "What this document evidences, stated in the document because it travels away from this API.",
+            "title": "Provenance",
+            "type": "string"
+          },
+          "quarantine_id": {
+            "format": "uuid",
+            "title": "Quarantine Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reverted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reverted At"
+          },
+          "reverted_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reverted By"
+          },
+          "withheld_receipts": {
+            "items": {
+              "$ref": "#/components/schemas/WithheldReceiptResponse"
+            },
+            "title": "Withheld Receipts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "quarantine_id",
+          "predicate",
+          "reason",
+          "matched_count",
+          "applied_by",
+          "applied_at",
+          "reverted_by",
+          "reverted_at",
+          "is_reverted",
+          "members",
+          "withheld_receipts",
+          "provenance"
+        ],
+        "title": "QuarantineEvidenceResponse",
+        "type": "object"
+      },
       "QuarantinePredicate": {
         "description": "Which claims to withhold, in the closed provenance vocabulary.",
         "properties": {
@@ -16646,6 +16743,27 @@
         "title": "WhoAmIResponse",
         "type": "object"
       },
+      "WithheldReceiptResponse": {
+        "description": "One receipt this quarantine withheld, and when.",
+        "properties": {
+          "receipt_id": {
+            "format": "uuid",
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "withheld_at": {
+            "format": "date-time",
+            "title": "Withheld At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "receipt_id",
+          "withheld_at"
+        ],
+        "title": "WithheldReceiptResponse",
+        "type": "object"
+      },
       "WorkspaceCreateRequest": {
         "description": "Request body for POST /v1/workspaces.",
         "properties": {
@@ -17201,6 +17319,50 @@
           }
         },
         "summary": "Apply Quarantine",
+        "tags": [
+          "admin: quarantine"
+        ]
+      }
+    },
+    "/v1/admin/claim-quarantines/{quarantine_id}:evidence": {
+      "get": {
+        "description": "One quarantine's ledger row, recorded members, and withheld receipts.\n\nGuarded in the service rather than here, because the roles differ from the\nrest of this router: an auditor may export but may not withhold, so the\nroute admits any tenant context and `QuarantineEvidenceService` refuses\nanything outside its own `EVIDENCE_ROLES` with a `403`. Putting that check in a\ndependency would leave it out of the MCP transport, which is where a\nrouter-only guard always goes missing.\n\nA reverted quarantine still exports. The ledger keeps its row and its\nmembers after revert by design, and the period during which content was\nwithheld is exactly what somebody asking for this document is asking about.",
+        "operationId": "export_quarantine_evidence_v1_admin_claim_quarantines__quarantine_id__evidence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "quarantine_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Quarantine Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuarantineEvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Quarantine Evidence",
         "tags": [
           "admin: quarantine"
         ]

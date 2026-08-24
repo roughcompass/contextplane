@@ -47,6 +47,7 @@ from contextplane.service.memory.quarantine import (
     QuarantineService,
     ReceiptWithholding,
 )
+from contextplane.service.memory.quarantine_evidence import QuarantineEvidenceService
 from contextplane.service.memory.sampling_policy import SamplingPolicyService
 from contextplane.service.memory.session_events import MemoryService
 from contextplane.service.memory.source_governance import SourceGovernanceService
@@ -90,6 +91,7 @@ class MemoryServices:
     #: an existing area should not touch it — what it adds is two arguments,
     #: not a construction.
     quarantine: QuarantineService
+    quarantine_evidence: QuarantineEvidenceService
     promotion: PromotionService
     promotion_guardrails: GuardrailService
     #: How much of each category's queue a reviewer must see. Read by the queue
@@ -160,6 +162,11 @@ def build_memory_services(
             blast_radius=blast_radius,
             receipts=receipt_withholding,
         ),
+        # The read side of the same ledger. Its own service because the role set
+        # differs -- an auditor may export what was withheld and may not
+        # withhold anything -- and because nothing read `claim_quarantines`
+        # outside the write path's own apply and revert statements until now.
+        quarantine_evidence=QuarantineEvidenceService(session_factory),
         # Promotion is the only path from staging into the canonical graph, so it
         # is constructed here rather than per request: a second instance would be
         # a second place the guardrails could be configured differently. It takes

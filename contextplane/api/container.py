@@ -128,6 +128,7 @@ from contextplane.service.memory.curation_queue import CurationQueueService
 from contextplane.service.memory.promotion import PromotionService
 from contextplane.service.memory.promotion_guardrails import GuardrailService
 from contextplane.service.memory.quarantine import QuarantineService
+from contextplane.service.memory.quarantine_evidence import QuarantineEvidenceService
 from contextplane.service.memory.sampling_policy import SamplingPolicyService
 from contextplane.service.memory.session_events import MemoryService
 from contextplane.service.memory.source_governance import SourceGovernanceService
@@ -200,6 +201,7 @@ class Services:
     agent_instructions: AgentInstructionService
     claim_serving: ClaimServingService
     quarantine: QuarantineService
+    quarantine_evidence: QuarantineEvidenceService
     promotion: PromotionService
     promotion_guardrails: GuardrailService
     sampling_policy: SamplingPolicyService
