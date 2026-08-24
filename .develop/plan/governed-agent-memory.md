@@ -513,7 +513,19 @@ rate over an empty suite is a number with no referent.
 
 ### E10 — UI/IA workstream
 
-**Kind:** epic · **Status:** done — all thirteen tasks closed · **Blocked by:** E5 (screens), none (bug fixes) · **Repo:** contextplane, contextplane-ui
+**Kind:** epic · **Status:** done — all thirteen tasks closed; remaining scope superseded by E22 · **Blocked by:** E5 (screens), none (bug fixes) · **Repo:** contextplane, contextplane-ui
+
+**Superseded in full by E22 (2026-08-24).** E10 was cut when the dashboard had
+twelve destinations; the problem it names is real and is now measured at a size
+E10's four tasks cannot hold — 68 free-text identifier fields across 22 screens,
+five listable ARC collections the dashboard never reads, and a navigation whose
+groups are subsystems. E10's remaining scope survives inside E22 rather than
+being dropped: E10-T1's quarantine and suspend screens become E22's Judgement
+surface and keep their E4-T2/E4-T3 blockers, E10-T3's "out of the raw console"
+becomes E22's read-path-first rule for ARC and PII, and E10-T4's canon copy is
+E22-T16 with its standard quoted verbatim. E10-T2 had already been struck to
+E21 and is now struck onward to E22-T10. Nothing here is claimable; claim the
+E22 task that carries it.
 
 Ordered: cockpit dispositions + quarantine/suspend screens → nav/DESIGN.md
 repositioning + ARC/PII operations out of the raw console → canon copy.
@@ -945,6 +957,69 @@ Eight tasks, and **six had a premise that did not survive contact with the
 tree**. That ratio is this epic's real output. It is also why closing it on a
 finished task list was wrong the first time: the list said nothing about whether
 the body was satisfied, and only walking the body surface by surface did.
+
+### E21 — One address for a claim's life: dashboard IA and naming
+
+**Kind:** epic · **Status:** partly superseded by E22 · **Blocked by:** none · **Repo:** contextplane-ui
+
+**What survives and what is struck (2026-08-24).** E22 groups the dashboard by the evaluator's question rather than by the object and its stage, on the user's decision that the human's job at this dashboard is evaluation and the primary consumer is a machine. Both cannot be primary navigation, so **E21's target-structure table below is struck** — the six groups Discover / Memory / Notes & tasks / Policy / Explain / Administer are replaced by E22's five. E21 had no decomposed tasks and nothing built against it, so this costs an edit and no work. **Everything else in this epic survives and is not re-litigated**: the naming table, the rule that the UI labels the job while the page body keeps the contract's word for the object, the four address changes and their redirects, the 20-`eyebrow` finding, and the diagnosis in the paragraphs below — which E22 cites as its own evidence for defect class three. E22-T10 executes the surviving half.
+
+The dashboard files a destination under the subsystem that owns it, not under what has happened to the thing the reader is looking at. So a reader who does not already know the service's module boundaries cannot find an observation, and the product's answer to that has been to write the missing navigation into the page copy.
+
+`apps/admin-dashboard/src/app/App.tsx` publishes **22 destinations in four groups** — Discover (4), Work with context (3), Monitor usage (5), Governance (10). One claim's life crosses all four of them: recorded at `/memory/assert`, observed at `/memory`, contested at `/memory?tab=curation`, withheld at `/quarantine`, promoted at `/proposals`, canonical at `/catalog`, explained at `/receipts`. Consecutive stages of one lifecycle sit in different groups at six of those seven steps, and two of the stages have no nav entry at all: `/memory/assert` is reachable only from a control-bar link on `/memory`, and the curation queue is a `?tab=` value that Overview and `AssertClaimPage` both deep-link to as though it were a destination, which is what it is.
+
+**The tree already concedes the point in prose.** `MemoryPage.tsx`'s curation notice tells the reader to "review linked promotions in Proposals" and renders a link out of the section so they can, and `ProposalsPage.tsx`'s empty state has to disclaim that it is "not a count of other tenants or ARC authoring proposals" because two unrelated objects are both called proposals. Copy that routes the reader to another section is navigation that failed, rewritten as a sentence; a disclaimer that two things share a name is a naming collision with a paragraph in front of it. Both delete rather than reword once the structure is right, and this epic is not done while either survives.
+
+**The one slot that could state the trust layer states three different kinds of thing.** There are **20 distinct `eyebrow` strings** across the feature tree, in three incompatible vocabularies: job verbs on the screens added most recently (`Govern` ×6, `Monitor` ×2, `Explain`), `.develop/DESIGN.md`'s three information layers on the older ones (`Observed context` ×4, `Canonical catalog` ×2, `Workspace material`, `Scoped working memory` ×3), and subsystem names on the rest (`Memory governance`, `Agent readiness`, `Session memory`, `Session replay`, `Dependency intelligence`, `Platform usage`, `Context evaluation`, `Administration`). The eyebrow is the only per-page slot that appears above every title and could say which layer the reader is standing in. It is the natural home for that fact and it is being spent three ways.
+
+**Governance's ten items are not one subject, and that is new since E10 was written.** Five govern a *directive* — `/arc`, `/revisions`, `/exceptions`, `/verifiers`, `/sources`. Two govern a *claim* — `/proposals`, `/quarantine` — as does the curation tab that is not in the list. Three are administration — `/ownership`, `/audit`, `/settings`. A reader holding a withheld claim and a reader holding an unapproved revision are given the same ten-item list and no signal which half is theirs. Splitting the two spines apart is therefore not cosmetic: it is the difference between one group nobody can scan and two groups each of which answers one question.
+
+**Target structure — STRUCK, superseded by E22's five surfaces.** Retained for its reasoning, which E22 accepts: keep every group scannable, and let a chip rather than a heading carry the trust layer. What E22 rejects is only the axis — grouping by the object and its stage assumes the reader arrives holding an object, and the evaluator arrives holding a question. Do not build the table below.
+
+| Group | Destinations | Change |
+| --- | --- | --- |
+| Discover | Overview, Catalog, Relationships, Context Lab | Context Lab folded in; `Living memory` leaves |
+| Memory | Claims, Needs review, Withheld, Promotions | the claim lifecycle, in order, in one place |
+| Notes & tasks | Tasks, Notebooks | `.develop/DESIGN.md`'s third layer, kept distinct |
+| Policy | Policies, Revisions, Exceptions, Approvers, Sources | the directive lifecycle, out of `Governance` |
+| Explain | Receipts, Sessions, Activity, Analytics, Audit log | what was served and what happened |
+| Administer | Ownership & profiles, Agents, Settings | what is left, and it is genuinely settings |
+
+23 destinations in six groups, none larger than five. The one addition is `Needs review`, promoted out of the tab bar; `Work with context` and the ten-item `Governance` both retire. Six groups of about four scan better than four groups where one holds ten, and that trade is the epic's central bet — recorded here as a bet, because the design standard asks for stable primary navigation and this reshuffles most of it once.
+
+**Naming.** The label changes and the contract term each screen keeps:
+
+| Today | Label | Contract term kept where |
+| --- | --- | --- |
+| Living memory | **Claims** | "Living Memory" defined once, in the section intro |
+| Curation queue (`?tab=curation`) | **Needs review** | "curation case" on the case detail |
+| Quarantine | **Withheld** | "quarantine" on the detail and in the API hints |
+| Proposals | **Promotions** | "promotion proposal" in the detail header |
+| Governed policies | **Policies** | "ARC" in the authoring context |
+| Approval verifiers | **Approvers** | "verifier" on the enrolment form |
+| Source governance | **Sources** | unchanged in the contract |
+| Revision lifecycle | **Revisions** | unchanged in the contract |
+| Workspaces | **Notebooks** | "workspace" on the detail page |
+| Assert claim (`/memory/assert`) | **Record a claim**, a page action | "assertion" in the receipt |
+
+The rule these follow: the UI labels the job, the page body keeps the contract's word for the object. The committed OpenAPI document governs domain data per the UI repo's `CLAUDE.md`, and nothing here proposes renaming a field, a path or an MCP tool. `Notebooks` is the one entry that makes UI and API vocabulary diverge permanently, and it is proposed anyway because the MCP server's own tool description already has to spend a sentence saying a workspace "is not VS Code or any IDE concept" — a term needing that caveat in its own description has already failed as a label. That divergence is a decision this epic asks for explicitly rather than absorbing quietly.
+
+**Address changes**, each with a redirect, because all of them have inbound links in the tree: `/memory?tab=curation` → `/memory/review`, `/proposals` → `/memory/promotions`, `/memory/assert` → `/memory/claims/new`, `/workspaces` → `/notebooks`. `OverviewPage.tsx` links three of the four, `GettingStartedDialog.tsx` links two, and `AssertClaimPage.tsx` links the curation tab; `routeForPathname`'s comment already records that a stale address silently rendering a different page is worse than reporting nothing, so these redirect rather than fall through. Decomposition greps the service repo's operator docs for the same four before any of them moves.
+
+**Three things make this cheaper than it was when first planned, and they are all already in the tree.** `routeDefinitions` replaced the five parallel lists, so a destination is one entry and a regrouping is an array edit rather than five edits that nothing forced to agree. `NavigationItem.badge` is rendered by `AppSidebar.tsx` and set by nobody, so the three queue counts need no shell change. And `EntitySearch` is wired into the shell's `search` slot, so the header search exists — but it resolves an entity handle and navigates to `/catalog`, and nothing else. Finding a claim, a promotion, a receipt or a notebook still requires knowing which page owns it, which is the same defect the grouping causes, reachable by a second route. Extending that resolver past catalog entities belongs to this epic; the design standard asks for global search over authorized records, and one entity type is not that.
+
+**Supersession — this epic takes the nav work out of E10.** E10 lists "nav/DESIGN.md repositioning" as its middle ordered item, written when the dashboard had twelve destinations and no second governance spine. That item is struck from E10 and lands here, at the size the problem actually is now; E10 keeps the cockpit dispositions, the quarantine/suspend screens and the canon copy, and stays blocked by E5 for them. *(Amended 2026-08-24: E10 is now superseded in full by E22, which absorbed that remainder; and the nav work this paragraph claimed is itself struck onward to E22-T10. The sentence is kept because it records why the item left E10, which is still true.)* E13 is untouched: it consolidates *service surfaces* — MCP verbs and REST endpoints — and this epic consolidates *addresses and labels* in one dashboard. Neither drops a governance property, and E21 adds none: every screen keeps its role gate, its receipts and its evidence, and only its heading and its address change.
+
+**Alternatives rejected.** *Labels only, no regrouping* — cheap and reversible, and it is Phase 1 of this epic rather than a substitute for it, because renaming `Proposals` to `Promotions` while it stays two groups away from the claim it promotes leaves the "review linked promotions in Proposals" sentence necessary and therefore still true. *One `/memory` page with four tabs* — rejected: the detail routes need real addresses, and a tab cannot carry a queue count in the sidebar, which is where a reader looks to find out whether anything is waiting. *A collapsible parent nav item* — rejected: `NavigationSection` renders a non-interactive `<h2>` over a flat list, adding a nesting level to a 22-item sidebar hides destinations behind a click, and the design standard's warning against placeholder destinations applies most exactly to a parent that exists only to hold children.
+
+**Not fixed here, and named so it is not mistaken for done.** The header's user block is placeholder data — `initials: "MM"`, `name: "Morgan Morris"` — and its `role` is read from `routeDefinitions[route].role`, so the chrome calls the reader an Auditor on `/audit` and a Producer on `/catalog`. The app therefore has no notion of who is looking, and the design standard's instruction to omit unauthorized destinations rather than reorder the rest cannot be honoured by any grouping, including this one. E21 does not build identity-scoped navigation; it makes the groups small enough that showing all of them is not the injury it is at ten, and records that the real fix waits on the viewer's roles reaching the shell.
+
+**Out of scope.**
+
+- **Identity-scoped navigation.** Requires the viewer's roles in the shell, which the header does not have today. See above; not folded in silently.
+- **Any contract rename.** No field, path, tag or MCP tool changes name. Labels and dashboard addresses only; `E18` owns published-surface renames and has its own ADR for how one is done.
+- **The three-layer chip and the lifecycle strip.** Both are the natural next step — one shared `Observed`/`In review`/`Withheld`/`Proposed`/`Canonical`/`Note` vocabulary replacing the repeated per-panel notices, and a stage strip at the top of the Memory section — and both are separable from the grouping, so they decompose as their own tasks and are not preconditions for it.
+- **Merging the `eyebrow` vocabularies on screens outside the memory and policy spines.** The 20 strings are counted here because they evidence the naming drift; normalising `Dependency intelligence` or `Platform usage` is not this epic's job and inflating it to reach them would delay the grouping that is.
 
 ---
 
@@ -6852,12 +6927,21 @@ Acceptance:
 
 ### E10-T1 — Quarantine and suspend screens
 
-**Kind:** task · **Status:** done — shipped in contextplane-ui#29 · **Blocked by:** E4-T8 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — shipped in contextplane-ui#29; further scope superseded by E22 (eighteenth wave) · **Blocked by:** E4-T8 · **Hotspot:** no · **Repo:** contextplane-ui
 
+Carried into E22's Judgement surface, still blocked by E4-T2 and E4-T3 for the
+same reasons, and held for the eighteenth wave. The two non-negotiables below
+travel with it verbatim.
 **Retargeted.** This entry named E4-T2 and E4-T3 as its blockers, and both were
 done while this stayed unbuildable: a screen cannot call a service with no
 endpoint, and `QuarantineService` had no route, no tool and no wiring until
 E4-T8. The dependency was on the surface all along.
+
+**And it shipped on that corrected dependency**, which E22's carry-forward was
+written before knowing: preview, apply and revert exist at `/quarantine`. What
+E22 inherits is the *placement* — the screen moves into the Judgement surface —
+not the build. Suspend is the half that remains, and it is what holds.
+
 
 Goal: an operator can preview what a quarantine would reach, apply it, and
 revert it, from a screen.
@@ -6885,7 +6969,11 @@ on a real incident.
 
 ### E10-T2 — Navigation and DESIGN.md repositioning
 
-**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done; superseded by E22-T10 · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+
+Struck to E21 in 2026-08, and struck onward to E22-T10 in 2026-08-24. Its goal
+below is unchanged and is the one E22-T10 delivers; what changed twice is the
+size of the problem and the axis the grouping uses.
 
 Goal: the information architecture reflects what the product does, and
 `.develop/DESIGN.md` and the nav agree.
@@ -7124,7 +7212,13 @@ true and no help on a list of a hundred.
 
 ### E10-T3 — ARC and PII operations out of the raw console
 
-**Kind:** task · **Status:** done — PII half shipped, ARC half decomposed · **Blocked by:** E10-T2 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — PII half shipped, ARC half decomposed; superseded by E22 (E22-T5, E22-T13, and the eighteenth wave) · **Blocked by:** E10-T2 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Its ARC half is E22-T5 and E22-T13, which have the reads this task did not know
+existed; its PII half holds for the eighteenth wave. The scoping instruction
+below — read what the operations actually are before designing, because a single
+"ARC console" is how three jobs end up sharing a screen none of them fits — is
+E22's rule for the Governance surface and is why E22 does not have one.
 
 Goal: the ARC and PII operations somebody currently performs against raw
 endpoints have screens.
@@ -7467,7 +7561,11 @@ unambiguously, and neither could a screen reader.
 
 ### E10-T4 — Canon copy
 
-**Kind:** task · **Status:** done — shipped in contextplane-ui#35 · **Blocked by:** E10-T3 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — shipped in contextplane-ui#35; superseded by E22-T16 · **Blocked by:** E10-T3 · **Hotspot:** no · **Repo:** contextplane-ui
+
+E22-T16 is this task with one more instance and a stronger one: the
+`SourceGovernancePanel` notice that tells the reader a capability the product
+has is a capability it lacks. The standard below is quoted there verbatim.
 
 Goal: the words the product uses about itself are true and consistent.
 
@@ -8729,7 +8827,354 @@ enforced convention and outranks the entry's prose.
 ## Out of scope for E20
 
 - **`PERSONA_AGENT` configurability.** `claim_serving.py`'s `PERSONA_AGENT` governs claim-serving depth/category filtering — an orthogonal concern to this epic's authorship/grading/retraining loop. Dropped rather than silently omitted.
-- **`actor_kind` classification of humans vs. agents.** See Context above — no reliable signal exists today.
-- **LLM-generated instruction content.** This epic builds the versioning/gating/measurement scaffold; content is authored externally.
+- **`actor_kind` classification of humans vs. agents.** See Context above — no reliable signal exists today. **Superseded by E22**, which reverses this by supplying the missing signal rather than inferring it: an agent registers, and `actor_kind` is read off a declaration instead of guessed from a transport that cannot distinguish them. E20's reasoning was correct for the signals that existed when it was written and is not retracted; what changed is that E22 adds one. The out-of-scope line stays here, amended rather than deleted, because E20-T4 through E20-T10 were all built on `author_actor_id` precisely *because* of it, and a reader of those tasks needs to find the reason they do not consult `actor_kind`.
+- **LLM-generated instruction content.** This epic builds the versioning/gating/measurement scaffold; content is authored externally. **Partly superseded by E22**: content is still authored externally, but E22 makes the externally-authored set *visible* to the service and makes Contextplane's own contribution a governed delta served as context, which E20 did not contemplate.
 - **A scheduled worker for accuracy/autonomy materialization.** Computed on read; see ADR-0013 rationale above.
 
+## Task decomposition — seventeenth wave (the dashboard is an API browser, and its reader is an evaluator)
+
+### E22 — The evaluation surface: identifiers nobody can know, writes nobody can read back, and pages that are endpoints
+
+**Kind:** epic · **Status:** open · **Blocked by:** none · **Repo:** contextplane-ui, contextplane
+
+The judgement this epic starts from, recorded in the user's words because the plan should not soften it: *"the UI is not usable. The UI is simply exposing API endpoints and not taking the user into consideration."* Five screens were named as examples — the agent actor UUID field, the connector text box, the replay-corpus form, the revision lifecycle page, and ownership & profiles — and the scope was then set explicitly wider than those five: the whole dashboard is to make sense, not the examples. What follows is the measurement, because an epic that accepts a verdict without measuring it will fix what somebody happened to notice and leave the rest. The five examples land on four screens — the connector box and the replay-corpus form are both `SourceGovernancePanel.tsx` — and the scan below finds identifier fields on twenty.
+
+**Three defect classes, counted.** A label-text scan of `apps/admin-dashboard/src/features/**/*.tsx` finds **67 free-text `<input>` fields whose label asks for an identifier, across 20 screens**, after discarding two false positives (`Workspace name`, `Workspace term` — a name and a search term). The scan under-counts rather than over-counts: it attributes a label only where it can parse one as prose, so multi-line and interpolated labels are missed, and re-running it under small changes moves the total by one or two. Treat 67 as the floor, not the figure. Every one of the 67 asks a human to type a value the human has no way to obtain from the screen asking for it, and in **15** cases the placeholder says so out loud — `UUID`, `Entity UUID`, `UUIDs separated by commas`, `64-character SHA-256 digest`, `00000000-0000-0000-0000-000000000000`.
+
+| Screen | Identifier fields | What it asks the reader to already know |
+| --- | --- | --- |
+| `ownership/OwnershipPanel.tsx` | 11 | target UUID ×2, owner principal ×2, profile revision UUID ×2, assignment UUID, binding UUID, target core revision UUID |
+| `arc/ArcSourceEvidenceSection.tsx` | 9 | claim, source evidence, connector, admission policy, verifier, provider, authority subject, revision locator, content digest |
+| `arc/ArcDirectiveEditor.tsx` | 7 | evidence digest, draft revision, verifier classes, verifier IDs, entity IDs, tenant |
+| `arc/ArcPage.tsx` | 5 | policy, draft, revision, resolution receipt, context handle |
+| `revisions/RevisionLifecyclePanel.tsx` | 4 | revision ×2, evidence ×2 — the whole screen is four text boxes and a radio pair |
+| `tasks/`, `verifiers/`, `settings/` | 4 each | intent, checkpoint, digest, actor; tenant, issuer, subject, verifier; actor ×2, entity, gate |
+| 12 further screens | 19 | — |
+
+**Class one: an identifier the reader cannot know.** This is the user's stated complaint and it is the largest of the three, but it is not the deepest.
+
+**Class two: a write with no read.** Across the four ARC adapters — `arcSourceGovernance.ts`, `arcVerifiers.ts`, `arcExceptions.ts`, `arcRevisionLifecycle.ts` — there are **13 `client.request` calls and exactly one `GET`**, and that one is `/v1/arc/admin/operator-identity`, which is not a list. Meanwhile the committed contract publishes **five listable ARC admin collections**: `source-connectors`, `source-upload-policies`, `observation-replay-corpora`, `approval-evidence`, `approval-verifiers`. All five have a `get` in `shared/api/generated/contextplane.ts`. All five are typed. None is ever called. The dashboard issues `POST` against every one of them and reads none of them back.
+
+The consequence is on screen and in prose. `SourceGovernancePanel.tsx:163-170` renders a warning telling the reader that what they are about to register "cannot be read back afterwards, so what is registered here is not visible anywhere else." That sentence is false, and it has been false since the collections shipped. It is the same failure mode E21 identified in the memory tree — *copy that routes the reader elsewhere is navigation that failed, rewritten as a sentence* — one degree worse, because here the copy does not route the reader anywhere. It tells them the product cannot do something the product can do, and it will have been read as a limitation of the system rather than of the screen.
+
+The same defect governs the evaluation loop. `/v1/context/feedback` is **`post` only** in the contract. A reader who judges a returned context item as irrelevant has that judgement written into floored cohort aggregates behind `/v1/learning/aggregates`, and cannot read back what their own judgement did, to that item or to anything. The one loop the product has for "how might this be improved" is open at the far end.
+
+**Class three: the page is the endpoint.** `App.tsx` publishes 22 destinations in four groups — Discover (4), Work with context (3), Monitor usage (5), Governance (10) — and each is a subsystem. E21 already measured this from the navigation side and proposes a regrouping; this epic measures it from inside the page and reaches a different conclusion about what the grouping should be *of*. `.develop/DESIGN.md` already forbids what shipped, in one sentence under **Users and primary jobs**: *"Design the common read path first. Reveal write and governance controls only where context makes their effect clear."* On `/revisions`, `/sources` and the ARC authoring sections there is **no read path at all** — the common path, the only path, is a write against identifiers the reader cannot obtain. The standard was not compromised under pressure; it was never applied to these screens.
+
+**The reframe that reorganizes all three.** The dashboard's readers were assumed to be four personas doing catalog work. The user's correction: *"the primary users are machines, humans should be able to perform evals."* Contextplane is consumed by agents over MCP and REST; the human at the dashboard is not a data-entry operator for that system, they are its **evaluator** — the person who judges whether what the machines are being served is right and changes it when it is not. That single sentence resolves questions this epic would otherwise have had to guess at. It is why the inventory does not need to be browsable for its own sake (nobody reads the catalog recreationally; they reach it *through* an evaluation). It is why every write on the dashboard should be reachable from the evidence that motivates it rather than from a form (an evaluator does not register a connector out of nowhere — they register one because something they were served came from a source that should not have been trusted). And it is why an identifier text box is not a minor UX defect but a category error: it presumes the reader arrived carrying the answer, when the entire reason they are here is to find out what the answer is.
+
+**One operator, all four hats.** Decided by the user, and it settles a question E21 had to defer. The dashboard is designed as one coherent surface for one person who does all four jobs; `DESIGN.md`'s persona table is demoted from structure to prioritization guidance, which is what its own preamble already says it is (*"These personas guide prioritization; they do not replace authorization checks"*). Identity-scoped navigation is therefore **not** built, and E21's note that the real fix waits on the viewer's roles reaching the shell is answered by not needing the fix.
+
+What is not answered is the lie. `App.tsx:923-927` renders `initials: "MM"`, `name: "Morgan Morris"`, and a `role` read from `routeDefinitions[route].role`, so the chrome relabels the reader on every navigation. The shell **already resolves `whoami`** — `App.tsx:564` and `App.tsx:736` both call `getWhoAmI` — and the string `actor_display_name` appears nowhere in `App.tsx`. The service answers the question, the shell asks it, and the answer is discarded in favour of a literal. Worse, `App.test.tsx` sets `actor_display_name: "Morgan Morris"` in **eight fixtures**, the same string as the hardcoded header, so any test asserting the header's name passes identically whether the header reads `whoami` or the literal. That is the failure this file has already recorded once, in E10's shipped bug list: *three mutually-consistent copies of the wrong value pass*. The fixtures are changed in the same task as the header, or the fix is not verifiable.
+
+**Target structure — five surfaces, each a question an evaluator asks.** The groups are questions, not objects, because the reader arrives with a question and not with an object.
+
+| Surface | The question | Destinations (E21's labels where it renamed one) |
+| --- | --- | --- |
+| — | What needs me right now? | **Overview**, ungrouped, as the landing entry |
+| **Served** | What did the machines actually get, and was it right? | Receipts, Context Lab, Sessions *(+ evaluation runs, E22-T15)* |
+| **Sources** | Where did it come from, and should it have been trusted? | Catalog, Claims, Relationships, Notebooks, Sources, Withheld |
+| **Judgement** | What is contested, and what am I being asked to decide? | Needs review\*, Promotions, Exceptions |
+| **Agents** | Who is consuming this, are they accurate, are their instructions right? | Agents, Tasks, Activity, Analytics |
+| **Governance** | What rules are in force, who may approve, and what changed? | Policies, Revisions, Approvers, Ownership & profiles, Audit log, Settings |
+
+**The count checks, and the check is the point.** 22 existing destinations, all 22 placed: 1 ungrouped + 3 + 6 + 2 + 4 + 6. The only addition is `Needs review` (\*), promoted out of the `?tab=curation` value that Overview and `AssertClaimPage` already deep-link to as though it were a destination — E21's finding, and E21's same single addition, reaching 23 entries by the same route. No destination is invented and none is dropped; a grouping that quietly loses three is how a regrouping becomes a deletion nobody voted for, so the arithmetic is written down.
+
+Two placements are load-bearing rather than tidy. **Notebooks belongs in Sources** because workspace material is literally one of the four blocks `/v1/context/resolve` returns — it *is* a source of served context, and filing it under notes would hide that from the reader tracing where an answer came from. **Analytics belongs in Agents** because under the machines-consume/humans-evaluate reframe, usage volume is a fact about consumers, not a report for its own sake.
+
+Five groups, none larger than six, and the ordering is the evaluator's own sequence: see what was served → trace where it came from → decide what is contested → check who consumed it → change the rules that produced it. What changes is that a destination is reached from the evidence that motivates visiting it, and every screen gains a read path before it keeps its write.
+
+**Every identifier field resolves one of three ways, and the third is the honest one.** The 67 fields sort by whether a read exists to populate a picker. The counts are approximate — decomposition assigns each field individually, and the split matters more than the arithmetic:
+
+| Disposition | Count (approx.) | Objects | Ships when |
+| --- | --- | --- | --- |
+| **Read exists, unused** | ~34 | entity, capability, claim, verifier, connector, upload policy, replay corpus, approval evidence, exception, ARC artifact, workspace, session, entity type | now — UI-only, no service change |
+| **Read must be built** | ~25 | actor/principal, ARC revision, intent, checkpoint, tenant, receipt-by-listing, ownership assignment, binding, gate | after its service task |
+| **Stays free text, deliberately** | ~8 | content digests, external revision locators, reasons, names, external IDs | never — see below |
+
+The third row is why this epic writes an ADR before it writes a picker. A **content digest is not an identifier of something the system knows** — it is an assertion by the operator about material the system has not seen, and `SourceGovernancePanel.tsx:339-343` already argues this correctly in its own copy (*"the digest **is** the corpus"*). Turning it into a picker would mean offering a list of digests the system already has, which inverts the control: the point of the field is to state, in advance, what the fetched bytes must hash to. A blanket "no free-text identifiers" rule would break precisely the field whose free-text-ness is the safety property. The rule needs an exception clause and the exception needs a test, or the next reader deletes it as an oversight.
+
+**Agents become first-class principals, reversing E20's Decision 2.** E20 recorded that `actor_kind` has no reliable source: `upsert_entitlement_actor(session, tenant_id, oidc_subject, display_name)` is the only function both auth paths call, and a human in Claude Code and an unattended agent arrive over the identical MCP transport. That reasoning was correct, and E20 was right to build on `author_actor_id` rather than guess. The user's decision here does not dispute it — it supplies the missing signal instead of inferring one. **An agent registers.** Registration is a declaration by the operator or the integration, carrying a name, an owner, and the fact that this principal is an agent; `actor_kind` is then read off a record rather than derived from a transport that provably cannot distinguish. The `actors` table already carries `(actor_id, tenant_id, oidc_subject, display_name, created_at)` per `contextplane/auth/entitlements/actor_store.py:166`, so the roster's spine exists and the registration adds the declaration on top of it.
+
+This is what makes `/agents` a real screen rather than an "any principal" screen with a misleading title, and it is what turns the field the user named first — `Agent actor UUID`, `AgentsPage.tsx:229`, placeholder `00000000-0000-0000-0000-000000000000` — into a list of named agents. Note the shape of the miss: **E20-T10 already specified that the `report_id` field must be a `<select>` populated from the agent's own failure-pattern reports, explicitly "not free-text UUID entry."** The task got the discipline right for the second field on the form and never applied it to the first, because the first identifies the thing the whole page is about and there was no list to populate it from. The picker rule (E22-T1) exists so that gap is caught by a check rather than by a reader.
+
+**Instructions: seen, never duplicated, and supplied as governed context.** The user's constraint, in their words: *"prompts can be registered in the contextplane and they can originate within the agent instructions (e.g., CLAUDE.md). this system should not duplicate what's already available to agent, but it should be able to see what the agent used and should be able to provide new or improved or contradictory instructions as context."* Three requirements, and the third is the one that changes the architecture.
+
+1. **Contextplane is not the store of record for an agent's base instructions.** They live with the agent — a `CLAUDE.md`, a system prompt, an integration's own configuration. Copying them in creates a second copy that drifts, and gives one question two answers, which this file's supersession rule exists to prevent.
+2. **Contextplane must be able to see which set was in force.** It cannot today: `ContextResolveRequest` has nine properties — `query`, `subject_entity_id`, `intent_ids`, `workspace_reference`, `workspace_term`, `arc_receipt_id`, `lifecycle_references`, `limit`, `max_age_s` — and **not one of them carries the caller's instruction set**. So every judgement the product can currently make about a resolution is made without knowing what the agent was told to do with it, which is a substantial part of why "was this context right?" is hard to answer. The caller declares it; a digest identifies the set, and content is submitted once per digest so the same set is never re-sent.
+3. **Contextplane's own contribution is a delta, served as context.** New, improved, or *contradictory* instructions come back through `/v1/context/resolve` as a block, not through a side channel. This is the part worth stating plainly: an instruction delivered as context **inherits everything context has** — provenance, trust class, a receipt, suppression, and evaluability. It can be traced to where it came from, judged in the Context Lab, quarantined when wrong, and measured against outcomes exactly like a claim. An instruction delivered any other way inherits none of that and becomes the one input to agent behaviour the governance machinery cannot see. Today's envelope has four blocks (`canonical`, `arc`, `observed_claims`, `workspace`); this adds a fifth.
+
+A **contradictory** instruction is a first-class case, not an error. When the delta contradicts the declared base set, that is a governance event with a reader and a decision attached — it belongs in the **Judgement** surface, where somebody sees what was contradicted, why, and what the agent did next. Silently overriding an agent's own instructions without recording that a contradiction occurred is the one shape this must not take.
+
+**What this does not decide, and holds an ADR for.** Whether declaration is per-resolve, per-session, or attested once at registration; whether an unknown digest is refused, warned, or accepted; and whether the fifth block is suppressible by the same rules as the other four. Each is a real fork, and E22-T3 decides them before E22-T11 builds anything, on this file's own convention that a decision outliving its PR is recorded before the PR that enacts it.
+
+**Supersession — E10 retires into this epic, and E21's grouping is struck.** Per the user's decision, and executed here rather than left implicit:
+
+- **E10 is superseded in full.** Its status changes to `superseded`. Its nav item had already been struck to E21; its cockpit dispositions had already been struck to E5-T6; what remains — the quarantine/suspend screens (E10-T1), ARC and PII operations out of the raw console (E10-T3), and canon copy (E10-T4) — is exactly this epic's subject matter at this epic's scope. E10-T1 lands as the **Judgement** surface's quarantine work and keeps its E4-T2/E4-T3 blockers unchanged; E10-T3 is the **Governance** surface's read-path-first rule applied to ARC and PII; E10-T4's standard survives verbatim and is enforced by E22's copy task, which now has one more false sentence to remove than E10 knew about — the `SourceGovernancePanel` notice.
+- **E21's grouping is struck; E21's naming and addresses are absorbed intact.** This is a genuine conflict and it is named rather than blended: E21 groups by *object and stage* (Discover / Memory / Notes & tasks / Policy / Explain / Administer), and E22 groups by *the evaluator's question*. Both cannot be primary navigation. E22's spine wins on the user's decision that the human's job at this dashboard is evaluation, which is a statement about what the reader is doing and therefore outranks a statement about what the objects are. **E21 has zero decomposed tasks and nothing built against it**, so the cost of restructuring is editorial. What survives untouched and is not re-litigated: E21's entire naming table (`Living memory` → **Claims**, `Quarantine` → **Withheld**, `Proposals` → **Promotions**, `Workspaces` → **Notebooks**, and the rest), its rule that *the UI labels the job and the page body keeps the contract's word for the object*, its four address changes with redirects, and its finding about the 20 conflicting `eyebrow` strings. Those are orthogonal to grouping and are pure wins. E21's status becomes `partly superseded` with the grouping table marked struck, so a reader of E21 is not left choosing between two published IAs.
+- **E13, E11 and E5-T6 are untouched.** E13 consolidates service surfaces; E11 owns the receipts explorer's suppression rules and its ADR-0013 recompute constraint, which E22's **Served** surface consumes without relaxing; E5-T6 owns the reviewer cockpit, which the **Judgement** surface hosts rather than rebuilds. No governance property is dropped anywhere in this epic: every screen keeps its role gate, its receipts, its evidence and its suppression floors. Surfaces are rearranged and reads are added; the control set does not shrink.
+
+**Alternatives rejected.**
+
+- *Fix the 67 fields and stop.* This was offered and declined. It is also insufficient on its own evidence: a picker on `/revisions` still leaves a screen whose only content is four text boxes and a radio pair, reachable from a sidebar, with no answer to "which revisions exist and which one is my problem." The field is the symptom; arriving at a form with no read path is the defect.
+- *Keep the object-shaped IA and add read paths.* Cheaper, and it fails the user's actual complaint. A reader who must already know that a connector is an ARC concern to find the screen that lists connectors is being asked to know the service's module boundaries — which is E21's own diagnosis, and it does not stop being true once the page has a table on it.
+- *Infer `actor_kind` from session-event patterns.* Considered and rejected by the user's decision to register agents. Recorded because it is the tempting cheap option: `memory_session_events.kind` distinguishes `user_message` from `agent_action`, so a plausible-looking inference is available. It would produce a confident label on a guess, on the screen whose entire purpose is to tell an operator how much to trust an agent — the worst possible place for one.
+- *Store agent instructions in Contextplane as the source of truth.* Rejected by the user's constraint, and independently by this file's supersession rule: two copies of an instruction set is one question with two answers, and the copy in Contextplane would be the stale one.
+
+**Out of scope for E22.**
+
+- **Identity-scoped navigation.** Settled by the one-operator decision, not deferred. The placeholder identity is still fixed (the header must show the real `whoami` name), but destinations are not filtered by role.
+- **Any contract rename.** E18 owns published-surface renames and has ADR 0009 for how one is done. E22 adds endpoints and one request field; it renames nothing.
+- **LLM-generated instruction content.** Unchanged from E20. This epic makes the in-force set visible and makes Contextplane's delta governable; it does not generate the text.
+- **Automated adjustment of curation or retrieval based on evaluation results.** The evaluator sees, judges, and changes. A loop that retunes retrieval automatically from feedback is a different epic with its own safety argument, and building it inside a usability epic is how it would ship without one.
+- **Visual redesign.** `.develop/DESIGN.md`'s visual language, spacing and component vocabulary are not in question and are not touched. This epic is about what a screen contains and how it is reached.
+
+### E22-T1 — ADR 0018: an identifier the reader cannot know is a defect, and the three fields where it is not
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: `.develop/adr/0018-identifiers-are-chosen-not-typed.md`, recording the rule that a field asking for a server-assigned identifier is populated from a read, and enumerating the exception class so the exception is not mistaken for an oversight.
+
+- **Context**: the measured counts above — at least 67 identifier fields across 20 screens, 15 with a placeholder that names the format. Quotes `.develop/DESIGN.md`'s "design the common read path first" and states that on `/revisions` and `/sources` there is no read path at all.
+- **Decision**: a server-assigned identifier is selected from a list, never typed. Where no list endpoint exists, the field is blocked on building one, not shipped as text.
+- **The exception, stated positively rather than as a carve-out**: a value the operator is *asserting* about material the system has not yet seen stays free text — content digests, external revision locators (`commit:abc123`), external IDs, and free-prose reasons. The test that separates them: *would a list of existing values be the right answer, or would offering one invert the control?* For a corpus digest, offering a list of digests the system already holds defeats the field's purpose, which is to constrain bytes not yet fetched. `SourceGovernancePanel.tsx:339-343` already makes this argument in product copy and the ADR cites it.
+- **Alternatives rejected**: a blanket no-free-text-identifiers lint with per-site suppressions (rejected — the suppressions would accumulate on the safety-relevant fields first, since those are the ones that trip it); leaving the rule as documentation (rejected — this file's own convention is that a boundary without a check is a boundary that drifts, and E22-T4 cuts the check).
+- **Consequences**: enumerates the three dispositions and their approximate counts; names E22-T4 as the enforcing check and E22-T5 as the first batch.
+- **Dissent**: written honestly — that a picker over a large collection can be slower for an expert who already has the UUID on their clipboard, and that the rule should therefore not forbid *pasting* into a picker's search field. The ADR resolves this by requiring pickers to accept a pasted identifier and resolve it to a named record, rather than by weakening the rule.
+
+Acceptance:
+    test -f .develop/adr/0018-identifiers-are-chosen-not-typed.md
+    grep -q "^## Dissent" .develop/adr/0018-identifiers-are-chosen-not-typed.md
+    grep -q "^## Alternatives" .develop/adr/0018-identifiers-are-chosen-not-typed.md
+
+### E22-T2 — ADR 0019: an agent is registered, not inferred
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: `.develop/adr/0019-an-agent-is-a-registered-principal.md`, recording the reversal of E20's Decision 2 and, more importantly, recording that it is a reversal *by supplying a signal* rather than by disputing E20's finding.
+
+- **Context**: quotes E20's Decision 2 in full, including the observation that a human in Claude Code and an unattended agent use the identical MCP transport. States that this remains true and is precisely why inference is refused.
+- **Decision**: `actor_kind` is set by declaration at registration. An unregistered principal has kind `unknown` — **not** `human`, because defaulting to human would make every unregistered agent invisible on exactly the screens built to watch agents.
+- **Assumptions**, numbered: (1) an operator running an agent can be asked to declare it, because they already had to provision its credentials; (2) `unknown` is a durable state, not a migration artefact, and every consumer renders it as unknown rather than collapsing it into a kind; (3) registration is tenant-scoped and carries an owner, so "who do I talk to about this agent" is answerable from the roster.
+- **Alternatives rejected**: inference from `memory_session_events.kind` patterns (rejected — a confident label on a guess, on the screen whose job is calibrating trust in an agent); transport-based classification (rejected on E20's own evidence); leaving `actor_kind` unused forever (rejected — it is the user's first named defect, and the roster is unusable without names and kinds).
+- **Consequences**: E20-T4 through E20-T10 continue to key on `author_actor_id` and are **not** rewritten to consult `actor_kind`; the declaration adds a display dimension and a filter, not a new join in the accuracy path. Says so explicitly, because the tempting follow-on is to "improve" those services and that would re-derive shipped numbers.
+- **Dissent**: that registration is a step integrators will skip, leaving a roster of mostly-`unknown` principals that looks broken; answered, not dismissed, by requiring the roster to render `unknown` as a first-class row with a "declare this" action rather than hiding it.
+
+Acceptance:
+    test -f .develop/adr/0019-an-agent-is-a-registered-principal.md
+    grep -q "^## Dissent" .develop/adr/0019-an-agent-is-a-registered-principal.md
+    grep -q "^## Assumptions" .develop/adr/0019-an-agent-is-a-registered-principal.md
+
+### E22-T3 — ADR 0020: the instruction set is seen, never stored as truth, and the delta is context
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: `.develop/adr/0020-instructions-are-declared-and-deltas-are-context.md`, deciding the three forks the epic body names as undecided.
+
+- **Context**: `ContextResolveRequest`'s nine properties, none of which carries the caller's instruction set; the user's constraint that Contextplane must not duplicate what the agent already has.
+- **Decision**, in three parts: (1) **where declaration happens** — per-resolve digest with a separate one-time content submission per digest, or per-session attestation, decided here with the round-trip cost measured rather than assumed; (2) **what happens to an unknown digest** — refused, warned, or accepted-and-recorded, decided against the fact that refusing makes a first-run resolve fail; (3) **whether the fifth envelope block is suppressible** by the same rules as the other four, which it must be unless a reason is recorded, since an unsuppressible block is a channel around every floor the product has.
+- **The part that is not a fork and is recorded anyway**: the delta returns through `/v1/context/resolve` as a block, never a side channel, so it inherits provenance, trust class, receipt, suppression and evaluability. The ADR states the counterfactual plainly — an instruction delivered outside the envelope is the one input to agent behaviour the governance machinery cannot see.
+- **Contradiction is a governance event.** When a delta contradicts the declared base set, the resolution records that a contradiction occurred and what was contradicted. The ADR decides whether a contradicting delta is served, withheld pending review, or served-and-flagged; it does not leave "override silently" available as an implementation choice.
+- **Alternatives rejected**: storing the agent's base instructions in Contextplane (two copies, one stale); a dedicated instruction endpoint outside resolve (loses the receipt, which is the whole argument); inferring the instruction set from the agent's behaviour (unfalsifiable).
+- **Dissent**: that declaration puts a cost on every integrator for a benefit only the evaluator sees, and that adoption will be partial; answered by requiring every evaluation surface to distinguish *"no instructions declared"* from *"instructions declared and empty"*, so partial adoption is legible rather than silently degrading every judgement built on it.
+
+Acceptance:
+    test -f .develop/adr/0020-instructions-are-declared-and-deltas-are-context.md
+    grep -q "^## Dissent" .develop/adr/0020-instructions-are-declared-and-deltas-are-context.md
+
+### E22-T4 — The resource picker, and the check that keeps identifiers out of text boxes
+
+**Kind:** task · **Status:** pending · **Blocked by:** E22-T1 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: one `ResourcePicker` in `packages/ui` and a lint rule that fails the build on a new free-text identifier field.
+
+The primitive extends what already exists rather than inventing a second control: `SearchableSelect` is already imported by **28 files across the feature tree** for closed vocabularies, so the pattern and its accessibility behaviour are settled; the gap is remote-backed options with search, pagination over `next_cursor`, a resolved-name display for an already-set value, and the paste path ADR 0018's dissent section requires — a pasted UUID resolves to a named record instead of being rejected as "not in list". Cursors are returned unchanged and never decoded, per the UI repo's `CLAUDE.md`.
+
+The check is the reason this task exists as a task and not as a convention. It flags a `<label>`/`<input type="text">` pair whose label text or placeholder matches the identifier vocabulary, and it is satisfied by either a picker or an inline annotation naming the ADR 0018 exception class the field falls under. An annotation that names no class does not satisfy it. This is the mechanism that stops the 67 from being re-created one screen at a time, and it is the difference between this epic and a cleanup. It is also what makes the scan's under-count harmless: the check runs over the AST rather than over parsed label prose, so the fields the scan missed are caught by the gate even though nobody enumerated them.
+
+Acceptance:
+    pnpm --filter @repo/ui test -- -t "ResourcePicker"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E22-T5 — The five ARC collections the dashboard already knows how to read
+
+**Kind:** task · **Status:** pending · **Blocked by:** E22-T4 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: `source-connectors`, `source-upload-policies`, `observation-replay-corpora`, `approval-evidence` and `approval-verifiers` are listed, and the four fields that name them become pickers.
+
+Unblocked by any service work: all five `get` operations are in the committed contract and already generated into `shared/api/generated/contextplane.ts`. The adapters need list functions; the pages need tables. This is the cheapest large win in the epic and it is first for that reason.
+
+**Delete the false notice.** `SourceGovernancePanel.tsx:163-170` tells the reader these registrations "cannot be read back afterwards, so what is registered here is not visible anywhere else." Once the tables exist the sentence is not merely unnecessary, it is a false statement about the product, and it was false before this task started. The surrounding notice's *true* half — that these are standing grants inherited by every future admission, not one-off settings — survives and is the reason the screen still warns at all. Removing the whole notice would drop a real warning along with a false one.
+
+The verifier-list argument at `SourceGovernancePanel.tsx:244-248` gets stronger, not weaker, once verifiers are a picker: the form can show how many future admissions each candidate verifier would gain approval authority over.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "source governance"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E22-T6 — The shell stops calling every reader Morgan Morris
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: the header renders the signed-in principal from `whoami`, and the role label stops changing with the route.
+
+Small, unblocked, and listed separately because of how it fails today. `App.tsx:564` and `App.tsx:736` already resolve `whoami`; `actor_display_name` appears nowhere in `App.tsx`; the literal at `App.tsx:923-927` is rendered instead. **Eight fixtures in `App.test.tsx` set `actor_display_name: "Morgan Morris"`** — the same string as the literal — so a test asserting the header's name passes whether or not the fix works. The fixtures change to a distinct name in this task, or the task is unverifiable, and the test that proves it must assert the header shows the fixture's name and not the literal.
+
+`role: userRole` from `routeDefinitions[route].role` (`App.tsx:885`) is removed rather than replaced: under the one-operator decision the chrome has no role to display, and displaying the current page's notional persona as the reader's identity is the defect, not a placeholder for a better value.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "identity"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E22-T7 — `GET /v1/actors`: the principal directory, with kind and owner
+
+**Kind:** task · **Status:** pending · **Blocked by:** E22-T2 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a tenant-scoped, cursor-paginated roster of principals — `actor_id`, `display_name`, `oidc_subject`, `actor_kind`, owner, first and last seen — and the registration write that sets kind and owner.
+
+The spine exists: `contextplane/auth/entitlements/actor_store.py:166` inserts `(actor_id, tenant_id, oidc_subject, display_name, created_at)`. What is added is the declaration from ADR 0019 and the read. Unregistered principals appear with kind `unknown` and are not filtered out, per that ADR's assumption 2.
+
+Per this workspace's standing rule, the guard belongs in the service and not in a router: both the REST route and any MCP tool reaching this reach it through the same service method, so tenant scoping and authorization cannot be present on one transport and missing on the other.
+
+This unblocks the field the user named first, and eleven others: `Agent actor UUID`, `Actor ID` ×3, `Owner principal` ×2, `Producer ID`, `Provider ID` ×2, `Authenticated author subject`, `Authority subject`, `Principal subject`.
+
+Acceptance:
+    make lint typecheck && make test-coverage && make test-integration
+
+### E22-T8 — `GET /v1/arc/revisions`: the index that makes `/revisions` a page
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a filterable, cursor-paginated revision index — revision, the directive it belongs to, state, activation eligibility, attached approval evidence, and whether a terminal act has already been recorded.
+
+Today the contract has seven `revisions/{revision_id}` paths and **every one is keyed by a `revision_id` the caller must already hold**: `activate` ×2, `revoke` ×2, `invalidate`, `approval-evidence`, `activation-eligibility`. There is no way to ask which revisions exist. That is why `RevisionLifecyclePanel.tsx` is four text boxes — not because the screen was designed badly, but because nothing could have been designed well against that surface.
+
+The list must carry enough for the decision the screen exists to support. `RevisionLifecyclePanel.tsx:33-46` argues correctly that revoke and invalidate differ in *reach over the past*, not in reversibility — so the row needs what was decided under the revision while it was in force, or the reader is picking between two terminal acts on the strength of a paragraph again.
+
+Acceptance:
+    make lint typecheck && make test-coverage && make test-integration
+
+### E22-T9 — `GET /v1/context/feedback`: the judgement becomes readable
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: recorded context feedback is readable by the reader who recorded it and by the evaluation surfaces, scoped and suppressed under the rules that already govern `/v1/learning/aggregates`.
+
+`/v1/context/feedback` is `post`-only in the committed contract. The judgement is consumed into floored cohort cells (`contextplane/signals/aggregates.py`) and is never returned per-run, so a reader cannot see what their own assessment did — to the item, to the resolution, or to anything. This is the open end of the one loop the product has for "how might this be improved."
+
+ADR-0013's constraint is the live risk and is honoured rather than worked around: an explorer that recomputes is the differencing attack. This read returns *what was recorded*, not a recomputation over a filtered population, and E11-T1's decision governs it. If the two cannot be reconciled for a given scope, the scope is refused and the refusal says so — the epic's own rule that a governance property is never dropped to make a surface nicer applies here first.
+
+Acceptance:
+    make lint typecheck && make test-coverage && make test-integration
+
+### E22-T10 — The five surfaces, and the routes that reach them
+
+**Kind:** task · **Status:** pending · **Blocked by:** E22-T5 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: `App.tsx`'s 22 destinations are regrouped into Served / Sources / Judgement / Agents / Governance, with E21's naming table and address redirects applied in the same change.
+
+Cheap for the reason E21 already established: `routeDefinitions` replaced the five parallel lists, so a regrouping is an array edit. E21's four address changes (`/memory?tab=curation` → `/memory/review`, `/proposals` → `/memory/promotions`, `/memory/assert` → `/memory/claims/new`, `/workspaces` → `/notebooks`) redirect rather than fall through, and decomposition greps the service repo's operator docs for all four before any of them moves — E21's instruction, carried forward unchanged.
+
+The `eyebrow` slot is settled here because a regrouping is when it becomes answerable: 20 strings across three vocabularies collapse to the surface the reader is standing in. Per-page trust-layer notices that the slot subsumes are deleted rather than left duplicating it.
+
+**Not a rebuild.** Every destination in the target table exists. What this task changes is grouping, labels, addresses and the eyebrow. Screen internals are the tasks that follow, and cutting them before the addresses settle would fit each screen to a route it is about to lose.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "navigation"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E22-T11 — `/revisions` becomes a revision, and the two endings become actions on it
+
+**Kind:** task · **Status:** pending · **Blocked by:** E22-T8, E22-T10 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: the reader finds a revision in a list, opens it, sees its state, evidence and what was decided under it, and revokes or invalidates it from there.
+
+The four text boxes go. What must survive verbatim is the argument `RevisionLifecyclePanel.tsx:33-46` and its warning notice already make — that both acts are terminal, that neither is undoable, and that the choice is about what is being said about the time the revision was in force. The current screen states this well and gives the reader nothing to state it *about*; the fix is context, not copy.
+
+Attach-evidence and withdraw-approval stop being standalone forms and become actions on the revision and on the evidence respectively, reachable from the record each one concerns. `revokeArcApprovalEvidence` remains keyed by evidence rather than by revision, per the contract — the screen does not paper over that with a revision-shaped affordance that would silently affect other revisions citing the same evidence.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "revision"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E22-T12 — Ownership & profiles: eleven identifier fields, one read path
+
+**Kind:** task · **Status:** pending · **Blocked by:** E22-T7, E22-T10 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: the densest screen in the tree gets the read path the design standard asks for first.
+
+`OwnershipPanel.tsx` has 11 identifier fields across four sections — search, assign, transition, and profile lifecycle — and 23 raw inputs against 3 selects. Its reads are the two derived views `/v1/ownership:owns` and `/v1/ownership:owned-by`, both of which need a principal the reader must currently type. E22-T7 supplies it.
+
+Two fields need their own answer and do not get one from the actor roster: `Assignment UUID` and `Binding UUID` are reachable only as `GET /v1/ownership/assignments/{assignment_id}`, with no collection. Decomposition decides per field whether the derived views can populate the picker or whether a further service read is cut — and records which, rather than shipping two text boxes on a screen where nine others became pickers and letting the inconsistency read as an oversight.
+
+`Profile revision UUID` ×2 and `Target core revision UUID` resolve against `/v1/profiles/revisions`, which exists.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "ownership"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E22-T13 — Sources stop being three forms and become a registry
+
+**Kind:** task · **Status:** pending · **Blocked by:** E22-T5, E22-T10 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: connectors, upload policies and replay corpora are records with lives — listed, inspected, revoked — and registering one is an action from the list rather than the screen's only content.
+
+E22-T5 supplies the reads and removes the false notice; this task is the reshaping that follows, and it is where the evaluator's path is actually built: a source is reached from something that came *through* it, because that is why an evaluator cares about it. The revoke paths already exist in the contract (`source-connectors/{connector_id}/revoke`, `source-upload-policies/{policy_id}/revoke`) and are unreachable from the dashboard today.
+
+The corpus digest stays free text under ADR 0018's exception class, annotated with the class it falls under, and `SourceGovernancePanel.tsx:339-343`'s explanation of why survives.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "sources"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E22-T14 — The declared instruction set reaches the resolver
+
+**Kind:** task · **Status:** pending · **Blocked by:** E22-T3 · **Hotspot:** yes · **Repo:** contextplane
+
+Goal: a caller declares the instruction set in force, and the envelope carries the governed delta back as a fifth block.
+
+Hotspot because it changes `ContextResolveRequest` and the envelope — the hottest contract in the product, consumed by both transports and by the Context Lab — and because ADR 0020's suppression fork means a wrong answer here creates a channel around every floor the product has.
+
+Scope is exactly what ADR 0020 decided: the declaration field and its digest/content split, the unknown-digest disposition, the fifth block and its suppression rules, and the contradiction record. Nothing about *choosing* which delta to serve is in this task; that is retrieval policy and it follows.
+
+The UI contract pin bumps in the same wave, following the precedent E15-T2 and E18-T5 set for a contract change with a dashboard consumer.
+
+Acceptance:
+    make lint typecheck && make test-coverage && make test-integration
+
+### E22-T15 — Evaluation runs: a prompt, a set of them, and a verdict that persists
+
+**Kind:** task · **Status:** pending · **Blocked by:** E22-T9, E22-T14 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a saved prompt set can be resolved repeatedly, its results compared across runs, and a verdict recorded against a run rather than lost with the page.
+
+This is the new capability the epic was scoped to include, and its boundary is set by what Context Lab already gets right. `ContextLabPage.tsx:256` states it plainly: *"The resolver retrieves context only. It does not call a language model, generate an answer, or invent an evaluation score."* That boundary holds — an evaluation run resolves context and records a human verdict; it does not generate a response and it does not score itself.
+
+What Context Lab cannot do, and this adds: one prompt at a time with no set; no comparison between two resolutions; no persistence, so a judgement cannot be revisited or compared after a change; and no way to ask *"what changed for this prompt set after I adjusted that policy?"*, which is the question the whole loop exists to answer.
+
+Decomposition decides whether a run pins the resolver configuration it ran under. It almost certainly must — a comparison across a config change is meaningless if neither side records which config produced it — but that is a decision with storage consequences and it is named here rather than assumed.
+
+Acceptance:
+    make lint typecheck && make test-coverage && make test-integration
+
+### E22-T16 — Canon copy, last, and with one more false sentence than E10 knew about
+
+**Kind:** task · **Status:** pending · **Blocked by:** E22-T11, E22-T12, E22-T13 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: the words the product uses about itself are true and consistent, once the screens they describe exist.
+
+Inherited from E10-T4 with its reasoning intact — copy written before the screens describes an intention, copy written after describes what shipped — and with its standard unchanged: "semantic data mesh" and the false "usage data" attribution were removed because neither was true, and ADR-0012's rule against calling bounded-exposure tamper-evidence *non-repudiation* is the same rule in another domain.
+
+What E10-T4 could not have known: the `SourceGovernancePanel` notice is a fourth instance, and it is the most consequential of the four because it describes a limitation the product does not have. E22-T5 removes it. This task's job is to check for others of that shape — copy that navigates, copy that disclaims a naming collision, and copy that describes a missing capability the product has — now that the screens have read paths and most such sentences have become deletable rather than merely rewordable.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+## What holds for the eighteenth wave, and why
+
+Named rather than left as an unstated remainder, on this file's convention that a first wave is the claimable frontier and not the scope.
+
+- **The Served, Judgement and Agents surfaces' internals.** E22-T10 settles the grouping; the screens inside three of the five surfaces are not cut yet because they consume decisions still in flight — E5-T6 owns the reviewer cockpit the Judgement surface hosts, E11-T2 owns the receipts explorer the Served surface hosts, and both have their own suppression arguments that a UI task must not re-decide. Cutting them now would embed answers those tasks have not given.
+- **Retrieval policy for instruction deltas.** Which delta is served to which agent, and on what basis, follows E22-T14 building the channel. Deciding selection before the channel exists is how a policy gets fitted to an implementation that has not happened.
+- **The remaining ~26 blocked identifier fields.** Intent, checkpoint, tenant, gate and receipt-by-listing each need a read that does not exist. Each is a small service task and they are held together so the pattern E22-T7 and E22-T8 establish — cursor-paginated, tenant-scoped, guarded in the service — is set once rather than five times.
+- **Quarantine and suspend screens**, inherited from E10-T1 and still blocked by E4-T2 and E4-T3 for the state and the preview, with E10-T1's two non-negotiables carried forward: the preview is point-in-time, and revert is not a secondary action.
