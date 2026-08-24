@@ -562,7 +562,7 @@ recorded justification. Never per-actor cells outside the audit role.
 
 ### E12 — Migration/import path
 
-**Kind:** epic · **Status:** done — except E12-T3, blocked on a bulk-import surface and a policy-disposition writer · **Blocked by:** E1, E5 ⚙ · **Repo:** contextplane
+**Kind:** epic · **Status:** done — except E12-T3, blocked on E12-T5's governance decision · **Blocked by:** E1, E5 ⚙ · **Repo:** contextplane
 
 Bulk-import API with provenance mapping; Backstage/CMDB/wiki connectors.
 Provenance mapping reuses the governed assertion path — `observed_time` and
@@ -7032,7 +7032,7 @@ Acceptance:
 
 ### E12-T3 — The migrated-canonical disposition, and a halt E5 has not defined
 
-**Kind:** task · **Status:** blocked — on two surfaces the epic names and no task built · **Blocked by:** E5-T4's policy-disposition writer, a bulk-import surface · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** blocked — on a governance decision, now named · **Blocked by:** E12-T4, E12-T5 · **Hotspot:** no · **Repo:** contextplane
 
 **The halt this entry was blocked on now exists**, as E5-T2b, defined where this
 entry said it had to be. Two other blockers took its place, and both were found
@@ -7054,6 +7054,36 @@ it cannot be recorded at all.
 Both are real tasks and neither is this one. Recorded rather than worked around,
 because a bulk import invented inside this entry would be exactly the
 self-marking batch its own text refuses.
+
+**A third blocker, found by grounding the other two, and it is the one that
+matters.** This entry is named for "the migrated-canonical disposition", and
+**there is no such disposition.** `curation_cases.py` enumerates six —
+`confirm`, `reject`, `supersede`, and the three proposal targets — and
+`migrated_canonical` is not among them. So the writer has nothing to write and
+the bulk import has nothing to record.
+
+Adding it is not vocabulary work. `DispositionPolicy`'s own docstring says every
+field is a property of the *target* and that the three proposal targets
+"deliberately disagree on all of them", so a new disposition means deciding its
+approval authority, evidence threshold, scope, supersession and rollback — five
+answers about what authority migrated material carries. Deciding that inside
+this task would be deciding, unilaterally, that imported data is canonical on a
+policy's say-so. That is the self-marking batch, arrived at from the other
+direction.
+
+**The two named blockers are less blocked than they read, and that is worth
+recording so the next reader does not re-derive it.** The bulk-import surface
+already exists and is the connector registry — E12-T1's own outcome says an API
+that bypasses it is *the failure mode to refuse*, so "no bulk-import surface" is
+the wrong description of the gap; what connectors do not do is open curation
+cases. And the policy writer is not blocked on a mechanism: `record_disposition`
+takes `actor_kind` and its docstring already anticipates this caller — *"a policy
+path that arrives later has to say so, which is the point"* — so a service
+principal that a case is routed to satisfies the owner check as written.
+
+What is missing in both is a *rule*: which cases a policy may dispose, and what
+that disposition commits to. E12-T4 and E12-T5 carry those, and E12-T5 is the
+one that needs an answer from outside this file.
 
 Goal: a bulk import records its own dispositions honestly, sampled under the one
 governed sampling policy rather than a second regime.
@@ -7078,6 +7108,70 @@ because a halt defined by its consumer is the second regime this task refuses.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "migrated_canonical"
     make all
+
+### E12-T4 — Nothing writes a policy disposition
+
+**Kind:** task · **Status:** blocked — on E12-T5 · **Blocked by:** E12-T5 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a connector run opens curation cases for what it imported and disposes
+them under a stated rule, recorded as `policy` rather than as a person.
+
+**The mechanism is there and the rule is not.** `DISPOSITION_BY_POLICY` is a
+permitted `actor_kind`, `record_disposition` stores it rather than inferring it,
+and the docstring says why the value defaults to `human`: *"every caller today is
+a transport carrying a person's request past the owner check above; a policy path
+that arrives later has to say so, which is the point."* The owner check is
+satisfied by routing the case to the automation principal that then disposes it,
+which is the accountability this table records — no escape hatch is needed and
+none should be added.
+
+`inspected_dispositions` already excludes policy dispositions, and E12-T2 gave
+that exclusion its first reader, so an automated disposal cannot quietly shrink
+what a person still has to review. That property is what makes this safe to build
+once the rule exists.
+
+**What it is blocked on is not code.** A connector run has no disposition to
+write until E12-T5 says what "migrated" commits to. Building the writer first
+would mean picking an existing disposition for it to emit, and every one of the
+six means something a migration has not established.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "policy_disposition"
+    make all
+
+### E12-T5 — What a migrated claim's disposition commits to
+
+**Kind:** task · **Status:** blocked — on a decision nobody here can make · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: `migrated_canonical` exists in the disposition vocabulary with its five
+dimensions decided and written down.
+
+**Blocked in the same way E4-T6 is**, and named rather than left as an implicit
+hold. `DispositionPolicy` records, for each disposition, its approval authority,
+evidence threshold, scope, supersession and rollback. Those are properties of
+what the disposition *commits to*, and for migrated material they answer: on
+whose authority does a claim nobody reviewed become canonical, and what reverses
+it.
+
+The three proposal targets deliberately disagree on all five, which is the
+argument that this cannot be defaulted from a neighbour. A canonical fact is one
+row a reversal can close from the promotion journal; a runbook is a procedure a
+person follows. Migrated material is neither, and copying either one's answers
+would be asserting an equivalence nobody checked.
+
+**Two constraints that survive whatever is decided**, both from E12's epic body
+and both already load-bearing elsewhere: `disposition_actor = policy-automated`
+is never approximated by widening `approval_authority`, because those answer
+different questions and conflating them makes a policy's write
+indistinguishable from an approver's; and the sampled audit draws from E5's
+single `SamplingPolicy`, inheriting `require_minimum_sample`'s halt rather than
+defining a second regime.
+
+This wants an ADR, not a task outcome. Whoever decides it is deciding what a
+migration is allowed to assert about data nobody read.
+
+Acceptance:
+    an ADR under `.develop/adr/`, and `make all`
 
 ### E10-T1 — Quarantine and suspend screens
 
@@ -9556,7 +9650,7 @@ Named rather than left as an unstated remainder, on this file's convention that 
 
 ## E23 — The eighteenth wave: what E22 held, and the four blockers that cleared
 
-**Kind:** epic · **Status:** open · **Blocked by:** none · **Repo:** contextplane, contextplane-ui
+**Kind:** epic · **Status:** done — eight tasks, and every one of the four holds cleared · **Blocked by:** none · **Repo:** contextplane, contextplane-ui
 
 Every item the section above holds was held on a task, and all four of those
 tasks are now done. E5-T6 shipped the reviewer cockpit; E11-T2 shipped the
@@ -9595,6 +9689,19 @@ assigns, so ADR 0018 does not reach them and a picker over them would be a list
 of things that already exist offered on a form for naming one that does not. They
 are annotated with the class they fall under and taken off the baseline, because
 a ratchet that counts them is a ratchet nobody can drive to zero.
+
+**How the arithmetic actually landed.** 66 → 47 (E23-T3) → 41 (E23-T4) → 40
+(E23-T6) → 28 (E23-T7). The three rows held roughly, with one correction: the
+"never" row was larger than ~16 looked, because two fields counted as debt were
+the same `external-id` pair this wave's own envelope screen annotated. The 28
+that remain are the genuinely blocked ones plus the slug question E23-T7 refused
+to answer by stretching a class.
+
+**Two tasks this epic did not start with.** E23-T7 is the row the table above
+named and no task carried. E23-T8 came out of E23-T5's own shortfall: routing
+the envelope's four acts gave an operator a control they could only use if they
+already knew the agent's identity pair, which is this file's own recurring
+defect one level up.
 
 ### E23-T1 — The three reads that are actually missing
 
@@ -9781,7 +9888,7 @@ of this pattern in two waves, and the first where the correction itself was wron
 
 ### E23-T7 — The fields ADR 0018 does not reach
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — shipped in contextplane-ui#48; 41 baselined fields became 28 · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: the third row of this epic's own arithmetic — values the server never
 assigned — are annotated with their class and leave the baseline.
@@ -9811,7 +9918,7 @@ Acceptance:
 
 ### E23-T8 — The envelope directory
 
-**Kind:** task · **Status:** pending · **Blocked by:** E23-T5 · **Hotspot:** no · **Repo:** contextplane and contextplane-ui
+**Kind:** task · **Status:** done — contextplane#140 added the read, contextplane-ui#49 the screen · **Blocked by:** E23-T5 · **Hotspot:** no · **Repo:** contextplane and contextplane-ui
 
 Goal: an operator can see who is governed, without already knowing their name.
 
@@ -9835,3 +9942,49 @@ the truth is "yes, until Tuesday".
 Acceptance:
     make lint typecheck && make test-coverage && make test-integration
     pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**Two findings while building it.** asyncpg cannot infer a bare `$2 IS NULL` —
+the cursor bounds are cast explicitly, and without them the statement fails to
+prepare only on the path where no cursor is passed, which is every first page.
+And `autonomy_envelope.py` reached the 800-line ceiling, so its statements moved
+to `queries/autonomy_envelope.py` along the seam `queries/source_admission.py`
+already established; the comments travelled with them, because three of those
+statements encode a rule that is not in the schema.
+---
+
+## What holds after the eighteenth wave, and why
+
+Named on the same convention the section above follows: a wave is the claimable
+frontier and not the scope. What is different this time is the *kind* of thing
+left. Every item below is blocked on a decision, and none is blocked on a read,
+a surface or a mechanism — which is the first time that has been true in this
+file.
+
+- **What a migrated claim's disposition commits to** (E12-T5, and E12-T4 and
+  E12-T3 behind it). Five dimensions — approval authority, evidence threshold,
+  scope, supersession, rollback — answering on whose authority material nobody
+  read becomes canonical, and what reverses it. Wants an ADR. Everything
+  downstream of it is buildable the day it is answered, and nothing downstream of
+  it is honest before.
+- **Ratified DORA thresholds** (E4-T6), unchanged: a deadline this system makes
+  loud has to be a deadline somebody outside it agreed to.
+- **Whether ADR 0018 gains a fifth exception class.** E23-T7 took the baseline
+  from 66 to 28 and stopped at one shape it could not classify: a stable slug
+  minted on a create form. It passes the ADR's own test — a list of the slugs
+  that already exist is the wrong answer on a form for naming one that does not —
+  and fits none of the four named classes. The ADR says what to do about that in
+  as many words: *"If it grows past that, the rule is being used to justify the
+  status quo rather than to protect a safety property, and this ADR is what
+  should be revisited."* So it was not stretched, and the amendment is the work.
+
+**What the eighteenth wave was actually about, recorded because it recurred.**
+Six of its eight tasks found the same thing under different names: a mechanism
+built, wired, and consulted by nothing. The envelope's four acts with no
+transport. `resolutions_under_revision`. The exception register. The ARC
+source-grant revoke paths. And the inverse twice — a plan entry presuming a read
+was missing when it was there, and a sweep's own record claiming a correction it
+had not made.
+
+The lesson is one line and it is the same every time: **ground the claim in the
+committed contract before building around an absence, waiting for one, or
+recording that you fixed one.**
