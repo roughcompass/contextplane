@@ -35,6 +35,7 @@ from contextplane.service.memory.curation_cases import (
     CASE_RESOLVED,
     CASE_ROUTED,
     DISPOSITION_CONFIRM,
+    DISPOSITION_MIGRATED_CANONICAL,
     DISPOSITION_PROPOSE_ARC,
     DISPOSITION_PROPOSE_CANONICAL,
     DISPOSITION_PROPOSE_RUNBOOK,
@@ -48,7 +49,11 @@ from contextplane.service.memory.curation_cases import (
 )
 
 _REPO = Path(__file__).parent.parent.parent
-_MIGRATION = _REPO / "contextplane" / "storage" / "migrations" / "versions" / "0042_derivation_and_curation.py"
+_VERSIONS = _REPO / "contextplane" / "storage" / "migrations" / "versions"
+#: Where the case-status set was created and where it still lives. Named
+#: directly, unlike the disposition set: nothing has widened it, and a scan would
+#: imply a moving target where there is not one.
+_STATUS_MIGRATION = _VERSIONS / "0042_derivation_and_curation.py"
 _CURATION_QUEUE = _REPO / "contextplane" / "service" / "memory" / "curation_queue.py"
 _CONTEST = _REPO / "contextplane" / "service" / "memory" / "contest.py"
 
@@ -60,6 +65,14 @@ _PROPOSING = (
     DISPOSITION_PROPOSE_RUNBOOK,
     DISPOSITION_PROPOSE_ARC,
 )
+
+# The one that reaches an existing target by a different evidence route, rather
+# than naming a fourth target. ADR 0022: a migration is a lot, and what differs
+# from promoting a canonical fact is the evidence -- a statement about a lot
+# rather than about one claim. It is kept out of `_PROPOSING` deliberately, and
+# `test_the_three_targets_disagree_on_every_policy_axis` is why: that rule is
+# about *targets* disagreeing, and this shares one on purpose.
+_ACCEPTING = (DISPOSITION_MIGRATED_CANONICAL,)
 
 # The policy axes each proposal target must answer differently. Named here rather
 # than inlined so a seventh disposition cannot be added with one axis left to
@@ -78,14 +91,42 @@ _PROMOTION_TARGET_TABLES = (
 
 _WRITE_RE = re.compile(r"\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+([a-z_]+)", re.IGNORECASE)
 
+#: `0088` builds its set by interpolating `0042`'s six, so resolving the pin
+#: means resolving that reference. Spelled out here rather than imported for the
+#: same reason the migrations spell it out: what an already-migrated database
+#: *was* must not change when the Python constants do.
+_SIX_LITERAL = "'confirm', 'reject', 'supersede', 'propose_canonical', 'propose_runbook', 'propose_arc'"
+
 
 # ---------------------------------------------------------------------------
 # The disposition vocabulary is complete and matches what the database allows.
 # ---------------------------------------------------------------------------
 
 
-def test_the_six_dispositions_are_the_whole_vocabulary() -> None:
-    assert set(DISPOSITIONS) == set(_SETTLING) | set(_PROPOSING)
+def test_the_seven_dispositions_are_the_whole_vocabulary() -> None:
+    """Three settle, three propose a target, one accepts a lot into an existing
+    one. A disposition in none of those groups is one nobody classified."""
+    assert set(DISPOSITIONS) == set(_SETTLING) | set(_PROPOSING) | set(_ACCEPTING)
+
+
+def test_accepting_a_lot_differs_from_promoting_a_claim_only_in_its_evidence() -> None:
+    """ADR 0022's core claim, pinned where the vocabulary rules live.
+
+    Scope, supersession and rollback are properties of the *target*, so a
+    migration answering them differently would be writing into a second canonical
+    graph. The evidence is the one dimension that is this disposition's own: a
+    statement about a lot rather than about one claim.
+    """
+    migrated = DISPOSITIONS[DISPOSITION_MIGRATED_CANONICAL]
+    promoted = DISPOSITIONS[DISPOSITION_PROPOSE_CANONICAL]
+
+    assert migrated.target_kind == promoted.target_kind
+    for axis in ("approval_authority", "scope", "supersession", "rollback"):
+        assert getattr(migrated, axis) == getattr(promoted, axis), (
+            f"{axis} is a property of the canonical-fact target; a second route to it "
+            "answering differently would be a second canonical graph"
+        )
+    assert migrated.evidence_threshold != promoted.evidence_threshold
 
 
 def test_every_disposition_names_its_authority_and_evidence() -> None:
@@ -103,15 +144,26 @@ def test_every_disposition_names_its_authority_and_evidence() -> None:
 def test_disposition_vocabulary_matches_the_database_check_constraint() -> None:
     """Drift here is the worst kind: a disposition the service accepts and the
     database rejects fails at write time, after the owner has decided."""
-    source = _MIGRATION.read_text(encoding="utf-8")
-    match = re.search(r"_DISPOSITIONS = \"([^\"]+)\"", source)
-    assert match is not None, "migration no longer declares _DISPOSITIONS"
-    in_db = {v.strip().strip("'") for v in match.group(1).split(",")}
-    assert in_db == set(DISPOSITIONS)
+    # The *latest* migration that pins the set, discovered rather than named.
+    # `0042` created the constraint and `0088` widened it; a test pointing at
+    # whichever one was current when it was written goes stale silently the next
+    # time the vocabulary moves, which is exactly the drift it exists to catch.
+    pinned: tuple[str, set[str]] | None = None
+    for path in sorted(_VERSIONS.glob("[0-9]*.py")):
+        source = path.read_text(encoding="utf-8")
+        match = re.search(r"_(?:DISPOSITIONS|SEVEN) = f?\"([^\"]+)\"", source)
+        if match is None:
+            continue
+        raw = match.group(1).replace("{_SIX}", _SIX_LITERAL)
+        pinned = (path.name, {v.strip().strip("'") for v in raw.split(",")})
+
+    assert pinned is not None, "no migration declares the disposition set"
+    name, in_db = pinned
+    assert in_db == set(DISPOSITIONS), f"{name} and DISPOSITIONS disagree"
 
 
 def test_case_status_vocabulary_matches_the_database_check_constraint() -> None:
-    source = _MIGRATION.read_text(encoding="utf-8")
+    source = _STATUS_MIGRATION.read_text(encoding="utf-8")
     match = re.search(r"_CASE_STATUSES = \"([^\"]+)\"", source)
     assert match is not None, "migration no longer declares _CASE_STATUSES"
     in_db = {v.strip().strip("'") for v in match.group(1).split(",")}
