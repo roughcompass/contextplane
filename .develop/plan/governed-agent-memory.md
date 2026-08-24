@@ -256,7 +256,7 @@ E3 remnants.
 
 ### E4 — Provenance-scoped quarantine + DORA wiring
 
-**Kind:** epic · **Status:** pending · **Blocked by:** E2 · **Repo:** contextplane
+**Kind:** epic · **Status:** done — except E4-T6, blocked on ratified thresholds from legal · **Blocked by:** E2 · **Repo:** contextplane
 
 Quarantine by provenance predicate with dry-run blast-radius preview; bulk
 bitemporal revert; pre-quarantine of downstream receipts; severity
@@ -269,7 +269,7 @@ the classification and the clock.
 
 ### E5 — Review-budget allocator + reviewer cockpit
 
-**Kind:** epic · **Status:** pending · **Blocked by:** E3, E9 ⚙ · **Repo:** contextplane, contextplane-ui
+**Kind:** epic · **Status:** done — all ten tasks closed · **Blocked by:** E3, E9 ⚙ · **Repo:** contextplane, contextplane-ui
 
 One governed SamplingPolicy per (tenant, action class, sensitivity tier) with
 acceptance-sampling math; expected-loss + leverage ranked queue with
@@ -369,7 +369,7 @@ those two is deliberate.
 
 ### E6 — Tamper-evident spine + records management
 
-**Kind:** epic · **Status:** pending · **Blocked by:** E2 · **Repo:** contextplane
+**Kind:** epic · **Status:** done — all four tasks closed · **Blocked by:** E2 · **Repo:** contextplane
 
 Externally anchored tamper-evidence (bounded exposure window — never called
 non-repudiation); retention classes; schedule-driven disposal via
@@ -417,7 +417,7 @@ written.
 
 ### E7 — MCP surface contract + two-call memory loop
 
-**Kind:** epic · **Status:** pending · **Blocked by:** E1, E2 · **Repo:** contextplane
+**Kind:** epic · **Status:** done — all six tasks closed · **Blocked by:** E1, E2 · **Repo:** contextplane
 
 One machine-readable tool registry: default connection exposes ~6–8
 envelope-derived core verbs; full surface opt-in per envelope; registry↔OpenAPI
@@ -554,7 +554,7 @@ than make one, which is a property of the contract no entry here had noticed.
 
 ### E11 — Consumption legibility (suppression-compliant)
 
-**Kind:** epic · **Status:** pending · **Blocked by:** E3 · **Repo:** contextplane, contextplane-ui
+**Kind:** epic · **Status:** done — all three tasks closed · **Blocked by:** E3 · **Repo:** contextplane, contextplane-ui
 
 Receipts explorer over existing endpoints; tenant-scope served-claims
 aggregates under the existing suppression floors; audit-role drill-down with
@@ -562,7 +562,7 @@ recorded justification. Never per-actor cells outside the audit role.
 
 ### E12 — Migration/import path
 
-**Kind:** epic · **Status:** pending · **Blocked by:** E1, E5 ⚙ · **Repo:** contextplane
+**Kind:** epic · **Status:** done — except E12-T3, blocked on a bulk-import surface and a policy-disposition writer · **Blocked by:** E1, E5 ⚙ · **Repo:** contextplane
 
 Bulk-import API with provenance mapping; Backstage/CMDB/wiki connectors.
 Provenance mapping reuses the governed assertion path — `observed_time` and
@@ -8989,7 +8989,7 @@ enforced convention and outranks the entry's prose.
 
 ### E22 — The evaluation surface: identifiers nobody can know, writes nobody can read back, and pages that are endpoints
 
-**Kind:** epic · **Status:** open · **Blocked by:** none · **Repo:** contextplane-ui, contextplane
+**Kind:** epic · **Status:** done — all sixteen tasks closed; the remainder is decomposed as E23 · **Blocked by:** none · **Repo:** contextplane-ui, contextplane
 
 The judgement this epic starts from, recorded in the user's words because the plan should not soften it: *"the UI is not usable. The UI is simply exposing API endpoints and not taking the user into consideration."* Five screens were named as examples — the agent actor UUID field, the connector text box, the replay-corpus form, the revision lifecycle page, and ownership & profiles — and the scope was then set explicitly wider than those five: the whole dashboard is to make sense, not the examples. What follows is the measurement, because an epic that accepts a verdict without measuring it will fix what somebody happened to notice and leave the rest. The five examples land on four screens — the connector box and the replay-corpus form are both `SourceGovernancePanel.tsx` — and the scan below finds identifier fields on twenty.
 
@@ -9551,3 +9551,166 @@ Named rather than left as an unstated remainder, on this file's convention that 
 - **Retrieval policy for instruction deltas.** Which delta is served to which agent, and on what basis, follows E22-T14 building the channel. Deciding selection before the channel exists is how a policy gets fitted to an implementation that has not happened.
 - **The remaining ~26 blocked identifier fields.** Intent, checkpoint, tenant, gate and receipt-by-listing each need a read that does not exist. Each is a small service task and they are held together so the pattern E22-T7 and E22-T8 establish — cursor-paginated, tenant-scoped, guarded in the service — is set once rather than five times.
 - **Quarantine and suspend screens**, inherited from E10-T1 and still blocked by E4-T2 and E4-T3 for the state and the preview, with E10-T1's two non-negotiables carried forward: the preview is point-in-time, and revert is not a secondary action.
+
+---
+
+## E23 — The eighteenth wave: what E22 held, and the four blockers that cleared
+
+**Kind:** epic · **Status:** open · **Blocked by:** none · **Repo:** contextplane, contextplane-ui
+
+Every item the section above holds was held on a task, and all four of those
+tasks are now done. E5-T6 shipped the reviewer cockpit; E11-T2 shipped the
+receipts explorer; E22-T14 built the instruction channel; E4-T2 and E4-T3 shipped
+the quarantine state and the preview. Nothing above is waiting on anything.
+
+**One of the four descriptions is wrong, and the correction is the first finding
+of this epic.** The identifier item says intent, checkpoint, tenant, gate and
+receipt-by-listing "each need a read that does not exist". Three of those five do:
+there is no `GET /v1/intents`, no tenant list, and no way to browse receipts —
+`/v1/receipts/by-reference` answers a different question and needs a reference
+the reader may not have. But **checkpoints and gates are both reachable today**:
+a checkpoint has `GET /v1/intents/{intent_id}/checkpoints/{checkpoint_id}` and
+`GET /v1/checkpoints/by-digest/{digest}`, and a gate is a value inside the
+progression definition that `GET /v1/admin/tenants/{tenant_id}/progression-definitions`
+already returns. Two of the five held fields were never blocked.
+
+That is the fifth time in this file an entry has presumed a read that is not
+there, and the second time it has presumed one *is* not there when it is. The
+lesson is symmetric: ground the claim in the committed contract before either
+building around an absence or waiting for it.
+
+**The identifier arithmetic, as it actually stands.** 59 fields remain on the
+baseline. They are not one problem:
+
+| Disposition | Count | Ships when |
+| --- | --- | --- |
+| **A read exists and nothing calls it** | ~31 | now, UI only |
+| **The read is genuinely missing** | ~12 | after E23-T1 |
+| **Not a server-assigned identifier** | ~16 | never — annotate and remove from the baseline |
+
+The third row is the one E22 did not have a name for. A content digest, an
+external id from another system, a stable slug the author chooses, a subject
+reference in `system:namespace/name` form — none of these is a value the server
+assigns, so ADR 0018 does not reach them and a picker over them would be a list
+of things that already exist offered on a form for naming one that does not. They
+are annotated with the class they fall under and taken off the baseline, because
+a ratchet that counts them is a ratchet nobody can drive to zero.
+
+### E23-T1 — The three reads that are actually missing
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+
+Goal: intents, tenants and receipts can be listed, so the twelve fields that name
+one can offer it.
+
+Three reads, not five: checkpoints and gates are reachable today and E23-T3
+covers them without a service change. The pattern is E22-T7's and E22-T8's,
+unchanged — cursor-paginated, tenant-scoped, guarded in the service and not in a
+router, because every service here has two transports.
+
+**The receipt list is the one with a suppression argument, and it is not this
+task's to re-decide.** E11 owns what a receipt may show and to whom; a list that
+returned rows the detail read would withhold would be a way around that. So the
+list returns what the detail read would serve to the same caller, and a receipt
+that is withheld is absent rather than present-and-empty — the same treatment
+`ContextReceiptService` already gives a quarantined receipt.
+
+**A tenant list is a cross-tenant read**, which is the only one in this file. It
+returns the tenants the caller's own credential reaches, never every tenant the
+deployment holds, and the difference is the whole of the authorization argument.
+
+Acceptance:
+    make lint typecheck && make test-coverage && make test-integration
+
+### E23-T2 — Retrieval policy for instruction deltas
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes · **Repo:** contextplane
+
+Goal: which delta is served to which agent, decided and recorded, now that the
+channel exists.
+
+ADR 0020 deferred this deliberately and said why: deciding selection before the
+channel is built is how a policy gets fitted to an implementation that has not
+happened. The channel is built. E22-T14 shipped the narrowest possible rule — a
+delta targets one declared digest — and named that rule as a placeholder for this
+task rather than as an answer.
+
+Hotspot because the alternatives differ in what they let the product say to an
+agent. A tenant-wide delta reaches callers who declared a set nobody has
+corrected; a delta keyed on content similarity is the inference ADR 0020
+rejected as unfalsifiable; a delta targeting an agent rather than an instruction
+set makes the channel a per-agent instruction store, which is the copy the same
+ADR refused to become.
+
+The decision is an ADR, and the dissent it must answer is the one ADR 0020
+already recorded: partial adoption. A selection rule that only works for callers
+who submitted their content leaves `declared_unknown` callers receiving nothing
+forever, and the surfaces have to say so rather than reporting no corrections.
+
+Acceptance:
+    make lint typecheck && make test-coverage && make test-integration
+
+### E23-T3 — The identifier fields whose read already exists
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: the ~31 fields that name something already listable stop asking for a UUID.
+
+Entities and capabilities, actors, approval verifiers, connectors, exceptions,
+checkpoints and gates. Every one has a read in the committed contract; the only
+reason they are text boxes is that nobody called it.
+
+**The ~16 that are not server-assigned come off the baseline in the same
+change**, each annotated with the class it falls under. Leaving them in makes the
+ratchet unreachable, and a gate nobody can drive to zero is one people learn to
+read past.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E23-T4 — The identifier fields the new reads unblock
+
+**Kind:** task · **Status:** pending · **Blocked by:** E23-T1 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: intent, tenant and receipt fields become pickers over the reads E23-T1 cuts.
+
+Held separately from E23-T3 so the UI-only win is not gated on a service change,
+which is the same reason E22-T5 shipped before E22-T14.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E23-T5 — Quarantine and suspend screens
+
+**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: the two acts E10-T1 specified, on the state and preview E4-T2 and E4-T3
+shipped.
+
+E10-T1's two non-negotiables carry forward verbatim: **the preview is
+point-in-time**, and **revert is not a secondary action**. Both are about the
+same failure — an operator who believes a preview describes now, or who cannot
+find the way back, will leave a quarantine standing because undoing it looked
+harder than living with it.
+
+Acceptance:
+    pnpm --filter admin-dashboard test -- -t "quarantine"
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+### E23-T6 — The three surfaces whose internals E22-T10 did not cut
+
+**Kind:** task · **Status:** pending · **Blocked by:** E23-T4 · **Hotspot:** no · **Repo:** contextplane-ui
+
+Goal: Served, Judgement and Agents get the reads their questions imply, now that
+the decisions they were waiting on have been taken.
+
+E22-T10 settled the grouping and deliberately stopped there: the screens inside
+three of the five surfaces consumed decisions in flight, and cutting them would
+have embedded answers those tasks had not given. E5-T6 and E11-T2 have given
+them.
+
+Last because it consumes the other five, and because a surface assembled before
+its fields are pickers is one that has to be revisited when they become pickers.
+
+Acceptance:
+    pnpm lint && pnpm type-check && pnpm test && pnpm build
