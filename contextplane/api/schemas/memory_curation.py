@@ -52,6 +52,13 @@ class QueueItemResponse(_Strict):
     human_backed: bool
     proposal_id: uuid.UUID | None
     available_actions: list[str]
+    # Why this row sits where it does. The service has computed all three since
+    # the ordering landed and dropped them here, which left the queue's own
+    # explanation reachable only by reading its SQL. A rank a reviewer cannot
+    # interrogate is a rank they learn to ignore.
+    escalated: bool
+    dependant_count: int
+    sampling_priority: int
 
 
 class QueueListResponse(_Strict):
@@ -296,3 +303,20 @@ class AssertClaimResponse(_Strict):
     owning_tenant_id: uuid.UUID | None
     source_authority: str
     is_contested: bool
+
+
+# --- disposition consequences -------------------------------------------------
+
+
+class DispositionPolicyResponse(_Strict):
+    disposition: str
+    approval_authority: str
+    evidence_threshold: str
+    scope: str
+    supersession: str
+    rollback: str
+    target_kind: str | None
+
+
+class DispositionPolicyListResponse(_Strict):
+    items: list[DispositionPolicyResponse]
