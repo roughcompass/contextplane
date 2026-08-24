@@ -960,7 +960,28 @@ the body was satisfied, and only walking the body surface by surface did.
 
 ### E21 — One address for a claim's life: dashboard IA and naming
 
-**Kind:** epic · **Status:** partly superseded by E22 · **Blocked by:** none · **Repo:** contextplane-ui
+**Kind:** epic · **Status:** done — the surviving half shipped in contextplane-ui#41; global search is declined, not deferred · **Blocked by:** none · **Repo:** contextplane-ui
+
+**Closed (2026-08-24), and the one loose commitment is declined rather than
+left unowned.**
+
+E22-T10 executed everything that survived: the naming table reaching page titles
+and not only nav labels, all four address redirects with their prefixes carried,
+and the eyebrow collapse — 21 strings, not the 20 this epic counted.
+
+**Extending `EntitySearch` past catalog entities is not wanted at this time**, on
+the user's decision. This epic claimed the work — *"the design standard asks for
+global search over authorized records, and one entity type is not that"* — and no
+task ever carried it, so it was neither built nor owned. It is now explicitly
+declined: the resolver resolves an entity handle and navigates to `/catalog`, and
+finding a claim, promotion, receipt or notebook goes through the surface that
+owns it. Recorded rather than deleted, because "we decided not to" and "nobody
+got to it" look identical in a backlog a month later.
+
+**The Notebooks-vs-`workspace` question this epic asked for explicitly was
+answered by shipping**, in contextplane-ui#41's redirect, rather than by anybody
+recording a decision. The answer stands and the rule it followed is E21's own:
+the UI labels the job, the page body keeps the contract's word for the object.
 
 **What survives and what is struck (2026-08-24).** E22 groups the dashboard by the evaluator's question rather than by the object and its stage, on the user's decision that the human's job at this dashboard is evaluation and the primary consumer is a machine. Both cannot be primary navigation, so **E21's target-structure table below is struck** — the six groups Discover / Memory / Notes & tasks / Policy / Explain / Administer are replaced by E22's five. E21 had no decomposed tasks and nothing built against it, so this costs an edit and no work. **Everything else in this epic survives and is not re-litigated**: the naming table, the rule that the UI labels the job while the page body keeps the contract's word for the object, the four address changes and their redirects, the 20-`eyebrow` finding, and the diagnosis in the paragraphs below — which E22 cites as its own evidence for defect class three. E22-T10 executes the surviving half.
 
@@ -5452,7 +5473,7 @@ what somebody would say while building the wrong thing.
 
 ### E4-T6 — The notification clock, and why a missed deadline must be loud
 
-**Kind:** task · **Status:** blocked — on a decision nobody here can make · **Blocked by:** E4-T5, E4-T5b, ratified DORA thresholds · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done — the durations default to the regulation's and are overridable; the thresholds stay external and untouched · **Blocked by:** E4-T5, E4-T5b · **Hotspot:** no · **Repo:** contextplane
 
 Goal: classification-as-major stamps initial, intermediate and final deadlines
 on the incident case, and their approach and breach are visible without anybody
@@ -5504,6 +5525,37 @@ volume of internal usage. When it arrives, this entry is buildable as written.
 Acceptance (unchanged, for when it unblocks):
     .venv/bin/python -m pytest tests/integration -q -k "incident or deadline"
     make all
+
+**Built, on a decision and a premise that had expired.**
+
+**The dissent's premise stopped being true.** It said the clock was machinery
+around *"a classification that cannot currently be made"* — correct when
+written, and false since E4-T5b shipped `classify()`. A person records a
+materiality with their reasoning, `classified_at` and `classified_by` are
+stored, and a second classification is refused. The clock has a trigger, by the
+only route `0076` ever intended.
+
+**The thresholds and the durations are different kinds of fact, and only one was
+ever external.** Whether an incident is major is a judgement; how long after
+classification each report is due is published text. The user's decision —
+*reasonable defaults, configurable* — resolves it: the durations default to the
+regulation's timeline and a tenant overrides them without a release. Nothing
+here classifies anything, and the thresholds are untouched.
+
+**Which numbers produced a given deadline is recorded on the row.**
+`deadline_basis` is `default` or `tenant_policy`, so a default that changes in a
+later release cannot leave an auditor unable to say where a deadline came from —
+and a deployment that has confirmed nothing against its own regulator can see
+that it has not, on its own gauge.
+
+**Stamped as three instants at classification time**, as the entry required, with
+its reason intact: a policy change does not move a deadline already stamped,
+because that date is what somebody was working to and it is what the audit asks
+about. There is a test for exactly that.
+
+Four gauges rather than one, following the unclassified backlog's own pattern:
+breached, approaching, running-on-default, and the oldest-breach age that is the
+stalled-observer defence ADR-0012's assumption 2 asks for.
 
 ### E4-T5b — The obligation record ADR-0015 decided, which nothing implemented
 

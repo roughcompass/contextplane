@@ -112,6 +112,7 @@ from contextplane.service.catalog.projections import ProjectionService
 from contextplane.service.catalog.schema import SchemaService
 from contextplane.service.catalog.vocabulary import VocabularyService
 from contextplane.service.governance.actors import ActorDirectoryService
+from contextplane.service.governance.deadlines import ReportingDeadlineService
 from contextplane.service.governance.erasure import ErasureRegistry
 from contextplane.service.governance.obligation_evidence import ObligationEvidenceService
 from contextplane.service.governance.obligations import ReportingObligationService
@@ -181,6 +182,8 @@ class Services:
     schema: SchemaService
     visibility: VisibilityService
     reporting_obligations: ReportingObligationService
+    #: The clock a classification-as-material starts (E4-T6).
+    reporting_deadlines: ReportingDeadlineService
     actor_directory: ActorDirectoryService
     obligation_evidence: ObligationEvidenceService
     catalog: CatalogService
