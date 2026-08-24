@@ -69,6 +69,10 @@ RECORD_AUDIT_LOG = "audit_log"
 RECORD_PII_DETECTION_LOG = "pii_detection_log"
 RECORD_EXPORT = "export"
 RECORD_WORKSPACE_ENTRY = "workspace_entry"
+#: The highest-volume class in the system, and the last one outside this
+#: framework. See its disposition for how a per-tenant period lives inside a
+#: class-level policy.
+RECORD_SESSION_EVENT = "session_event"
 
 # --- who is a person, for the purpose of an erasure -----------------------
 
@@ -223,6 +227,36 @@ _DISPOSITIONS: dict[str, Disposition] = {
             minimization_action=(
                 "replace item_key with a tenant-keyed erased marker; " "keep block and the withholding reason"
             ),
+            tombstone_behaviour=None,
+            verifier_disclosure=_VERIFIER_NONE,
+        ),
+        Disposition(
+            record_class=RECORD_SESSION_EVENT,
+            legal_basis="contract performance",
+            # The class *ceiling*, and the same 180 the `tenants` CHECK already
+            # enforces on `memory_retention_days`. That reconciles the two
+            # without a new table: the policy says how long a session event may
+            # ever be kept, and the tenant's integer is its choice *within* the
+            # class. Every row already carries the resulting `expires_at`, so
+            # the sweep honours the tenant's number by reading the row rather
+            # than by the framework learning about tenants.
+            #
+            # The CHECK therefore stops being an unexplained bound and becomes
+            # the class ceiling enforced at write, which is the one question
+            # this task had to answer about it.
+            retention_days=180,
+            payload_retention_days=None,
+            erasure_mode=MODE_DELETE,
+            minimization_action=(
+                "delete the event outright; there is no envelope worth keeping "
+                "once the body is gone, unlike a receipt or a signal"
+            ),
+            # No tombstone, and the reason is not volume alone. A session event's
+            # durable trace already outlives it: claims extracted from a session
+            # survive its erasure and carry an `independence_key` digest of the
+            # session they came from, so the disposal is already evidenced by the
+            # records that depended on it. A tombstone per event would add the
+            # system's largest table again to record what the derivatives show.
             tombstone_behaviour=None,
             verifier_disclosure=_VERIFIER_NONE,
         ),
