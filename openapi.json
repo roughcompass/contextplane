@@ -8438,6 +8438,91 @@
         "title": "IntegrationListResponse",
         "type": "object"
       },
+      "IntentListResponse": {
+        "description": "Tasks this caller participates in.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IntentSummaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "IntentListResponse",
+        "type": "object"
+      },
+      "IntentSummaryResponse": {
+        "description": "One task this caller participates in.",
+        "properties": {
+          "checkpoint_count": {
+            "title": "Checkpoint Count",
+            "type": "integer"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest checkpoint's goal, or absent when the task has none yet \u2014 a grant is written before the first checkpoint, so that is a real state rather than a gap.",
+            "title": "Goal"
+          },
+          "granted_at": {
+            "format": "date-time",
+            "title": "Granted At",
+            "type": "string"
+          },
+          "intent_id": {
+            "format": "uuid",
+            "title": "Intent Id",
+            "type": "string"
+          },
+          "latest_checkpoint_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Checkpoint At"
+          },
+          "role": {
+            "description": "This caller's role on the task. What they may do, not what exists.",
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "intent_id",
+          "role",
+          "checkpoint_count",
+          "granted_at"
+        ],
+        "title": "IntentSummaryResponse",
+        "type": "object"
+      },
       "InterfaceExpansion": {
         "description": "Latest interface surface for the capability, surfaced via ``?include=interface``.\n\n``surface`` is the canonical normalised JSON Schema document; ``raw`` is\nthe original artifact the caller submitted (JSON Schema, TypeScript, or\nOpenAPI 3.x). Either may be ``None`` if no surface is registered.",
         "properties": {
@@ -12694,23 +12779,6 @@
         "title": "ReceiptItemIdResponse",
         "type": "object"
       },
-      "ReceiptListResponse": {
-        "description": "Receipts citing one piece of external work, newest first.",
-        "properties": {
-          "receipts": {
-            "items": {
-              "$ref": "#/components/schemas/ReceiptResponse"
-            },
-            "title": "Receipts",
-            "type": "array"
-          }
-        },
-        "required": [
-          "receipts"
-        ],
-        "title": "ReceiptListResponse",
-        "type": "object"
-      },
       "ReceiptResponse": {
         "description": "One stored resolution.",
         "properties": {
@@ -12785,6 +12853,61 @@
           "exclusion_count"
         ],
         "title": "ReceiptResponse",
+        "type": "object"
+      },
+      "ReceiptSummaryResponse": {
+        "description": "One resolution, enough to choose it by and no more.",
+        "properties": {
+          "exclusion_count": {
+            "description": "How much this resolution withheld. Zero means nothing was withheld, which is a claim this listing may make because a receipt whose exclusions are not yet recorded is not in it at all.",
+            "title": "Exclusion Count",
+            "type": "integer"
+          },
+          "intent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent Id"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "receipt_id": {
+            "format": "uuid",
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "resolved_at": {
+            "format": "date-time",
+            "title": "Resolved At",
+            "type": "string"
+          },
+          "state": {
+            "description": "One of complete, degraded, blocked.",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "receipt_id",
+          "state",
+          "item_count",
+          "exclusion_count",
+          "resolved_at",
+          "requested_by"
+        ],
+        "title": "ReceiptSummaryResponse",
         "type": "object"
       },
       "RecordDispositionRequest": {
@@ -16929,6 +17052,73 @@
         "title": "TemporalStateV1Out",
         "type": "object"
       },
+      "TenantListResponse": {
+        "description": "The tenants this credential reaches, the current one first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TenantSummaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "TenantListResponse",
+        "type": "object"
+      },
+      "TenantSummaryResponse": {
+        "description": "One tenant this credential reaches.",
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Absent when this deployment has not materialised the tenant row yet. A credential may name a tenant that has never been seen here, and dropping it would report no access to a tenant the caller does have.",
+            "title": "Display Name"
+          },
+          "is_current": {
+            "title": "Is Current",
+            "type": "boolean"
+          },
+          "is_provisioned": {
+            "title": "Is Provisioned",
+            "type": "boolean"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "tenant_slug": {
+            "title": "Tenant Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "tenant_slug",
+          "roles",
+          "is_provisioned",
+          "is_current"
+        ],
+        "title": "TenantSummaryResponse",
+        "type": "object"
+      },
       "ToolRankingOut": {
         "additionalProperties": false,
         "description": "Response body for GET /v1/admin/usage/tools: which MCP tools this tenant's agents actually call.",
@@ -17831,6 +18021,53 @@
           "status"
         ],
         "title": "_Accepted",
+        "type": "object"
+      },
+      "contextplane__api__schemas__directory__ReceiptListResponse": {
+        "description": "Recent resolutions this caller may open.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptSummaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_before": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Send as `before` for the next page. Keyset rather than an offset, so a receipt written between two pages cannot shift the window and hide one. Absent when the page was short, which is how a caller knows it reached the end.",
+            "title": "Next Before"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ReceiptListResponse",
+        "type": "object"
+      },
+      "contextplane__api__schemas__receipts__ReceiptListResponse": {
+        "description": "Receipts citing one piece of external work, newest first.",
+        "properties": {
+          "receipts": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptResponse"
+            },
+            "title": "Receipts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "receipts"
+        ],
+        "title": "ReceiptListResponse",
         "type": "object"
       }
     },
@@ -28549,6 +28786,50 @@
         ]
       }
     },
+    "/v1/intents": {
+      "get": {
+        "description": "Tasks this caller participates in, most recently touched first.\n\nNot \"every task in this tenant\", because there is no such list to return: a\ntask exists as an id referenced from grants and checkpoints and nowhere else.\nParticipation is already the rule for reading a task's material, so a\ndirectory scoped to it cannot offer a task whose checkpoints the caller could\nnot then open.",
+        "operationId": "list_intents_v1_intents_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntentListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Intents",
+        "tags": [
+          "directory"
+        ]
+      }
+    },
     "/v1/intents/{intent_id}/checkpoints": {
       "post": {
         "description": "Append one step to the task's chain.\n\nThe idempotency key is required rather than optional. An append with no key\ncannot be retried safely, and the one thing a client does after a dropped\nresponse is retry -- so a surface that accepts a keyless append is a surface\nthat produces duplicate steps under exactly the condition it will meet.",
@@ -32055,6 +32336,67 @@
         ]
       }
     },
+    "/v1/receipts": {
+      "get": {
+        "description": "Recent resolutions this caller may open, newest first.\n\n**A withheld or unhydrated receipt is absent, not empty.** The detail reads\nrefuse both, and a list that showed them as rows would disclose that a\nresolution happened, when, and against what query \u2014 from a surface built\nbecause another surface refuses to say. Rendering them as empty rows would\ndisclose the same thing more quietly.\n\n`before` is a `resolved_at` the caller took from its last row. Keyset rather\nthan offset, so a receipt written between two pages cannot shift the window\nand hide one.",
+        "operationId": "list_receipts_v1_receipts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/contextplane__api__schemas__directory__ReceiptListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Receipts",
+        "tags": [
+          "directory"
+        ]
+      }
+    },
     "/v1/receipts/by-reference": {
       "get": {
         "description": "Every resolution citing one piece of external work, newest first.\n\nThe read somebody makes starting from a commit or a build, which is how a\nreceipt is reached in practice -- nobody holds a receipt id.",
@@ -32114,7 +32456,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReceiptListResponse"
+                  "$ref": "#/components/schemas/contextplane__api__schemas__receipts__ReceiptListResponse"
                 }
               }
             },
@@ -32759,6 +33101,28 @@
         "summary": "Update a subscription",
         "tags": [
           "subscriptions"
+        ]
+      }
+    },
+    "/v1/tenants": {
+      "get": {
+        "description": "The tenants this credential reaches, the current one first.\n\nThe only cross-tenant read in the product, and it does not query for the\nanswer: the set comes from the caller's own resolved entitlements, and the\ntable is consulted only to attach display names to tenants the credential had\nalready named.",
+        "operationId": "list_tenants_v1_tenants_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Tenants",
+        "tags": [
+          "directory"
         ]
       }
     },

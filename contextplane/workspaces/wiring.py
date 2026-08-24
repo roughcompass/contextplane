@@ -36,10 +36,12 @@ from contextplane.context.references import ReceiptReferenceIndex
 from contextplane.context.resolve import ContextResolver
 from contextplane.context.resume import ContextResumeService
 from contextplane.context.semantic_workspace import Embedder
+from contextplane.service.governance.tenants import TenantDirectoryService
 from contextplane.service.memory.claim_serving import ClaimServingService
 from contextplane.service.retrieval import RetrievalService
 from contextplane.types import Clock
 from contextplane.workspaces.checkpoints import IntentCheckpointService
+from contextplane.workspaces.directory import IntentDirectoryService
 from contextplane.workspaces.grants import IntentGrantService
 from contextplane.workspaces.recall import WorkspaceRecall
 
@@ -56,6 +58,8 @@ class LayeredContextServices:
     context_resolver: ContextResolver
     instruction_channel: InstructionChannel
     evaluation_runs: EvaluationRunService
+    intent_directory: IntentDirectoryService
+    tenant_directory: TenantDirectoryService
     context_reference_index: ReceiptReferenceIndex
     context_resume: ContextResumeService
 
@@ -108,6 +112,8 @@ def build_layered_context_services(
         context_receipts=context_receipts,
         context_resolver=context_resolver,
         instruction_channel=instruction_channel,
+        intent_directory=IntentDirectoryService(session_factory=session_factory, clock=clock),
+        tenant_directory=TenantDirectoryService(session_factory),
         evaluation_runs=EvaluationRunService(
             session_factory=session_factory,
             resolver=context_resolver,

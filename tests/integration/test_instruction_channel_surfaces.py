@@ -99,7 +99,10 @@ async def _register_delta(
     *,
     tenant_id: uuid.UUID,
     actor_id: uuid.UUID,
-    digest: str,
+    digest: str | None = None,
+    scope: str = "digest",
+    target_principal: uuid.UUID | None = None,
+    approved_by: uuid.UUID | None = None,
     body: str = "Run it on internal interfaces too.",
     contradicts: bool = False,
     note: str | None = None,
@@ -120,20 +123,26 @@ async def _register_delta(
                 text(
                     """
                     INSERT INTO instruction_deltas (
-                        delta_id, tenant_id, target_digest, body,
-                        contradicts, contradiction_note, authored_by, authored_at
+                        delta_id, tenant_id, scope, target_digest, target_principal, body,
+                        contradicts, contradiction_note, authored_by, authored_at,
+                        approved_by, approved_at
                     )
-                    VALUES (:did, :tid, :digest, :body, :contradicts, :note, :actor, :now)
+                    VALUES (:did, :tid, :scope, :digest, :principal, :body, :contradicts, :note,
+                            :actor, :now, :approver, :approved_at)
                     """
                 ),
                 {
                     "actor": actor_id,
+                    "approved_at": _NOW if approved_by else None,
+                    "approver": approved_by,
                     "body": body,
                     "contradicts": contradicts,
                     "did": delta_id,
                     "digest": digest,
                     "note": note,
                     "now": _NOW,
+                    "principal": target_principal,
+                    "scope": scope,
                     "tid": tenant_id,
                 },
             )
@@ -441,5 +450,215 @@ async def test_a_delta_against_content_nobody_submitted_is_refused(channel: dict
             channel["pg_url"],
             actor_id=channel["actor_id"],
             digest=digest_of("never submitted"),
+            tenant_id=channel["tenant_id"],
+        )
+
+
+# --- ADR 0021: what a delta is scoped by -------------------------------------
+
+
+async def _second_actor(pg_url: str, tenant_id: uuid.UUID) -> uuid.UUID:
+    """Another principal in the same tenant, for the approval rule."""
+    actor_id = uuid.uuid4()
+    engine = create_async_engine(pg_url)
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session, session.begin():
+            await session.execute(
+                text(
+                    "INSERT INTO actors (actor_id, tenant_id, oidc_subject, display_name, actor_kind, "
+                    "                    declared_at, declared_by, created_at) "
+                    "VALUES (:a, :t, :sub, 'Second operator', 'human', :now, :a, :now)"
+                ),
+                {"a": actor_id, "now": _NOW, "sub": f"s-{actor_id.hex[:8]}", "t": tenant_id},
+            )
+    finally:
+        await engine.dispose()
+    return actor_id
+
+
+@pytest.mark.asyncio
+async def test_a_principal_scoped_delta_follows_the_agent_across_a_digest_change(
+    channel: dict[str, Any],
+) -> None:
+    """The case digest-only targeting could not serve.
+
+    An operator correcting an agent's behaviour means *that agent*, and an agent
+    that edits its instructions the day after would silently stop receiving a
+    digest-scoped correction — the digest moved, and nothing would say the
+    correction was lost.
+    """
+    await _register_delta(
+        channel["pg_url"],
+        actor_id=channel["actor_id"],
+        scope="principal",
+        target_principal=channel["actor_id"],
+        tenant_id=channel["tenant_id"],
+    )
+
+    first = (await _resolve(channel, instruction_digest=_DIGEST)).json()
+    other_digest = digest_of("a different instruction set entirely")
+    second = (await _resolve(channel, instruction_digest=other_digest)).json()
+
+    for body in (first, second):
+        block = next(b for b in body["blocks"] if b["name"] == BLOCK_INSTRUCTIONS)
+        assert block["state"] == BLOCK_SUCCESS
+        assert block["items"][0]["payload"]["scope"] == "principal"
+
+
+@pytest.mark.asyncio
+async def test_a_tenant_scoped_delta_reaches_a_caller_whose_content_was_never_submitted(
+    channel: dict[str, Any],
+) -> None:
+    """ADR 0021's stated consequence. A `declared_unknown` caller receives
+    broader corrections, and the disposition still says the contradiction cannot
+    be computed rather than reporting none."""
+    approver = await _second_actor(channel["pg_url"], channel["tenant_id"])
+    await _register_delta(
+        channel["pg_url"],
+        actor_id=channel["actor_id"],
+        approved_by=approver,
+        scope="tenant",
+        tenant_id=channel["tenant_id"],
+    )
+
+    body = (await _resolve(channel, instruction_digest=_DIGEST)).json()
+
+    assert body["instruction_disposition"] == "declared_unknown"
+    block = next(b for b in body["blocks"] if b["name"] == BLOCK_INSTRUCTIONS)
+    assert block["state"] == BLOCK_SUCCESS
+    assert block["items"][0]["payload"]["scope"] == "tenant"
+
+
+@pytest.mark.asyncio
+async def test_every_applicable_delta_is_served_and_each_says_its_scope(
+    channel: dict[str, Any],
+) -> None:
+    """Serving only the narrowest was rejected: two corrections about different
+    things are not alternatives, and suppressing one because the other exists
+    would withhold a governed instruction on the strength of a coincidence.
+
+    **Precedence is in the payload and not in the order**, which is a correction
+    ADR 0021 records against its own first draft. `ordered_items` sorts every
+    block by receipt item id so a receipt is checkable across two resolutions, so
+    an ordering asserted in the ADR would be one the envelope discards. This test
+    asserts the *set* and the scope on each, which is what a reader can rely on.
+    """
+    await _submit(channel, _CONTENT)
+    approver = await _second_actor(channel["pg_url"], channel["tenant_id"])
+    await _register_delta(
+        channel["pg_url"],
+        actor_id=channel["actor_id"],
+        approved_by=approver,
+        body="tenant-wide",
+        scope="tenant",
+        tenant_id=channel["tenant_id"],
+    )
+    await _register_delta(
+        channel["pg_url"],
+        actor_id=channel["actor_id"],
+        body="principal-wide",
+        scope="principal",
+        target_principal=channel["actor_id"],
+        tenant_id=channel["tenant_id"],
+    )
+    await _register_delta(
+        channel["pg_url"],
+        actor_id=channel["actor_id"],
+        body="this set",
+        digest=_DIGEST,
+        tenant_id=channel["tenant_id"],
+    )
+
+    body = (await _resolve(channel, instruction_digest=_DIGEST)).json()
+
+    block = next(b for b in body["blocks"] if b["name"] == BLOCK_INSTRUCTIONS)
+    assert sorted((item["payload"]["scope"], item["payload"]["body"]) for item in block["items"]) == [
+        ("digest", "this set"),
+        ("principal", "principal-wide"),
+        ("tenant", "tenant-wide"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_another_principals_delta_does_not_reach_this_caller(channel: dict[str, Any]) -> None:
+    """`principal` scope is a correction addressed to one agent. A second agent
+    receiving it would be the broadcast the tenant scope requires approval for,
+    without the approval."""
+    other = await _second_actor(channel["pg_url"], channel["tenant_id"])
+    await _register_delta(
+        channel["pg_url"],
+        actor_id=channel["actor_id"],
+        scope="principal",
+        target_principal=other,
+        tenant_id=channel["tenant_id"],
+    )
+
+    body = (await _resolve(channel, instruction_digest=_DIGEST)).json()
+
+    block = next(b for b in body["blocks"] if b["name"] == BLOCK_INSTRUCTIONS)
+    assert block["state"] == BLOCK_EMPTY
+
+
+@pytest.mark.asyncio
+async def test_a_broadcast_with_no_approver_is_refused_by_the_schema(channel: dict[str, Any]) -> None:
+    """ADR 0021's second decision, in the schema rather than in a service. A
+    tenant delta reaches every declaring agent including ones whose instructions
+    nobody has read, and one person authoring that is the shape ADR 0020's
+    dissent warns about with the fleet as the blast radius."""
+    with pytest.raises(Exception, match="ck_delta_broadcast_is_approved"):
+        await _register_delta(
+            channel["pg_url"],
+            actor_id=channel["actor_id"],
+            scope="tenant",
+            tenant_id=channel["tenant_id"],
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_self_approved_broadcast_is_refused(channel: dict[str, Any]) -> None:
+    """A self-approval is an assertion wearing an approval's shape, which is the
+    rule `ck_grant_not_self` already states one table over."""
+    with pytest.raises(Exception, match="ck_delta_broadcast_is_approved"):
+        await _register_delta(
+            channel["pg_url"],
+            actor_id=channel["actor_id"],
+            approved_by=channel["actor_id"],
+            scope="tenant",
+            tenant_id=channel["tenant_id"],
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_narrow_delta_needs_no_approver(channel: dict[str, Any]) -> None:
+    """The control. Requiring two people to correct one agent is the friction
+    that makes a channel go unused, and the channel's value is that a correction
+    is cheaper than letting an agent stay wrong."""
+    await _submit(channel, _CONTENT)
+
+    delta_id = await _register_delta(
+        channel["pg_url"],
+        actor_id=channel["actor_id"],
+        digest=_DIGEST,
+        tenant_id=channel["tenant_id"],
+    )
+
+    body = (await _resolve(channel, instruction_digest=_DIGEST)).json()
+    block = next(b for b in body["blocks"] if b["name"] == BLOCK_INSTRUCTIONS)
+    assert [item["payload"]["delta_id"] for item in block["items"]] == [str(delta_id)]
+
+
+@pytest.mark.asyncio
+async def test_a_scope_carrying_the_wrong_target_is_refused(channel: dict[str, Any]) -> None:
+    """A delta with both a digest and a principal is two statements in one row,
+    and the read would have to choose which one the author meant."""
+    await _submit(channel, _CONTENT)
+
+    with pytest.raises(Exception, match="ck_delta_target_matches_scope"):
+        await _register_delta(
+            channel["pg_url"],
+            actor_id=channel["actor_id"],
+            digest=_DIGEST,
+            scope="principal",
+            target_principal=channel["actor_id"],
             tenant_id=channel["tenant_id"],
         )

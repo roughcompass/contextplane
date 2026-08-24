@@ -24,10 +24,11 @@ is worse than no receipt: it reads as complete.
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import json
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from sqlalchemy import select
 
@@ -39,6 +40,7 @@ from contextplane.context.models_receipt import (
     ContextReceiptItem,
 )
 from contextplane.context.schemas.envelope import BLOCK_CANONICAL
+from contextplane.exceptions import ValidationError
 from contextplane.workers.derivative_propagation import pending_overdue
 from contextplane.workspaces import recall as workspace_recall
 
@@ -103,6 +105,11 @@ class ReceiptNotServable(Exception):
 #: branches on which one rather than on the message.
 NOT_SERVABLE_UNHYDRATED = "receipt_not_hydrated"
 NOT_SERVABLE_WITHHELD = "receipt_withheld"
+
+#: The most receipts one listing returns. A bound rather than a target: this is
+#: the only read here that is not keyed by an id, so it is the only one a caller
+#: can ask to walk a tenant's whole history with.
+MAX_RECEIPT_PAGE: Final[int] = 100
 
 
 def refuse_if_unservable(receipt: ContextReceipt) -> None:
@@ -333,6 +340,60 @@ class ContextReceiptService:
         # do refuse -- see `_refuse_if_unservable`.
         async with self._session_factory() as session:
             return await self._header(session, ctx, receipt_id)
+
+    async def recent(
+        self, ctx: TenantContext, *, limit: int = 50, before: datetime.datetime | None = None
+    ) -> tuple[ContextReceipt, ...]:
+        """Recent receipts this caller may open, newest first.
+
+        E23-T1. Every receipt read was keyed by an id the caller must already
+        hold, so a reader with a question about "what did we serve this morning"
+        had nowhere to start.
+
+        **A row appears here only if the detail reads would serve it**, and that
+        is the whole authorization argument. A list that showed a withheld
+        receipt would be a way around the refusal `refuse_if_unservable` exists
+        to make -- an operator would learn a resolution happened, when it
+        happened and against what query, from a surface built because a
+        different surface refuses to say. The filter is derived from the same
+        two conditions that function raises on, and
+        `test_the_listing_hides_exactly_what_the_detail_read_refuses` holds them
+        equal rather than trusting this comment.
+
+        **Absent rather than present-and-empty.** A withheld receipt rendered as
+        a row with nothing in it still discloses that it exists, which is most of
+        what withholding is protecting. It is not in the list at all, and the
+        count a surface renders is a count of what it may show.
+
+        **Keyset, not offset.** `before` is a timestamp the caller got from the
+        last row it read, so a receipt written between two pages cannot shift the
+        window and hide a row. An offset would silently skip exactly the rows a
+        busy tenant most wants to see.
+        """
+        if not 1 <= limit <= MAX_RECEIPT_PAGE:
+            raise ValidationError(f"limit is 1 to {MAX_RECEIPT_PAGE}, got {limit}")
+
+        conditions = [
+            ContextReceipt.tenant_id == ctx.tenant_id,
+            # The two halves of `refuse_if_unservable`, as a predicate. Written
+            # from the same constants it raises on, so a third hydration state
+            # would change both or neither.
+            ContextReceipt.withheld_at.is_(None),
+            ContextReceipt.hydration_state.in_(sorted(HYDRATION_SERVABLE)),
+        ]
+        if before is not None:
+            conditions.append(ContextReceipt.resolved_at < before)
+
+        async with self._session_factory() as session:
+            found = (
+                await session.execute(
+                    select(ContextReceipt)
+                    .where(*conditions)
+                    .order_by(ContextReceipt.resolved_at.desc(), ContextReceipt.receipt_id)
+                    .limit(limit)
+                )
+            ).scalars()
+        return tuple(found)
 
     @staticmethod
     async def _header(session: AsyncSession, ctx: TenantContext, receipt_id: uuid.UUID) -> ContextReceipt | None:

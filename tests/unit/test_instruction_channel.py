@@ -149,7 +149,7 @@ async def test_declaring_nothing_is_its_own_disposition_and_reads_nothing() -> N
 async def test_an_unknown_digest_resolves_rather_than_failing() -> None:
     """Refusing would fail a first-run resolve for a state the service is in
     rather than one the caller caused."""
-    channel, _ = _channel([])
+    channel, _ = _channel([], [])
 
     outcome = await channel.resolve_declaration(_ctx(), digest=_DIGEST, limit=10)
 
@@ -159,10 +159,52 @@ async def test_an_unknown_digest_resolves_rather_than_failing() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_broader_delta_reaches_a_caller_whose_content_was_never_submitted() -> None:
+    """ADR 0021's stated consequence, and the part of ADR 0020's dissent that is
+    answerable without the caller's content.
+
+    A `digest`-scoped delta cannot reach them — there is nothing to target — but a
+    `principal` or `tenant` one can, and withholding it would leave exactly the
+    callers the dissent is about receiving nothing forever.
+
+    The disposition stays `declared_unknown`: serving a delta does not make the
+    set known, and a contradiction against it is still not computable.
+    """
+    channel, _ = _channel(
+        [],
+        [
+            _Row(
+                authored_at=_NOW,
+                body="run the deprecation check",
+                contradiction_note=None,
+                contradicts=False,
+                delta_id=uuid.uuid4(),
+                scope="tenant",
+            )
+        ],
+    )
+
+    outcome = await channel.resolve_declaration(_ctx(), digest=_DIGEST, limit=10)
+
+    assert outcome.disposition is Disposition.DECLARED_UNKNOWN
+    assert len(outcome.deltas) == 1
+    assert outcome.deltas[0].scope == "tenant"
+
+
+@pytest.mark.asyncio
 async def test_a_known_digest_carries_its_deltas() -> None:
     channel, _ = _channel(
         [_Row(present=1)],
-        [_Row(authored_at=_NOW, body="b", contradiction_note=None, contradicts=False, delta_id=uuid.uuid4())],
+        [
+            _Row(
+                authored_at=_NOW,
+                body="b",
+                contradiction_note=None,
+                contradicts=False,
+                delta_id=uuid.uuid4(),
+                scope="digest",
+            )
+        ],
     )
 
     outcome = await channel.resolve_declaration(_ctx(), digest=_DIGEST, limit=10)
@@ -176,7 +218,7 @@ async def test_a_known_digest_with_no_delta_is_not_the_same_state_as_an_unknown_
     """The two empty blocks a caller can receive after declaring, and the whole
     reason the disposition is carried separately from the block."""
     known, _ = _channel([_Row(present=1)], [])
-    unknown, _ = _channel([])
+    unknown, _ = _channel([], [])
 
     served = await known.resolve_declaration(_ctx(), digest=_DIGEST, limit=10)
     missing = await unknown.resolve_declaration(_ctx(), digest=_DIGEST, limit=10)
@@ -195,7 +237,7 @@ def test_every_disposition_has_a_note_and_no_two_say_the_same_thing() -> None:
 
 @pytest.mark.asyncio
 async def test_a_malformed_digest_is_refused_before_anything_is_read() -> None:
-    channel, session = _channel([_Row(present=1)])
+    channel, session = _channel([_Row(present=1)], [])
 
     with pytest.raises(InvalidInstructionDeclaration):
         await channel.resolve_declaration(_ctx(), digest="not-a-digest", limit=10)
