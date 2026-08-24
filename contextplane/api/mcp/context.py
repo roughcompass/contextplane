@@ -27,6 +27,13 @@ from mcp.server.fastmcp.exceptions import ToolError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.api.container import Services
+from contextplane.arc import (
+    REFUSAL_MESSAGE,
+    ArcRequestContext,
+    EnvelopeRefused,
+    IntentManifest,
+    enforce_or_refuse,
+)
 from contextplane.auth.entitlements import client as ent_client
 from contextplane.auth.entitlements.actor_store import DisabledTenantError, upsert_entitlement_actor
 from contextplane.exceptions import CatalogError, NotFoundError, TenantIsolationError
@@ -360,6 +367,46 @@ def _arc_state(name: str) -> object:
     if service is None:
         raise ToolError("ARC is not configured on this deployment")
     return service
+
+
+async def enforce_envelope_for_tool(ctx: TenantContext, manifest: IntentManifest) -> None:
+    """The envelope decision, on the transport it was missing from.
+
+    **This is the second time a guard reached one transport and not the other,
+    and the first time is documented three lines above its call site.**
+    `tools/memory.py` still carries the note that this path "called
+    `record_event` directly and scanned nothing, while this tool's own docstring
+    told agents it did". The autonomy envelope was in that exact position:
+    `enforce_envelope` existed, governed one HTTP route, and no tool -- so a
+    tenant that graduated to `enforcing` was governed on REST and not here.
+
+    Refuses as a `ToolError` naming the same code the HTTP transport returns,
+    because the two must not disagree about the same decision. The vocabulary is
+    `contextplane.arc`'s so there is only one copy of it.
+
+    In `advisory` this returns and the caller proceeds -- the rollout bargain is
+    a property of the decision, not of the transport, and a listing or a call
+    that refused in advisory would break it on one transport only.
+
+    Silently permits when ARC is not configured, which is deliberate and narrow:
+    a deployment with no ARC has no envelopes, so there is nothing to be outside
+    of, and raising here would take the memory tools out of every deployment
+    that has not adopted ARC. `_arc_state` raises for the ARC tools themselves,
+    where absence genuinely is the answer.
+    """
+    services = _services(_request_app.get())
+    enforcement = getattr(services, "arc_envelope_enforcement", None)
+    if enforcement is None:
+        return
+    claims = _request_oidc_claims.get() or {}
+    try:
+        arc_context = ArcRequestContext.from_validated_claims(ctx, claims)
+    except ValueError as exc:
+        raise ToolError("the connection carries no validated issuer claim") from exc
+    try:
+        await enforce_or_refuse(enforcement, arc_context, manifest)
+    except EnvelopeRefused as refused:
+        raise ToolError(f"{refused.code}: {REFUSAL_MESSAGE}") from refused
 
 
 def _memory_service() -> MemoryService:

@@ -4591,9 +4591,103 @@ tasks this session have now turned out to be already-done-but-unrecorded
 reading the code first — which is the argument for doing that before writing
 anything, rather than after.
 
+### E7-T3a — The envelope governed one route and no tool
+
+**Kind:** task · **Status:** done · **Blocked by:** E7-T1 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: the act the autonomy envelope governs is governed on both transports, and
+a guard added to one from now on cannot ship without the other.
+
+**Filed because E7-T3's premise was false.** That entry says *"listing and
+calling are two decisions and both must be made"* and treats calling as the
+settled half. Grounding found `enforce_envelope` called from **exactly one
+place** — `api/routers/memory.py` — and from no MCP tool at all. Everything the
+autonomy epic built governed one HTTP route. The same act performed through
+`record_session_event` was governed by nothing.
+
+That is the worse direction of the two. The envelope governs *agent* autonomy,
+and an agent reaches this substrate over MCP; a human or a script reaches it
+over REST. So an operator who graduated a tenant to `enforcing` would see the
+refusals they expected on the surface they were testing with, and none at all on
+the surface their agents use.
+
+**Second time, same shape.** `tools/memory.py` still carries the note from the
+first: this path *"called `record_event` directly and scanned nothing, while
+this tool's own docstring told agents it did — so a tenant that configured
+blocking was bypassed here and told otherwise."* The fix then was to move
+`admit_or_refuse` below the transports. The fix now is the same: the decision,
+the refusal type and the refusal vocabulary move into `contextplane.arc`, and
+`api/envelope_guard.py` becomes what its name always claimed — an adapter.
+
+**One vocabulary, deliberately.** A second copy of the refusal codes would be a
+second vocabulary, and the transport that got the newer one would say a
+different thing about the same decision — worse than either saying nothing,
+because a client meeting both would believe both.
+
+**The rollout bargain is a property of the decision, not of the transport.** In
+`advisory` neither transport refuses and both record. A listing or a call that
+refused in advisory on one surface only would be the hardest version of this
+bug to attribute.
+
+**The durable half is `test_envelope_reaches_both_transports.py`.** Fixing the
+instance leaves the mistake available to the next act somebody governs, and it
+presents as a guard that *looks* present because the route has it. So the rule
+is checked over the pair: a registry names both call sites per act, and a sweep
+fails on any call site the registry does not name. Adding a guard to one
+transport and forgetting the other fails here rather than in production.
+
+Ordering matches the REST twin: the envelope runs before the PII scan. The
+envelope decides whether this principal may act at all; admission decides
+whether this *content* may be stored. Scanning first would read the body of a
+write that was never permitted to be attempted, and write an admission record
+about it.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "mcp_envelope"
+    .venv/bin/python -m pytest tests/conformance -q -k "both_transports"
+    make all
+
 ### E7-T3 — The full surface is opt-in, per envelope
 
-**Kind:** task · **Status:** pending · **Blocked by:** E7-T1 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** pending — half its premise was false; see E7-T3a · **Blocked by:** E7-T1, E7-T3a · **Hotspot:** no · **Repo:** contextplane
+
+**Two grounding findings, and one of them is now its own task.**
+
+*Calling was not governed at all.* This entry assumed it was and asked only for
+listing to join it. E7-T3a is the calling half; what remains here is the
+listing.
+
+*The listing is reachable, and the entry's worry resolves the good way.* It asks
+to "check first whether the MCP layer can reach an envelope decision at connect
+time". It can: `handle_sse` sets the token, the app, the tenant selector and the
+connection id as ContextVars and then awaits `server._mcp_server.run(...)`
+**inside that scope**, so every message on the connection — `list_tools`
+included — runs with the principal available. The listing does not have to be
+per call, and can be.
+
+Three constraints the remaining work inherits, none of them in the original
+entry:
+
+- **`list_tools` is registered at construction**, `self._mcp_server.list_tools()(self.list_tools)`,
+  so replacing the bound method afterwards does nothing. Re-registering through
+  the library's own decorator overwrites `request_handlers[ListToolsRequest]`,
+  which is the seam — the same style `install_surface_filter` already uses.
+- **`_tool_cache` is shared across connections** and is cleared and refilled by
+  whichever listing ran last. A miss self-heals (`_get_cached_tool_definition`
+  re-lists in the caller's own context) and FastMCP disables input validation
+  anyway, so it is not a correctness hazard — but the filter must not be the
+  enforcement, because a cache is not an authorization boundary.
+- **Filtering must be governed by the same stage gate as the refusal.** In
+  `advisory` the listing must show everything: a filtered list is a refusal, and
+  refusing in advisory breaks the bargain the whole rollout rests on.
+
+One tension worth stating, because it looks like a contradiction and is not.
+`envelope_guard`'s refusal deliberately names the verdict and not the envelope,
+*"a caller that learns why it is outside its envelope learns the shape of the
+matrix governing it, one probe at a time"* — while a filtered listing hands a
+principal its own permitted set in one request. Telling a principal what *it*
+may do is not telling it the rule that decided; the listing may omit, and must
+not explain.
 
 Goal: a principal sees the core verbs by default and the wider surface only where
 its autonomy envelope says so.
@@ -7332,14 +7426,34 @@ long statement and a slow migration are both untouched. No request this service
 serves opens a transaction and then waits thirty seconds for its own next
 statement.
 
-**What is not established, stated as such.** Which task abandoned the
-transaction. Its last statement was the reporting-obligation backlog observer,
-which `service/governance/wiring.py` fires once at startup with
-`next_run_time=now`, so a job cancelled during app teardown before it could
-unwind is the likely author — likely, not shown. The bound is worth having
-regardless, and is worth having *more* if the author is unknown: it is the
-difference between a leak that costs one connection and a leak that stops
-everything that touches one table.
+**~~What is not established~~ — since shown, by an unrelated test run.** The
+open question was which task abandoned the transaction; the answer was the
+reporting-obligation backlog observer, and E7-T3a's first integration run
+printed the whole sequence in forty-four milliseconds:
+
+```
+Scheduler started
+Running job "ReportingObligationService.observe_backlog (scheduled at ...)"
+Scheduler has been shut down
+Job "ReportingObligationService.observe_backlog" raised an exception:
+  ... asyncio.exceptions.CancelledError
+Task was destroyed but it is pending!
+task: <Task pending coro=<Connection._cancel() ...>>
+```
+
+`service/governance/wiring.py` schedules the observer with
+`next_run_time=now`, so it fires the instant the app starts. A short-lived app
+— which is what an integration test builds — shuts the scheduler down while the
+job is still inside `asyncpg`'s connection setup. The job is cancelled, and the
+cancellation itself is left pending: *"Task was destroyed but it is pending"* on
+`Connection._cancel()` is a connection whose teardown never ran. The Postgres
+backend survives, inside a transaction, holding its locks.
+
+So the bound is not merely a bound; it is the only thing standing between that
+teardown race and a wedged table. Worth recording that it was **shipped as a
+bound on an unknown cause and turned out to be the right shape anyway** — the
+alternative would have been to make app teardown await its cancelled jobs, which
+fixes this author and not the next one.
 
 `test_an_extracted_claim_is_inference_tier_not_extraction_tier` (IndexError)
 remains unexplained and is not this. One flake left, from three.

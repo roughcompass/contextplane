@@ -123,9 +123,13 @@ from contextplane.arc.service.autonomy_decision import (
     EnvelopeVerdict,
 )
 from contextplane.arc.service.autonomy_enforcement import (
+    REFUSAL_CODES,
+    REFUSAL_MESSAGE,
     AutonomyEnforcementService,
     EnforcementOutcome,
     EnforcementStage,
+    EnvelopeRefused,
+    enforce_or_refuse,
 )
 from contextplane.arc.service.autonomy_envelope import (
     AutonomyEnvelopeService,
@@ -342,7 +346,11 @@ __all__ = [
     "EnforcementOutcome",
     "BoundEnvelope",
     "AutonomyEnvelopeService",
+    "REFUSAL_CODES",
+    "REFUSAL_MESSAGE",
     "AutonomyEnforcementService",
+    "EnvelopeRefused",
+    "enforce_or_refuse",
     "AutonomyDecisionService",
     "AuthorityDecision",
     "AttestationEnvelope",

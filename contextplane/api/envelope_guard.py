@@ -1,5 +1,11 @@
 """The HTTP adapter for the autonomy-envelope decision: proceed, or refuse.
 
+**Only the adapter now.** The decision, the refusal type and the refusal
+vocabulary live in `contextplane.arc`, because this module governed exactly the
+one HTTP route that called it and no MCP tool at all -- so the same act
+performed through the tool bypassed the envelope entirely. `admit_or_refuse`
+was moved below the transports for the same reason, after the same defect.
+
 Mirrors `contextplane/api/pii_guard.py`'s shape deliberately, so a route
 carrying both gates reads the same way twice: a coroutine taking the request and
 the tenant context, returning `None` when the caller may proceed and raising the
@@ -33,26 +39,20 @@ from fastapi import Request, status
 
 from contextplane.api.errors import build_error
 from contextplane.arc import (
+    REFUSAL_MESSAGE,
     ArcRequestContext,
     AutonomyEnforcementService,
     EnforcementOutcome,
+    EnvelopeRefused,
     IntentManifest,
+    enforce_or_refuse,
 )
 from contextplane.types import TenantContext
 
-#: One refusal code per verdict. Distinct because the caller's remedy differs:
-#: `envelope_absent` is somebody else's job, `envelope_excluded` is the agent's.
-_REFUSAL_CODES: dict[str, str] = {
-    "no_envelope": "envelope_absent",
-    "envelope_suspended": "envelope_suspended",
-    "envelope_withdrawn": "envelope_withdrawn",
-    "outside_envelope": "envelope_excluded",
-}
-
-#: What the caller is told. Deliberately not the matched rule, the bound
-#: revision, or anything about the matrix: a refusal that explained itself would
-#: let a caller map its own envelope by probing.
-_REFUSAL_MESSAGE = "this principal's autonomy envelope does not authorise this action"
+#: The vocabulary is `contextplane.arc`'s, not this module's. It moved there when
+#: the MCP transport needed the same codes: a second copy would be a second
+#: vocabulary, and the transport that got the newer one would say a different
+#: thing about the same decision.
 
 
 def arc_context(request: Request, ctx: TenantContext) -> ArcRequestContext:
@@ -87,15 +87,14 @@ async def enforce_envelope(
     without asking a second time -- `run_admission` returns nothing because a
     PII verdict has no second reader, and this one does.
     """
-    outcome = await enforcement.evaluate(arc_context(request, ctx), manifest)
-    if not outcome.blocked:
-        return outcome
-
-    raise build_error(
-        status.HTTP_403_FORBIDDEN,
-        code=_REFUSAL_CODES.get(str(outcome.decision.verdict), "envelope_excluded"),
-        message=_REFUSAL_MESSAGE,
-    )
+    try:
+        return await enforce_or_refuse(enforcement, arc_context(request, ctx), manifest)
+    except EnvelopeRefused as refused:
+        raise build_error(
+            status.HTTP_403_FORBIDDEN,
+            code=refused.code,
+            message=REFUSAL_MESSAGE,
+        ) from refused
 
 
 __all__ = ["arc_context", "enforce_envelope"]
