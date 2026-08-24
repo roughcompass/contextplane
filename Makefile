@@ -375,6 +375,8 @@ eval: ## Measure memory quality: retrieval recall, time-travel correctness, ARC 
 	$(PYTEST) $(TEST_ROOT)/integration/test_multi_session_recall.py -q --timeout=600 -s; \
 	echo "eval: salience reliability — retrieval rate per salience bucket (needs a DB)"; \
 	$(PYTEST) $(TEST_ROOT)/integration/test_salience_reliability_report.py -q --timeout=600 -s; \
+	echo "eval: time to first memory — the two-call loop on the default surface (needs a DB)"; \
+	$(PYTEST) $(TEST_ROOT)/integration/test_time_to_first_memory.py -q --timeout=600 -s; \
 	echo ""; \
 	echo "eval: measured. Record the figures in eval/EVAL.md — the table is the"; \
 	echo "      record, this target only produces the numbers."

@@ -48,6 +48,7 @@ from typing import Any, Final
 
 from fastapi import FastAPI
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.sse import SseServerTransport
 from mcp.types import AnyFunction
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -218,6 +219,151 @@ def install_surface_filter(server: FastMCP, *, surface: str) -> None:
     server.tool = filtered  # type: ignore[method-assign]
 
 
+#: The intent kind each tool's act corresponds to, read from the same committed
+#: artifact the tier comes from. Two kinds, and the rule is one line: a tool that
+#: only reads is `read_only`, anything that writes is `data_access`. Both are
+#: `IntentKind` members the envelope matrix already selects on, so "which verbs
+#: may this principal see" is answered by the machinery that already answers
+#: "may this principal perform this act".
+@functools.cache
+def tool_intent_kinds() -> dict[str, str]:
+    """Every tool's intent kind, by name.
+
+    Cached with the registry read for the same reason `core_tool_names` is: the
+    artifact does not change while a process runs, and re-reading it per
+    `list_tools` would put a file read on a request path.
+    """
+    document = json.loads(_TOOL_REGISTRY_PATH.read_text(encoding="utf-8"))
+    return {entry["name"]: entry["intent_kind"] for entry in document["tools"]}
+
+
+def install_envelope_listing(
+    server: FastMCP,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    clock: Clock,
+) -> None:
+    """List the extended tier only where a principal's envelope permits it.
+
+    E7-T3. The registry has always said `extended` *"requires an autonomy
+    envelope that names it"*; nothing enforced it, and every connection saw
+    every registered tool.
+
+    **The listing and the call are two decisions and this is only the first.**
+    Hiding a tool while still executing it when called is obscurity, so the call
+    path keeps its own guard -- E7-T3a put the envelope on it. Refusing at call
+    time while listing it invites an agent to plan around a verb it cannot use,
+    which is what this fixes. Neither half substitutes for the other, and a
+    filtered list is emphatically not an authorization boundary: FastMCP shares
+    one `_tool_cache` across connections and refills it from whichever listing
+    ran last.
+
+    **The core tier is never filtered.** It is the floor a default connection
+    exposes -- eight verbs an agent needs to complete one turn without reaching
+    for a second surface -- and a principal that could not see them could not
+    open the loop at all. Only the extended tier is per-principal.
+
+    **In `advisory` nothing is filtered.** The rollout bargain is a property of
+    the decision and not of the surface: a listing that hid verbs in advisory
+    would be a refusal in advisory, on one transport only, which is the hardest
+    version of this to attribute. `EnforcementOutcome.blocked` is already False
+    in that stage, so this reads the same field the call path does rather than
+    re-deriving the stage.
+
+    **Two evaluations at most, not sixty-two.** Tools reduce to two intent
+    kinds, so the envelope is asked twice per listing and every tool of a kind
+    shares the answer. A deployment with no ARC, or a connection with no
+    resolvable identity, lists everything: absence of an envelope system is not
+    a refusal, and it must not be, or adopting ARC would become a prerequisite
+    for using the tools.
+    """
+    underlying = server._mcp_server
+    listing = server.list_tools
+
+    async def filtered() -> list[Any]:
+        tools = await listing()
+        permitted = await _permitted_intent_kinds(session_factory, clock)
+        if permitted is None:
+            return tools
+        kinds = tool_intent_kinds()
+        core = core_tool_names()
+        return [tool for tool in tools if tool.name in core or kinds.get(tool.name, "data_access") in permitted]
+
+    # Two entry points, and both are replaced so they cannot disagree.
+    #
+    # `Server.list_tools` is untyped in the SDK, and re-registering through it
+    # overwrites `request_handlers[ListToolsRequest]` -- which is the seam a
+    # client's `tools/list` actually travels, because FastMCP binds its own
+    # handler at construction and replacing the bound method alone would do
+    # nothing to the wire.
+    #
+    # `FastMCP.list_tools` is the seam anything in-process calls, including this
+    # repository's own tests. Leaving it unfiltered would mean a test could show
+    # a listing no client can ever receive, which is worse than not testing it.
+    underlying.list_tools()(filtered)  # type: ignore[no-untyped-call]
+    server.list_tools = filtered  # type: ignore[method-assign]
+
+
+async def _permitted_intent_kinds(
+    session_factory: async_sessionmaker[AsyncSession],
+    clock: Clock,
+) -> frozenset[str] | None:
+    """Which intent kinds this connection's principal may act under.
+
+    `None` means "do not filter", and it is returned for every case where an
+    answer cannot honestly be given: no ARC on this deployment, no resolvable
+    identity on the connection, or an enforcement service that refused for a
+    reason unrelated to the envelope. Filtering on an unanswered question would
+    hide verbs from a principal nobody had decided anything about.
+
+    An unknown kind is treated as absent rather than permitted, which is the
+    rule this tree applies to an unregistered sensitivity tier and to an
+    unconfigured sampling category: a value nobody registered must not escape
+    every rule that names one.
+    """
+    from contextplane.arc import (  # noqa: PLC0415 - imported here rather than at module level: `contextplane.arc` is a large front door and this is the only function in the file that needs it
+        ArcRequestContext,
+        IntentKind,
+        IntentManifest,
+    )
+
+    services = context._services(context._request_app.get())
+    enforcement = getattr(services, "arc_envelope_enforcement", None)
+    if enforcement is None:
+        return None
+    try:
+        # The same resolution every tool performs, and it must not be allowed to
+        # fail the listing: a client that lists before it authenticates gets the
+        # unfiltered list rather than an error, because the call path enforces
+        # independently and a listing is not the boundary.
+        ctx = await context._resolve_tenant(session_factory, clock)
+    except ToolError:
+        return None
+    claims = context._request_oidc_claims.get() or {}
+    if not claims:
+        return None
+    try:
+        arc_context = ArcRequestContext.from_validated_claims(ctx, claims)
+    except ValueError:
+        return None
+
+    permitted: set[str] = set()
+    for kind in (IntentKind.READ_ONLY, IntentKind.DATA_ACCESS):
+        outcome = await enforcement.evaluate(
+            arc_context,
+            IntentManifest(session_id=_LISTING_SESSION, intent_kind=kind),
+        )
+        if not outcome.blocked:
+            permitted.add(str(kind))
+    return frozenset(permitted)
+
+
+#: The session a listing is evaluated under. A listing is not part of any
+#: session an agent is running, and borrowing one would attach an advisory
+#: record to work the agent did not do.
+_LISTING_SESSION: Final = "mcp:list_tools"
+
+
 #: Which tools a server exposes. `core` is the default connection E7 asks for;
 #: `full` is every registered tool and is what a test constructing a server
 #: directly asks for when it exercises one.
@@ -359,6 +505,11 @@ def create_contextplane_mcp_server(
     # container accessor: the service holds only a session factory and a clock,
     # both of which this factory already has.
     context_feedback_tools.register(mcp_server, session_factory=session_factory, clock=_clock)
+
+    # Last, because it wraps the assembled listing rather than a registration.
+    # Installed before any of the tools above would have made it wrap a list
+    # that did not yet contain them.
+    install_envelope_listing(mcp_server, session_factory=session_factory, clock=_clock)
 
     return mcp_server
 
