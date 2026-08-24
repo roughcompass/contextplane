@@ -74,7 +74,29 @@ _TEST_PORT = int(os.environ.get("CONTEXTPLANE_TEST_PG_PORT", "5545"))  # config:
 # old 500 was a workaround for engines the suite leaked before disposal was
 # fixed; 50 is better than twice the observed peak, and a suite that needs
 # more than that has a leak worth failing on rather than absorbing.
-_SERVER_FLAGS = ("-c", "max_connections=50", "-c", "shared_buffers=128MB")
+# The same suite also leaks the occasional *transaction*, and that one does not
+# cascade -- it wedges. A session left idle inside a transaction keeps every
+# lock it took until its backend disconnects, and a backend nothing is left to
+# read from never disconnects. One orphaned `ACCESS SHARE` is enough: the next
+# `DROP INDEX` queues for `ACCESS EXCLUSIVE` behind it, and because Postgres
+# grants locks in order, every later read and write of that table queues behind
+# the `DROP`. A local run met exactly that and made no progress for twenty-five
+# minutes with pytest at 0% CPU -- indistinguishable from a hang, and the two
+# earlier "unexplained CI stalls" have the same shape.
+#
+# Set on the cluster rather than in `storage/pg.py`, because that only reaches
+# engines the application builds and the suite builds dozens of its own with a
+# bare `create_async_engine`. Thirty seconds interrupts nothing legitimate: the
+# timeout applies only while a transaction sits *between* statements, so a long
+# statement and a slow migration are both untouched.
+_SERVER_FLAGS = (
+    "-c",
+    "max_connections=50",
+    "-c",
+    "shared_buffers=128MB",
+    "-c",
+    "idle_in_transaction_session_timeout=30s",
+)
 
 _MODE_ENV = "CONTEXTPLANE_TEST_PG"
 _VALID_MODES = ("auto", "external", "testcontainers", "devstack")

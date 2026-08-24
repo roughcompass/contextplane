@@ -7063,7 +7063,7 @@ Acceptance:
 
 ### E15b-T2 — Four workers, four CPUs, and a Postgres each
 
-**Kind:** task · **Status:** amended — the proposed fix is measured wrong, and one flake was a real bug · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done — the stall is diagnosed and bounded; one flake of three is still unexplained · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: an integration run that fails means a test is wrong.
 
@@ -7157,6 +7157,59 @@ under constrained CPU and fix what they actually are, or accept them as the cost
 of the current ratio and say so. Guessing at a number is what this entry was
 already told not to do, and halving would have been that with a measurement
 attached to the wrong question.
+
+**Reproduced, and the stall is not capacity.** A local run of the full tier sat
+at **0% CPU for twenty-five minutes**. `pg_stat_activity` on the test container
+named it outright:
+
+| pid | state | since | statement |
+|---|---|---|---|
+| 145 | `idle in transaction` | 02:30:02 | `SELECT COUNT(*) … FROM reporting_obligations WHERE materiality = $1` |
+| 196 | `active`, waiting on a **relation** lock | 02:30:05 | `DROP INDEX ix_reporting_obligations_unclassified` |
+| 206 | `active`, waiting | 02:33:04 | `INSERT INTO tenants …` |
+| 216 | `active`, waiting | 02:36:04 | a reflection query |
+
+**One abandoned transaction stops a table, and then everything.** A session left
+idle inside a transaction keeps every lock it took until its backend
+disconnects, and a backend nothing is left to read from never disconnects. Its
+`ACCESS SHARE` is harmless by itself. Three seconds later a `DROP INDEX` asks
+for `ACCESS EXCLUSIVE` and queues — and because Postgres grants locks in arrival
+order, every later reader and writer of that table queues behind the `DROP`,
+not behind the orphan. The queue never drains. Nothing in the run is slow;
+everything in it is stopped, which from outside is indistinguishable from a hang
+and, with `--timeout=180` per test, from a run that will take a hundred and
+fifty hours.
+
+**This explains one of the two remaining flakes, and the entry already named
+it.** `test_a_nomination_lands_unclassified_and_says_so` "hung in `epoll_wait`"
+— that test is about `reporting_obligations`, the table this lock queue forms
+on. It was not hung on capacity; it was waiting for a lock behind a `DROP INDEX`
+behind an orphan. The `CancelledError` warning was a plausible neighbour and the
+wrong suspect, which is this entry's own lesson applied to this entry: a
+flaky-looking integration failure is a hypothesis, not a diagnosis.
+
+**Fixed by bounding the state rather than by finding every way to reach it.**
+`idle_in_transaction_session_timeout` is set in two places, because they cover
+different connections: `storage/pg.py` puts it in the application engine's
+`server_settings`, and `scripts/pg_provider.py` puts it on the local test
+cluster — the suite builds dozens of engines with a bare `create_async_engine`
+that `storage/pg.py` never sees. Thirty seconds interrupts nothing legitimate:
+the timeout applies only while a transaction sits *between* statements, so a
+long statement and a slow migration are both untouched. No request this service
+serves opens a transaction and then waits thirty seconds for its own next
+statement.
+
+**What is not established, stated as such.** Which task abandoned the
+transaction. Its last statement was the reporting-obligation backlog observer,
+which `service/governance/wiring.py` fires once at startup with
+`next_run_time=now`, so a job cancelled during app teardown before it could
+unwind is the likely author — likely, not shown. The bound is worth having
+regardless, and is worth having *more* if the author is unknown: it is the
+difference between a leak that costs one connection and a leak that stops
+everything that touches one table.
+
+`test_an_extracted_claim_is_inference_tier_not_extraction_tier` (IndexError)
+remains unexplained and is not this. One flake left, from three.
 
 ### E15b-T1 — The critical path is twice what it needs to be, and one tier runs twice
 
