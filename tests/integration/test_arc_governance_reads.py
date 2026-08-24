@@ -231,3 +231,130 @@ async def test_a_withdrawn_connector_reads_as_not_in_force_and_says_why(
     assert not everything[0].in_force
     assert everything[0].detail["revocation_reason"] == reason
     assert current == [], "a withdrawn connector is not in force"
+
+
+async def _evidence(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    tenant_id: uuid.UUID,
+    revision_id: uuid.UUID | None = None,
+    expires_at: datetime.datetime | None = None,
+) -> uuid.UUID:
+    """A `gateway_emergency_bypass` evidence row, which is the cheapest to seed.
+
+    Deliberate: `artifact_activation` requires a real artifact *and* a real
+    revision, and a revision requires fourteen more columns and its own artifact
+    — a chain that would make these tests about seeding rather than about the
+    join they exist to check. Bypass evidence needs only an action instance and
+    a policy version, and every column this read touches is common to all four
+    evidence types.
+
+    `signer_key_id` FKs to an enrolled verifier: an approval has to name who
+    signed it, which is the same trust root `list_approval_verifiers` reads.
+    """
+    signer = await _verifier(factory, scope_kind="tenant", tenant_id=tenant_id)
+    eid = uuid.uuid4()
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO arc_approval_evidence ("
+                "  evidence_id, evidence_type, scope_kind, scope_tenant_id, approved_revision_id,"
+                "  action_instance_id, policy_version, approved_payload_digest, approving_principal,"
+                "  approving_role, approval_timestamp, verification_method, signer_key_id, signature,"
+                "  audit_log_reference, expires_at"
+                ") VALUES (:e, 'gateway_emergency_bypass', 'tenant', :t, :rev, :action, 'v1',"
+                "          'sha256:d', 'ops@example', 'governance-owner', :n, 'operator_signed',"
+                "          :signer, 'dGVzdA==', 'audit://approval/1', :exp)"
+            ),
+            {
+                "e": eid,
+                "t": tenant_id,
+                "rev": revision_id,
+                "action": f"action-{uuid.uuid4().hex[:10]}",
+                "signer": signer,
+                "n": _NOW,
+                "exp": expires_at,
+            },
+        )
+    return eid
+
+
+@pytest.mark.asyncio
+async def test_evidence_is_in_force_when_neither_revoked_nor_expired(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    tid = await _tenant(factory)
+    eid = await _evidence(factory, tenant_id=tid)
+
+    found = [i for i in await _reads(factory).list_approval_evidence(tenant_id=tid) if i.object_id == str(eid)]
+
+    assert len(found) == 1
+    assert found[0].in_force
+
+
+@pytest.mark.asyncio
+async def test_a_revocation_beats_a_valid_window(factory: async_sessionmaker[AsyncSession]) -> None:
+    """Both halves are checked, and the revocation wins.
+
+    This is the only one of the six objects where "still good" is a join rather
+    than a column — revocation lives in its own table — so an implementation
+    that read the window alone would show a withdrawn approval as good, and the
+    row itself would give no hint.
+    """
+    tid = await _tenant(factory)
+    eid = await _evidence(factory, tenant_id=tid, expires_at=_NOW + datetime.timedelta(days=365))
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO arc_approval_evidence_revocations "
+                "  (evidence_id, revoked_at, reason_code, reason_digest) "
+                "VALUES (:e, :n, 'key_rotated', 'sha256:r')"
+            ),
+            {"e": eid, "n": _NOW},
+        )
+
+    reads = _reads(factory)
+    everything = [i for i in await reads.list_approval_evidence(tenant_id=tid) if i.object_id == str(eid)]
+    current = [
+        i for i in await reads.list_approval_evidence(tenant_id=tid, in_force_only=True) if i.object_id == str(eid)
+    ]
+
+    assert len(everything) == 1
+    assert not everything[0].in_force, "a withdrawn approval is withdrawn, window or not"
+    assert everything[0].detail["revocation_reason_code"] == "key_rotated"
+    assert current == []
+
+
+@pytest.mark.asyncio
+async def test_unrevoked_evidence_is_listed_at_all(factory: async_sessionmaker[AsyncSession]) -> None:
+    """The LEFT JOIN, pinned. An INNER would have returned only the revoked —
+    the subset a reader least often wants, and one that looks exactly like
+    "there are no approvals"."""
+    tid = await _tenant(factory)
+    await _evidence(factory, tenant_id=tid)
+    await _evidence(factory, tenant_id=tid)
+
+    assert len(await _reads(factory).list_approval_evidence(tenant_id=tid)) == 2
+
+
+@pytest.mark.asyncio
+async def test_evidence_narrows_to_one_revision(factory: async_sessionmaker[AsyncSession]) -> None:
+    """The question the revision-lifecycle surface asks: it attaches evidence and
+    had no way to see what was attached.
+
+    Both rows carry a null `approved_revision_id`, so the filter is exercised by
+    asking for a revision that matches nothing — `fk_arc_evidence_approved_revision`
+    means a non-null value has to name a real revision, and seeding one would
+    pull in an artifact and fourteen more columns for a predicate this proves
+    either way.
+    """
+    tid = await _tenant(factory)
+    await _evidence(factory, tenant_id=tid)
+    await _evidence(factory, tenant_id=tid)
+
+    reads = _reads(factory)
+    unfiltered = await reads.list_approval_evidence(tenant_id=tid)
+    narrowed = await reads.list_approval_evidence(tenant_id=tid, revision_id=uuid.uuid4())
+
+    assert len(unfiltered) == 2
+    assert narrowed == [], "the revision filter narrows rather than being ignored"

@@ -7356,7 +7356,7 @@ to behave identically are exactly the pair that drifts when each gets its own.
 
 ### E14-T1c — Approval evidence, read back
 
-**Kind:** task · **Status:** pending · **Blocked by:** E14-T1a · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E14-T1a · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the evidence attached to a revision can be read without already holding
 its id.
@@ -7368,6 +7368,36 @@ only one of the six where in-force is not readable from the row.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "arc and evidence"
     make all
+
+**The join is the whole task, and both halves are checked.** Revocation lives in
+`arc_approval_evidence_revocations`, keyed one-to-one, so an approval inside its
+validity window that has been withdrawn *is* withdrawn — an implementation
+reading the window alone would show it as good, and the evidence row itself
+gives no hint. A test pins that specifically.
+
+`LEFT` and not `INNER`, pinned separately: an inner join would have returned
+only the revoked, which is the subset a reader least often wants and which looks
+exactly like "there are no approvals".
+
+`revision_id` narrows to one revision's approvals, because that is the question
+the revision-lifecycle screen actually asks — it attaches evidence and had no
+way to see what was attached.
+
+The reason **code** comes back, not `reason_digest`. That column is a hash of
+text this surface does not hold and could not show; returning it would look like
+a reason while being unreadable to everybody.
+
+**With this, E14-T1 is complete: all six ARC governance objects can be read
+back.** The surface that was thirteen-fourteenths write-only now answers "what
+is enrolled, standing, registered, approved — and is it still in force" for
+every one of them.
+
+One note for whoever seeds these next. `artifact_activation` evidence needs a
+real artifact *and* a real revision, and a revision needs fourteen more columns
+and its own artifact — so these tests use `gateway_emergency_bypass`, which
+needs an action instance and a policy version and nothing else. Every column
+this read touches is common to all four evidence types, so the cheaper seed
+tests the same thing.
 
 ### E14-T2 — A source connector cannot be withdrawn
 
