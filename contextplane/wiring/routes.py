@@ -143,6 +143,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
         admin_quarantine,
         admin_sync,
         admin_vocab,
+        arc_envelopes,
         arc_governance_reads,
         arc_source_grants,
         artifacts,
@@ -224,6 +225,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(admin_obligations.router)
     app.include_router(audit_drilldown.router)
     app.include_router(arc_governance_reads.router)
+    app.include_router(arc_envelopes.router)
     app.include_router(arc_source_grants.router)
     app.include_router(admin_quarantine.router)
     # E20's agent-performance reads and instruction lifecycle. Admin-gated:

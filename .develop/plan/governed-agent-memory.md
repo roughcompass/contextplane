@@ -9702,7 +9702,21 @@ Acceptance:
 
 ### E23-T5 — Quarantine and suspend screens
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** in progress — the service half landed; the screen is contextplane-ui · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui and contextplane
+
+**Why this had a service half at all, which the entry did not anticipate.**
+E10-T1 recorded that "suspend is the half that remains", and the reason it
+remained was not the screen. `AutonomyEnvelopeService` has had `grant`,
+`suspend`, `reinstate` and `revoke` since E7, wired into the container as
+`arc_envelopes`, and **no route or MCP tool reached any of them**. The control
+that decides what an agent may do could be read and not operated: an incident
+response consisted of editing rows. This is the third instance of the pattern
+this wave — a mechanism built, wired, and consulted by nothing.
+
+The five routes live in `arc_envelopes.py` rather than in `arc_admin.py`,
+along the same seam and forced the same way `arc_source_grants.py` was: the
+800-line ceiling asked the question, and the answer would be the same file at
+any length.
 
 Goal: the two acts E10-T1 specified, on the state and preview E4-T2 and E4-T3
 shipped.
