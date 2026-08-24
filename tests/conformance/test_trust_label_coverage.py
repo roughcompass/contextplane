@@ -41,6 +41,7 @@ from contextplane.context.schemas.envelope import (
     BLOCK_ARC,
     BLOCK_CANONICAL,
     BLOCK_FAILED,
+    BLOCK_INSTRUCTIONS,
     BLOCK_NAMES,
     BLOCK_OBSERVED_CLAIMS,
     BLOCK_WORKSPACE,
@@ -137,6 +138,7 @@ def _all_arms(**overrides):
         BLOCK_ARC: _arm(ArmOutcome(items=(_item(BLOCK_ARC, "arc-1", trust=_trust()),))),
         BLOCK_OBSERVED_CLAIMS: _arm(ArmOutcome(items=(_item(BLOCK_OBSERVED_CLAIMS, "claim-1", trust=_trust()),))),
         BLOCK_WORKSPACE: _arm(ArmOutcome(items=(_item(BLOCK_WORKSPACE, "ws-1", trust=_trust()),))),
+        BLOCK_INSTRUCTIONS: _arm(ArmOutcome(items=(_item(BLOCK_INSTRUCTIONS, "delta-1", trust=_trust()),))),
     }
     arms.update(overrides)
     return arms
@@ -220,7 +222,7 @@ async def test_an_assembled_response_is_fully_labelled() -> None:
 
     assert coverage.is_complete()
     assert coverage.ratio == 1.0
-    assert coverage.eligible == 3, "three non-canonical items; the canonical one is not eligible"
+    assert coverage.eligible == 4, "four non-canonical items; the canonical one is not eligible"
 
 
 @pytest.mark.asyncio
@@ -337,7 +339,7 @@ async def test_a_failed_block_is_not_counted_as_a_labelling_gap() -> None:
     coverage = measure_envelope(result.envelope)
 
     assert coverage.is_complete()
-    assert coverage.eligible == 2, "the failed arm contributes nothing to either side of the ratio"
+    assert coverage.eligible == 3, "the failed arm contributes nothing to either side of the ratio"
 
 
 # --- The five arm states ------------------------------------------------------

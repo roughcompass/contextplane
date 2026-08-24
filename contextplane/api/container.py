@@ -77,6 +77,7 @@ from contextplane.arc import (
     ReplayCorpusService,
     ResolutionService,
     ReviewPackageService,
+    RevisionIndexService,
     RevisionIntegrityService,
     RiskEnvelopeValidator,
     SemanticTestService,
@@ -89,6 +90,7 @@ from contextplane.arc import (
 from contextplane.auth.entitlements.resolver import EntitlementResolver
 from contextplane.config import Settings
 from contextplane.context.arms import ContextArms
+from contextplane.context.instructions import InstructionChannel
 from contextplane.context.receipts import ContextReceiptService
 from contextplane.context.references import ReceiptReferenceIndex
 from contextplane.context.resolve import ContextResolver
@@ -108,7 +110,9 @@ from contextplane.service.catalog.lifecycle import LifecycleService
 from contextplane.service.catalog.projections import ProjectionService
 from contextplane.service.catalog.schema import SchemaService
 from contextplane.service.catalog.vocabulary import VocabularyService
+from contextplane.service.governance.actors import ActorDirectoryService
 from contextplane.service.governance.erasure import ErasureRegistry
+from contextplane.service.governance.obligation_evidence import ObligationEvidenceService
 from contextplane.service.governance.obligations import ReportingObligationService
 from contextplane.service.governance.visibility import VisibilityService
 from contextplane.service.memory.agent_accuracy import AgentAccuracyService
@@ -174,6 +178,8 @@ class Services:
     schema: SchemaService
     visibility: VisibilityService
     reporting_obligations: ReportingObligationService
+    actor_directory: ActorDirectoryService
+    obligation_evidence: ObligationEvidenceService
     catalog: CatalogService
     lifecycle: LifecycleService
     retrieval: RetrievalService
@@ -280,6 +286,11 @@ class Services:
     # and a second instance would mean two clocks stamping one table.
     context_receipts: ContextReceiptService
     context_resolver: ContextResolver
+    # The instruction channel, reachable on its own as well as through the
+    # resolver: submission is its own surface on both transports, and a second
+    # instance would mean a set submitted through one and declared through the
+    # other resolving as `declared_unknown`.
+    instruction_channel: InstructionChannel
     # The index that makes a receipt findable from the work it describes, and
     # bounded resume over both. One instance each, so a receipt written
     # through one transport is the receipt the other reads.
@@ -325,6 +336,7 @@ class Services:
     # Sec.8). Predicate 10 (`operational_integrity`) calls `arc_integrity.
     # assess` directly -- see `activation.py`'s own module docstring.
     arc_governance_reads: GovernanceReadService
+    arc_revision_index: RevisionIndexService
     arc_source_grants: SourceGrantService
     arc_activation: ActivationService
     # None on every deployment today: ARC key material is not yet

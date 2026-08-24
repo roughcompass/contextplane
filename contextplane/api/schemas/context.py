@@ -27,6 +27,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from contextplane.context.instructions import MAX_CONTENT_CHARS
 from contextplane.context.lifecycle import LIFECYCLE_REFERENCE_KINDS, normalize_reference_kind
 from contextplane.context.schemas.envelope import (
     BLOCK_NAMES,
@@ -49,6 +50,10 @@ from contextplane.context.schemas.trust import (
 #: is a slow arm, and a caller who wants more should page rather than widen.
 MAX_ARM_LIMIT = 200
 DEFAULT_ARM_LIMIT = 25
+
+#: Mirrors the channel's own bound, imported rather than restated so the wire
+#: refusal and the service refusal cannot disagree about where the line is.
+MAX_INSTRUCTION_SET_CHARS = MAX_CONTENT_CHARS
 
 
 class ExternalReferenceRequest(BaseModel):
@@ -85,6 +90,34 @@ class ExternalReferenceRequest(BaseModel):
         )
 
 
+class InstructionSetRequest(BaseModel):
+    """The content of one instruction set, submitted once.
+
+    No digest field. A caller that sent one would be asserting a hash of its own
+    bytes, and the service would have to either trust it -- letting a caller file
+    one instruction set under another's name -- or recompute it, which makes the
+    sent value decorative. The digest comes back in the response.
+    """
+
+    content: str = Field(
+        min_length=1,
+        max_length=MAX_INSTRUCTION_SET_CHARS,
+        description=(
+            "The instruction set in force for this caller, verbatim. Stored as the set that was in "
+            "force at the resolutions that declare it -- a historical fact about those resolutions, "
+            "not a copy of your instructions that anything here reads back to you as current."
+        ),
+    )
+
+
+class InstructionSetResponse(BaseModel):
+    """The digest to send on every later resolve."""
+
+    digest: str = Field(
+        description="Send this as `instruction_digest` on resolve. Resubmitting the same content returns it again."
+    )
+
+
 class ContextResolveRequest(BaseModel):
     """One context resolution.
 
@@ -119,6 +152,18 @@ class ContextResolveRequest(BaseModel):
             "recorded as applying somewhere else is withheld and reported, never silently dropped. "
             "Stage is your own system's name for it: nothing here is stored, ordered, or advanced."
         ),
+    )
+    instruction_digest: str | None = Field(
+        default=None,
+        description=(
+            "A digest of the instruction set in force for this caller, as `sha256:` and 64 lowercase "
+            "hex characters. Optional: omit it and the `instructions` block comes back empty, and the "
+            "resolution records that no instruction set was declared. Submit the content once per "
+            "distinct digest through `POST /v1/context/instruction-sets`; a digest whose content was "
+            "never submitted resolves normally and is recorded as declared-but-unknown, which is a "
+            "different state from having declared nothing."
+        ),
+        pattern=r"^sha256:[0-9a-f]{64}$",
     )
     limit: int = Field(default=DEFAULT_ARM_LIMIT, ge=1, le=MAX_ARM_LIMIT)
     max_age_s: float | None = Field(
@@ -273,6 +318,23 @@ class ContextEnvelopeResponse(BaseModel):
             "which is a caller-fixable emptiness rather than an absence of results."
         ),
     )
+    instruction_disposition: str = Field(
+        description=(
+            "What was known about the caller's instruction set at resolve time: `not_declared` "
+            "(no digest was sent), `declared_unknown` (a digest arrived whose content was never "
+            "submitted, so no delta is computable against it), or `declared_known`. Always present, "
+            "including for callers that declare nothing -- a client that has to infer `not_declared` "
+            "from a missing field will infer it for `declared_unknown` too, and those two are exactly "
+            "the pair whose conflation hides partial adoption of the channel."
+        ),
+    )
+    instruction_block_note: str | None = Field(
+        default=None,
+        description=(
+            "Why the instructions block is empty, when it is. Distinguishes the three empties from "
+            "each other in words, since only one of them is a state the caller can leave."
+        ),
+    )
 
     @classmethod
     def of(
@@ -280,7 +342,9 @@ class ContextEnvelopeResponse(BaseModel):
         envelope: ContextEnvelopeV1,
         *,
         receipt_id: uuid.UUID,
+        instruction_disposition: str,
         arc_block_note: str | None = None,
+        instruction_block_note: str | None = None,
     ) -> ContextEnvelopeResponse:
         """Project one envelope onto the wire.
 
@@ -303,17 +367,22 @@ class ContextEnvelopeResponse(BaseModel):
             quality=QualityResponse.of(envelope.quality),
             receipt_id=receipt_id,
             arc_block_note=arc_block_note,
+            instruction_disposition=instruction_disposition,
+            instruction_block_note=instruction_block_note,
         )
 
 
 __all__ = [
     "DEFAULT_ARM_LIMIT",
     "MAX_ARM_LIMIT",
+    "MAX_INSTRUCTION_SET_CHARS",
     "ContextBlockResponse",
     "ContextEnvelopeResponse",
     "ContextItemResponse",
     "ContextResolveRequest",
     "ExternalReferenceRequest",
+    "InstructionSetRequest",
+    "InstructionSetResponse",
     "QualityResponse",
     "ReceiptItemIdResponse",
     "TrustResponse",

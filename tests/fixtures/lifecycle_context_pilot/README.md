@@ -10,14 +10,23 @@ situations a test author found convenient to imagine.
 Each file records five things about one change, and the corpus test checks all
 five:
 
-- **`expected_source_coverage`** — the state each of the four blocks reached.
-  Not "it worked": `empty` and `degraded` are recorded outcomes here, and a
-  scenario that reached `degraded` is the one worth keeping.
+- **`expected_source_coverage`** — the state each block reached. Not "it
+  worked": `empty` and `degraded` are recorded outcomes here, and a scenario
+  that reached `degraded` is the one worth keeping.
+
+  `instructions` is `empty` in all six. The pilot predates the instruction
+  channel, so none of these changes declared an instruction set — which is the
+  same thing a resolution that declares nothing gets today, and is recorded
+  rather than backfilled with a value no scenario observed.
 - **`trust_labels`** — the label each block's items carried. `canonical` is
   `null` in every scenario because canonical items carry no trust metadata by
   contract, and the corpus test asserts that rather than trusting the fixture:
-  a scenario claiming a trust label on `canonical`, or omitting one on any other
-  block, fails.
+  a scenario claiming a trust label on `canonical` fails.
+
+  A non-canonical block is `null` exactly when its coverage is `empty` or
+  `failed` — it returned no items, so there is nothing for a level to describe.
+  The corpus test checks the two fields against each other rather than each
+  alone, so a scenario cannot claim a label for something it never returned.
 - **`prior_learning`** — whether the change retrieved reviewed learning from an
   earlier one, how the retrieval was confirmed, and whether the participant
   judged it useful. `judged_useful: false` is recorded as faithfully as `true`.

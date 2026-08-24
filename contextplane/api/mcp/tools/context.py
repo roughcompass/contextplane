@@ -1,7 +1,9 @@
-"""The context-resolve MCP tool: the same surface the REST router publishes.
+"""The context-resolve MCP tools: the same surfaces the REST router publishes.
 
-One tool, `registry_resolve_context`, over the same `ContextResolver` the router
-calls. Same arms, same assembler, same receipt write, same four blocks. Neither
+Two tools. `registry_resolve_context` runs over the same `ContextResolver` the
+router calls -- same arms, same assembler, same receipt write, same five blocks.
+`declare_instruction_set` is the one-time half of the instruction channel, over
+the same `InstructionChannel` the router's submission route uses. Neither
 transport implements the surface -- both adapt one service -- because the moment
 they diverge the divergence is silent: an agent calling over MCP would receive an
 answer a REST caller could not, and nothing would report that as a fault.
@@ -37,6 +39,7 @@ from contextplane.types import Clock
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from mcp.server.fastmcp import FastMCP
 
+    from contextplane.context.instructions import InstructionChannel
     from contextplane.context.resolve import ContextResolver, ResolvedContext
     from contextplane.context.schemas.envelope import ContextItemV1
 
@@ -105,6 +108,8 @@ def _envelope_json(resolved: ResolvedContext) -> dict[str, Any]:
         },
         "receipt_id": str(resolved.receipt_id),
         "arc_block_note": resolved.arc_block_note,
+        "instruction_disposition": str(resolved.instruction_disposition),
+        "instruction_block_note": resolved.instruction_block_note,
     }
 
 
@@ -115,13 +120,14 @@ async def registry_resolve_context(
     intent_ids: list[str] | None = None,
     workspace_term: str | None = None,
     lifecycle_references: list[dict[str, Any]] | None = None,
+    instruction_digest: str | None = None,
     limit: int = 25,
     max_age_s: float | None = None,
     *,
     session_factory: async_sessionmaker[AsyncSession],
     clock: Clock,
 ) -> str:
-    """Resolve one context request into the fixed four-block envelope.
+    """Resolve one context request into the fixed five-block envelope.
 
     Args:
         query: What you are asking for.
@@ -141,14 +147,28 @@ async def registry_resolve_context(
             recorded as applying somewhere else is withheld and reported in the
             block's reason, never dropped without saying so. The stage name is
             your system's own: nothing here is stored, ordered, or advanced.
+        instruction_digest: A digest of the instruction set you are operating
+            under, as `sha256:` and 64 lowercase hex characters. Optional: omit
+            it and the `instructions` block comes back `empty` and the
+            resolution records that you declared none. Submit the content once
+            per distinct digest with `declare_instruction_set`; a digest whose
+            content was never submitted still resolves, and is recorded as
+            declared-but-unknown rather than as not declared.
         limit: Per-arm bound, 1..200.
         max_age_s: Treat arm results older than this as stale. Omit to accept any
             age.
 
     Returns:
-        JSON object with `state`, four `blocks` in fixed order, `quality`,
-        `receipt_id`, and `arc_block_note`. A `blocked` state is a normal
-        response, not an error: read `quality.reasons` for what failed.
+        JSON object with `state`, five `blocks` in fixed order, `quality`,
+        `receipt_id`, `arc_block_note`, `instruction_disposition` and
+        `instruction_block_note`. A `blocked` state is a normal response, not an
+        error: read `quality.reasons` for what failed.
+
+        The `instructions` block carries governed corrections to the instruction
+        set you declared. An item whose payload has `contradicts: true`
+        contradicts what you were told, and `contradiction_note` says what --
+        weigh it against your own instructions rather than applying it blindly.
+        The resolution records that a contradiction was served either way.
     """
     if limit < 1 or limit > MAX_ARM_LIMIT:
         raise ToolError(f"limit must be between 1 and {MAX_ARM_LIMIT}")
@@ -180,6 +200,7 @@ async def registry_resolve_context(
             intent_ids=tuple(uuid.UUID(value) for value in (intent_ids or ())),
             workspace_term=workspace_term,
             lifecycle_references=references,
+            instruction_digest=instruction_digest,
             limit=limit,
             max_age_s=max_age_s,
         )
@@ -191,6 +212,53 @@ async def registry_resolve_context(
         raise ToolError(str(exc)) from exc
 
     return json.dumps(_envelope_json(resolved))
+
+
+def _channel() -> InstructionChannel:
+    """The instruction channel off the app's typed container, at call time.
+
+    Off the container for the same reason the resolver is: one instance per
+    deployment. A second would mean a set submitted over MCP and declared over
+    REST resolving as `declared_unknown`, which is a wrong answer that looks
+    exactly like an integration that never submitted.
+    """
+    app = mcp_context._request_app.get()
+    channel = getattr(mcp_context._services(app), "instruction_channel", None)
+    if channel is None:
+        raise ToolError("the instruction channel is not configured on this deployment")
+    return cast("InstructionChannel", channel)
+
+
+async def declare_instruction_set(
+    content: str,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    clock: Clock,
+) -> str:
+    """Submit the instruction set you are operating under, once, and get its digest.
+
+    Call this once per distinct instruction set -- when your instructions change,
+    not on every resolve. Then send the digest as `instruction_digest` on
+    `registry_resolve_context`, which costs about 64 bytes and no extra call.
+
+    Contextplane does not become the store of record for your instructions. What
+    is kept is the set that was in force at the resolutions that declared it,
+    which is a fact about those resolutions; nothing reads it back to you as your
+    current instructions.
+
+    Args:
+        content: Your instruction set, verbatim.
+
+    Returns:
+        JSON object with `digest`. Submitting the same content again returns the
+        same digest and changes nothing.
+    """
+    ctx = await mcp_context._resolve_tenant(session_factory, clock)
+    try:
+        digest = await _channel().submit(ctx, content=content, now=clock.now())
+    except ValidationError as exc:
+        raise ToolError(str(exc)) from exc
+    return json.dumps({"digest": digest})
 
 
 def register(
@@ -206,6 +274,7 @@ def register(
     """
     deps: dict[str, Any] = {"session_factory": session_factory, "clock": clock}
     mcp_server.tool()(mcp_context._bind_tool(registry_resolve_context, **deps))
+    mcp_server.tool()(mcp_context._bind_tool(declare_instruction_set, **deps))
 
 
-__all__ = ["MAX_ARM_LIMIT", "register", "registry_resolve_context"]
+__all__ = ["MAX_ARM_LIMIT", "declare_instruction_set", "register", "registry_resolve_context"]

@@ -21,6 +21,7 @@ from typing import Any, Literal
 from contextplane.context.schemas.envelope import (
     BLOCK_ARC,
     BLOCK_CANONICAL,
+    BLOCK_INSTRUCTIONS,
     BLOCK_OBSERVED_CLAIMS,
     BLOCK_WORKSPACE,
 )
@@ -169,13 +170,33 @@ class WorkspaceContentV1:
     references: tuple[ExternalReferenceV1, ...] = ()
 
 
-BlockContent = Literal["canonical", "arc", "observed_claims", "workspace"]
+@dataclasses.dataclass(frozen=True)
+class InstructionDeltaContentV1:
+    """One governed correction to the instruction set the caller declared.
+
+    `contradicts` is required rather than defaulted. A correction that
+    contradicts what an operator told their agent, arriving without saying so,
+    is the product changing agent behaviour behind the operator's back -- and a
+    default of `False` is exactly how that flag comes to be absent on the items
+    where it matters. `contradiction_note` is then required by the same rule the
+    storage layer enforces: a contradiction nobody can name is a flag the reader
+    cannot act on.
+    """
+
+    delta_id: str
+    body: str
+    contradicts: bool
+    contradiction_note: str | None = None
+
+
+BlockContent = Literal["canonical", "arc", "observed_claims", "workspace", "instructions"]
 
 _CONTENT_FIELDS: dict[str, frozenset[str]] = {
     BLOCK_CANONICAL: frozenset({"entity_id", "entity_kind", "display_name", "attributes"}),
     BLOCK_ARC: frozenset({"artifact_id", "artifact_kind", "version", "summary", "references"}),
     BLOCK_OBSERVED_CLAIMS: frozenset({"claim_id", "predicate", "value", "evidence_event_ids", "excerpt"}),
     BLOCK_WORKSPACE: frozenset({"entry_id", "entry_kind", "title", "body_md", "references"}),
+    BLOCK_INSTRUCTIONS: frozenset({"delta_id", "body", "contradicts", "contradiction_note"}),
 }
 
 _CONTENT_REQUIRED: dict[str, tuple[str, ...]] = {
@@ -183,12 +204,13 @@ _CONTENT_REQUIRED: dict[str, tuple[str, ...]] = {
     BLOCK_ARC: ("artifact_id", "artifact_kind", "version", "summary"),
     BLOCK_OBSERVED_CLAIMS: ("claim_id", "predicate", "value", "evidence_event_ids"),
     BLOCK_WORKSPACE: ("entry_id", "entry_kind", "title", "body_md"),
+    BLOCK_INSTRUCTIONS: ("delta_id", "body", "contradicts"),
 }
 
 
 def parse_block_content(
     block: str, payload: dict[str, Any]
-) -> CanonicalContentV1 | ArcContentV1 | ObservedClaimContentV1 | WorkspaceContentV1:
+) -> CanonicalContentV1 | ArcContentV1 | ObservedClaimContentV1 | WorkspaceContentV1 | InstructionDeltaContentV1:
     """Build the content object a given block's items carry.
 
     One entry point rather than four constructors, so the block-to-shape mapping
@@ -197,7 +219,7 @@ def parse_block_content(
     working note wearing the registry's authority.
     """
     if block not in _CONTENT_FIELDS:
-        raise InvalidContextItem(f"unknown block {block!r}; the four blocks are {sorted(_CONTENT_FIELDS)}")
+        raise InvalidContextItem(f"unknown block {block!r}; the blocks are {sorted(_CONTENT_FIELDS)}")
 
     _reject_unknown(f"{block} content", payload, _CONTENT_FIELDS[block])
     _require(f"{block} content", payload, _CONTENT_REQUIRED[block])
@@ -215,6 +237,21 @@ def parse_block_content(
         return ArcContentV1(**values)
     if block == BLOCK_WORKSPACE:
         return WorkspaceContentV1(**values)
+    if block == BLOCK_INSTRUCTIONS:
+        contradicts = values.get("contradicts")
+        if not isinstance(contradicts, bool):
+            raise InvalidContextItem(
+                f"an instruction delta's contradicts flag is a boolean, got {type(contradicts).__name__}; "
+                "a truthy string reads as a contradiction and a falsy one reads as none, and neither "
+                "is a statement anybody made"
+            )
+        note = values.get("contradiction_note")
+        if contradicts and not (isinstance(note, str) and note.strip()):
+            raise InvalidContextItem(
+                "an instruction delta that contradicts the declared set must name what it contradicts; "
+                "a contradiction nobody can name is a flag the reader cannot act on"
+            )
+        return InstructionDeltaContentV1(**values)
 
     event_ids = values.get("evidence_event_ids")
     if not isinstance(event_ids, list | tuple) or not event_ids:
@@ -235,6 +272,7 @@ def parse_block_content(
 __all__ = [
     "ArcContentV1",
     "BlockContent",
+    "InstructionDeltaContentV1",
     "CanonicalContentV1",
     "ObservedClaimContentV1",
     "WorkspaceContentV1",

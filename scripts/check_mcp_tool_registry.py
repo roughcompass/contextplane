@@ -63,12 +63,32 @@ _REGISTRY = Path("contextplane/api/mcp/tool_registry.json")
 #: The most tools a default connection may expose. Achieved, not aspired to:
 #: E7-T1 chose eight by a stated rule -- a verb is core if an agent needs it to
 #: complete one turn of the two-call loop without reaching for a second surface.
-_CORE_TOOL_CEILING = 8
+#:
+#: **Nine as of E22-T14, and the ninth is `declare_instruction_set`.** Raised as
+#: a decision rather than to fit, and the argument is that the alternative is
+#: incoherent: `registry_resolve_context` is core and now takes an
+#: `instruction_digest`, and the only way to obtain a digest is this tool. Left
+#: in `extended`, the default connection would document a parameter no agent on
+#: that connection could satisfy -- the same "advertise something the caller
+#: cannot reach" failure this repo has already had to fix once.
+#:
+#: It also passes E7-T1's own rule on its own terms: an agent that has declared
+#: cannot complete a turn of the loop without it, because the digest it must
+#: send does not exist until this call has been made.
+_CORE_TOOL_CEILING = 9
 
 #: The most distinct REST paths that core tier may span. Seven, which E13-T1
 #: established is the floor without dropping a capability -- E13's own target of
 #: six is unreachable, and the entry says why rather than leaving it unmet.
-_CORE_PATH_CEILING = 7
+#:
+#: **Eight as of E22-T14.** `/v1/context/instruction-sets` is a new path rather
+#: than a method on an existing one, and that was the choice: submission is
+#: idempotent-by-content and returns a name derived from the body, which is not
+#: what `POST /v1/context/resolve` means. Folding it onto that path to keep this
+#: number at seven would have bought the counter and cost the surface its
+#: meaning, which is the trade this ratchet exists to make somebody argue for
+#: rather than to prevent.
+_CORE_PATH_CEILING = 8
 
 _TOOLS_DIR = Path("contextplane/api/mcp/tools")
 
@@ -113,9 +133,20 @@ _WRITE_PREFIXES: Final = (
     "update_",
 )
 
-#: Tools whose name does not fit the rule, each with the reason. Empty today,
-#: and the point of having it is that filling it costs somebody a sentence.
-_INTENT_KIND_EXCEPTIONS: Final[dict[str, tuple[str, str]]] = {}
+#: Tools whose name does not fit the rule, each with the reason. The point of
+#: having it is that filling it costs somebody a sentence.
+_INTENT_KIND_EXCEPTIONS: Final[dict[str, tuple[str, str]]] = {
+    "declare_instruction_set": (
+        "data_access",
+        "`declare_` is not a write prefix and this writes. The verb was chosen "
+        "for what the caller is doing -- stating what it was told -- rather than "
+        "for what the service does with it, and the service stores a row: the "
+        "instruction set that was in force at every resolution declaring that "
+        "digest. Adding `declare_` to the prefix list would be the wrong fix, "
+        "because a future `declare_` tool that only reads back a declaration is "
+        "a plausible verb and would then be mislabelled by the rule.",
+    ),
+}
 
 
 def _expected_intent_kind(name: str) -> str:

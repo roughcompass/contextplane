@@ -1,15 +1,23 @@
-"""The four blocks a context resolution returns, and what their states mean.
+"""The blocks a context resolution returns, and what their states mean.
 
-Exactly four blocks, always present: canonical, ARC, observed claims, workspace.
-Present even when empty, because a caller that has to branch on whether a key
-exists will get that branch wrong once, and the failure looks like missing data
-rather than a missing check.
+Exactly five, always present: canonical, ARC, observed claims, workspace, and
+instructions. Present even when empty, because a caller that has to branch on
+whether a key exists will get that branch wrong once, and the failure looks like
+missing data rather than a missing check.
 
-**The four blocks are not peers.** Canonical is the registry's own answer; the
-other three are context around it. That asymmetry is the whole reason a canonical
-failure blocks the response while any other arm failing merely degrades it:
-serving the surrounding context without the thing it surrounds is not a partial
-answer, it is a misleading one.
+**The blocks are not peers.** Canonical is the registry's own answer; ARC,
+observed claims and workspace are context around it. That asymmetry is the whole
+reason a canonical failure blocks the response while any other arm failing merely
+degrades it: serving the surrounding context without the thing it surrounds is
+not a partial answer, it is a misleading one.
+
+**Instructions is not context about the subject at all.** It is what the product
+says back about the caller's own declared instruction set -- a correction
+addressed to the caller rather than material about what they asked. It is a
+block, rather than something beside the envelope, because a block inherits
+provenance, trust class, the receipt and suppression, and an instruction
+delivered outside all four would be the single highest-leverage input to what an
+agent does and the only one with no record of having been given.
 
 **Empty and failed are different, and the distinction is load-bearing.** Empty
 means the arm was asked and truthfully has nothing. Failed means the arm could
@@ -53,13 +61,34 @@ BLOCK_CANONICAL = "canonical"
 BLOCK_ARC = "arc"
 BLOCK_OBSERVED_CLAIMS = "observed_claims"
 BLOCK_WORKSPACE = "workspace"
+# What the product says back about the caller's own declared instructions. Last,
+# and appended rather than inserted: the four above are ordered by how a reader
+# should weigh them, and moving one to make room would silently change that
+# weighting for every existing reader. This one is not part of the subject
+# material at all -- it is a correction addressed to the caller.
+BLOCK_INSTRUCTIONS = "instructions"
 
 # Order is fixed and meaningful: it is the order a reader should weigh them, and
 # pinning it here stops each caller inventing its own.
-BLOCK_NAMES: tuple[str, ...] = (BLOCK_CANONICAL, BLOCK_ARC, BLOCK_OBSERVED_CLAIMS, BLOCK_WORKSPACE)
+BLOCK_NAMES: tuple[str, ...] = (
+    BLOCK_CANONICAL,
+    BLOCK_ARC,
+    BLOCK_OBSERVED_CLAIMS,
+    BLOCK_WORKSPACE,
+    BLOCK_INSTRUCTIONS,
+)
 
 # Every block except canonical carries trust metadata per item.
-NON_CANONICAL_BLOCKS: frozenset[str] = frozenset({BLOCK_ARC, BLOCK_OBSERVED_CLAIMS, BLOCK_WORKSPACE})
+#
+# The instruction block belongs here for the reason the decision behind it is
+# emphatic about: a block that could reach an agent without saying where its
+# content came from, and without the floors the others pass, would be the way to
+# tell an agent what the governed channels refuse to tell it. It is the most
+# behaviour-changing thing the envelope can carry, so it is the last block that
+# should get an exemption.
+NON_CANONICAL_BLOCKS: frozenset[str] = frozenset(
+    {BLOCK_ARC, BLOCK_OBSERVED_CLAIMS, BLOCK_WORKSPACE, BLOCK_INSTRUCTIONS}
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -94,7 +123,7 @@ class ContextBlockV1:
 
     def __post_init__(self) -> None:
         if self.name not in BLOCK_NAMES:
-            raise InvalidContextItem(f"unknown block {self.name!r}; the four blocks are {list(BLOCK_NAMES)}")
+            raise InvalidContextItem(f"unknown block {self.name!r}; the blocks are {list(BLOCK_NAMES)}")
         if self.state not in BLOCK_STATES:
             raise InvalidContextItem(f"unknown block state {self.state!r}; legal values are {sorted(BLOCK_STATES)}")
 
@@ -166,7 +195,7 @@ def derive_envelope_state(blocks: tuple[ContextBlockV1, ...]) -> EnvelopeState:
 
 @dataclasses.dataclass(frozen=True)
 class ContextEnvelopeV1:
-    """What one resolution returns: four blocks, quality, and a receipt."""
+    """What one resolution returns: every block, quality, and a receipt."""
 
     blocks: tuple[ContextBlockV1, ...]
     quality: QualityStateV1
@@ -176,7 +205,7 @@ class ContextEnvelopeV1:
         names = tuple(block.name for block in self.blocks)
         if names != BLOCK_NAMES:
             raise InvalidContextItem(
-                f"an envelope carries exactly the four blocks in order {list(BLOCK_NAMES)}, got {list(names)}; "
+                f"an envelope carries exactly these blocks, in order {list(BLOCK_NAMES)}, got {list(names)}; "
                 "a caller that has to check whether a block exists will get that check wrong once"
             )
 
@@ -211,6 +240,7 @@ __all__ = [
     "BLOCK_DEGRADED",
     "BLOCK_EMPTY",
     "BLOCK_FAILED",
+    "BLOCK_INSTRUCTIONS",
     "BLOCK_NAMES",
     "BLOCK_OBSERVED_CLAIMS",
     "BLOCK_STATES",

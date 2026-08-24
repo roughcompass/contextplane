@@ -123,7 +123,25 @@ def test_nothing_here_classifies_anything_automatically() -> None:
     than pending.
     """
     public = {name for name in vars(ReportingObligationService) if not name.startswith("_")}
-    assert public == {"nominate", "classify", "get", "unclassified_backlog", "observe_backlog"}
+    assert public == {
+        "nominate",
+        "classify",
+        "get",
+        "unclassified_backlog",
+        "observe_backlog",
+        # E4-T5d. Neither touches `materiality`: they record what the obligation
+        # is *about*, which is a different question from how material it is.
+        "cite_incident",
+        "incidents_for",
+    }
+
+    # The property the roster above is a proxy for, asserted directly so a
+    # method added to the set cannot smuggle a classification in with it.
+    writers = {name for name in public if "materiality" in inspect.getsource(getattr(ReportingObligationService, name))}
+    assert writers == {"classify", "nominate", "unclassified_backlog", "observe_backlog"}, (
+        f"{sorted(writers - {'classify', 'nominate', 'unclassified_backlog', 'observe_backlog'})} "
+        "names materiality. Only an explicit decision moves an obligation out of `unclassified`."
+    )
 
 
 def test_the_per_tenant_read_publishes_no_gauge() -> None:

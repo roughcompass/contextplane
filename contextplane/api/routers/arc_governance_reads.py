@@ -16,16 +16,24 @@ inventing a state the schema does not have.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
 from contextplane.api.container import Services
+from contextplane.api.errors import map_catalog_error
 from contextplane.api.middleware.tenant import get_tenant_context
-from contextplane.arc import GovernanceObject
+from contextplane.arc import (
+    LIFECYCLE_STATES,
+    REVISION_MAX_PAGE_SIZE,
+    GovernanceObject,
+    parse_revision_cursor,
+)
+from contextplane.exceptions import ValidationError
 from contextplane.types import TenantContext
 
 # The same tag as `arc_admin.py`, deliberately. This module is a *file* split --
@@ -206,3 +214,82 @@ async def list_approval_evidence(
 
 
 __all__ = ["router"]
+
+
+class RevisionIndexRow(BaseModel):
+    """One revision, and what a reader needs before opening it.
+
+    The three activation fields are columns, not a verdict. Whether a revision
+    can activate is ten predicates computed as if the caller were the one
+    activating, and that stays at
+    `GET /v1/arc/revisions/{revision_id}/activation-eligibility` — a list that
+    answered it would be a second, weaker computation two surfaces could
+    disagree over.
+    """
+
+    revision_id: uuid.UUID
+    artifact_id: uuid.UUID
+    artifact_slug: str
+    artifact_kind: str
+    lifecycle_state: str
+    source_system: str
+    source_revision_locator: str
+    content_digest: str
+    approval_evidence_id: uuid.UUID | None
+    effective_from: datetime.datetime
+    effective_until: datetime.datetime | None
+    review_expires_at: datetime.datetime
+    activated_at: datetime.datetime | None
+    revoked_at: datetime.datetime | None
+    created_at: datetime.datetime
+    #: How many resolutions were made under this revision. The field the two
+    #: terminal acts differ over: invalidate puts these in question, revoke
+    #: leaves them standing.
+    resolutions_under_revision: int
+    is_draft: bool
+    has_approval_evidence: bool
+    review_expired: bool
+    is_terminal: bool
+
+
+class RevisionIndexResponse(BaseModel):
+    items: list[RevisionIndexRow]
+    next_cursor: str | None
+
+
+@router.get("/revisions", response_model=RevisionIndexResponse)
+async def list_arc_revisions(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    lifecycle_state: str | None = Query(None, description=f"One of {list(LIFECYCLE_STATES)}."),
+    artifact_id: uuid.UUID | None = Query(None),
+    cursor: str | None = Query(None),
+    page_size: int = Query(50, ge=1, le=REVISION_MAX_PAGE_SIZE),
+) -> RevisionIndexResponse:
+    """Which revisions exist — the read the lifecycle screen never had.
+
+    Seven paths already act on a revision and every one is keyed by an id the
+    caller must already hold. That is why the lifecycle screen is four text
+    boxes: nothing could have been designed well against a surface with no way
+    to ask what exists.
+
+    Each row carries `resolutions_under_revision`, which is the field the choice
+    between the two terminal acts turns on — invalidate puts what was decided
+    under a revision in question, revoke leaves it standing — so a reader is not
+    choosing between them on the strength of a paragraph.
+    """
+    services: Services = request.app.state.services
+    try:
+        page = await services.arc_revision_index.list_revisions(
+            ctx,
+            lifecycle_state=lifecycle_state,
+            artifact_id=artifact_id,
+            cursor=parse_revision_cursor(cursor),
+            page_size=page_size,
+        )
+    except ValidationError as exc:
+        raise map_catalog_error(exc) from exc
+    return RevisionIndexResponse(
+        items=[RevisionIndexRow(**dataclasses.asdict(row)) for row in page.items],
+        next_cursor=page.next_cursor,
+    )

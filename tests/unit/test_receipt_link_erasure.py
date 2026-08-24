@@ -423,15 +423,15 @@ def _envelope(*items: SimpleNamespace) -> SimpleNamespace:
 
 
 def test_the_source_names_are_the_ones_the_arms_actually_stamp() -> None:
-    """Restated in the handler module because both live as module-private constants
-    elsewhere. Pinned here because a restatement that drifted would map nothing —
-    a registration with no links, silently, on every receipt."""
-    from contextplane.context import arms, queries
+    """Restated in the handler module because both live as constants elsewhere.
+    Pinned here because a restatement that drifted would map nothing — a
+    registration with no links, silently, on every receipt."""
+    from contextplane.context import arm_payloads, queries
 
     assert queries._WORKSPACE_SOURCE in handlers._SOURCE_RECORD_CLASSES
-    assert arms._CLAIMS_SOURCE in handlers._SOURCE_RECORD_CLASSES
+    assert arm_payloads.CLAIMS_SOURCE in handlers._SOURCE_RECORD_CLASSES
     assert handlers._SOURCE_RECORD_CLASSES[queries._WORKSPACE_SOURCE] == policies.RECORD_TASK_CHECKPOINT
-    assert handlers._SOURCE_RECORD_CLASSES[arms._CLAIMS_SOURCE] == policies.RECORD_MEMORY_CLAIM
+    assert handlers._SOURCE_RECORD_CLASSES[arm_payloads.CLAIMS_SOURCE] == policies.RECORD_MEMORY_CLAIM
 
 
 def test_every_erasable_record_the_receipt_quoted_becomes_a_link() -> None:

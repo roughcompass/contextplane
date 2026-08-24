@@ -11,7 +11,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from contextplane.exceptions import ConflictError, NotFoundError
+from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.service.governance.obligations import (
     MATERIALITY_MATERIAL,
     MATERIALITY_NOT_MATERIAL,
@@ -216,3 +216,153 @@ async def test_a_classified_obligation_leaves_the_backlog(
     await service.classify(ctx, obligation_id=obligation.obligation_id, materiality=MATERIALITY_MATERIAL, note=_NOTE)
 
     assert (await service.unclassified_backlog(ctx)).count == 0
+
+
+# --- what the obligation is about ---------------------------------------------
+
+
+async def _reference(
+    factory: async_sessionmaker[AsyncSession],
+    ctx: TenantContext,
+    *,
+    kind: str = "incident",
+    external_id: str = "INC-4417",
+) -> uuid.UUID:
+    """One external record, of a stated kind."""
+    reference_id = uuid.uuid4()
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO context_external_references "
+                "(reference_id, tenant_id, source_system, source_namespace, kind, external_id, "
+                " classification, external_authority, collision_key) "
+                "VALUES (:rid, :t, 'pagerduty', 'prod', :kind, :eid, 'internal', 'pagerduty', :ckey)"
+            ),
+            {"rid": reference_id, "t": ctx.tenant_id, "kind": kind, "eid": external_id, "ckey": reference_id.hex},
+        )
+    return reference_id
+
+
+@pytest.mark.asyncio
+async def test_an_obligation_can_cite_the_incident_it_is_about(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The relationship the governing decision named and nothing implemented.
+
+    It needed no new table: the external record and the binding both already
+    existed, and the whole of the gap was that `reporting_obligation` was not a
+    legal `subject_type`.
+    """
+    ctx = await _seed(factory)
+    service = _service(factory)
+    obligation = await service.nominate(ctx, summary=_SUMMARY)
+    incident = await _reference(factory, ctx)
+
+    assert await service.cite_incident(ctx, obligation_id=obligation.obligation_id, reference_id=incident)
+
+    cited = await service.incidents_for(ctx, obligation_id=obligation.obligation_id)
+    assert [row["external_id"] for row in cited] == ["INC-4417"]
+    assert [row["kind"] for row in cited] == ["incident"]
+
+
+@pytest.mark.asyncio
+async def test_citing_the_same_incident_twice_states_one_relationship_once(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """A citation list that grew on re-statement would read as two independent
+    records of the same event."""
+    ctx = await _seed(factory)
+    service = _service(factory)
+    obligation = await service.nominate(ctx, summary=_SUMMARY)
+    incident = await _reference(factory, ctx)
+
+    first = await service.cite_incident(ctx, obligation_id=obligation.obligation_id, reference_id=incident)
+    second = await service.cite_incident(ctx, obligation_id=obligation.obligation_id, reference_id=incident)
+
+    assert (first, second) == (True, False)
+    assert len(await service.incidents_for(ctx, obligation_id=obligation.obligation_id)) == 1
+
+
+@pytest.mark.asyncio
+async def test_an_obligation_refuses_to_cite_something_that_is_not_an_incident(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The decision says an obligation references an *incident*.
+
+    Admitting a `deployment` or a `build` would leave every read still calling
+    it the incident while it had quietly become something else — and a reader
+    checking what an obligation was about would be told about a deploy.
+    """
+    ctx = await _seed(factory)
+    service = _service(factory)
+    obligation = await service.nominate(ctx, summary=_SUMMARY)
+    deployment = await _reference(factory, ctx, kind="deployment", external_id="deploy-91")
+
+    with pytest.raises(ValidationError, match="is about the incident"):
+        await service.cite_incident(ctx, obligation_id=obligation.obligation_id, reference_id=deployment)
+
+    assert await service.incidents_for(ctx, obligation_id=obligation.obligation_id) == ()
+
+
+@pytest.mark.asyncio
+async def test_an_obligation_nobody_has_matched_yet_cites_nothing(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """An empty result is a nomination in progress, not a missing one.
+
+    0076 made `summary` free text precisely so a nomination need not wait for
+    the link — *"an obligation can be nominated before anybody knows which
+    record it concerns, and refusing the nomination until the link exists would
+    lose the nomination."*
+    """
+    ctx = await _seed(factory)
+    service = _service(factory)
+    obligation = await service.nominate(ctx, summary=_SUMMARY)
+
+    assert await service.incidents_for(ctx, obligation_id=obligation.obligation_id) == ()
+
+
+@pytest.mark.asyncio
+async def test_citing_from_another_tenant_finds_neither_end(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Both the obligation and the reference are read in the caller's tenant, so
+    a citation cannot be used to confirm that either exists somewhere else."""
+    mine, theirs = await _seed(factory), await _seed(factory)
+    service = _service(factory)
+    obligation = await service.nominate(mine, summary=_SUMMARY)
+    their_incident = await _reference(factory, theirs)
+
+    with pytest.raises(NotFoundError, match="external reference"):
+        await service.cite_incident(mine, obligation_id=obligation.obligation_id, reference_id=their_incident)
+
+    with pytest.raises(NotFoundError, match="reporting obligation"):
+        await service.cite_incident(theirs, obligation_id=obligation.obligation_id, reference_id=their_incident)
+
+
+@pytest.mark.asyncio
+async def test_the_database_refuses_a_subject_type_no_rule_admits(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The widened CHECK is the property; the service is one writer's discipline.
+
+    Asserted against the constraint directly, so removing the service's own
+    vocabulary would not quietly remove the guarantee too.
+    """
+    ctx = await _seed(factory)
+    with pytest.raises(Exception, match="ck_reference_binding_subject_type"):
+        async with factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "INSERT INTO context_reference_bindings "
+                    "(binding_id, tenant_id, reference_id, subject_type, subject_id, bound_at) "
+                    "VALUES (:b, :t, :r, 'something_nobody_declared', :s, :n)"
+                ),
+                {
+                    "b": uuid.uuid4(),
+                    "t": ctx.tenant_id,
+                    "r": await _reference(factory, ctx, external_id="INC-9999"),
+                    "s": uuid.uuid4(),
+                    "n": _NOW,
+                },
+            )

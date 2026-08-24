@@ -1,7 +1,8 @@
 """Resolving one context request, once, for every transport that asks.
 
-Four steps: build the arms for the request, assemble them into the four-block
-envelope, record the receipt, hand both back. Only the last part -- turning the
+Five steps: read what instruction set the caller declared, build the arms for
+the request, assemble them into the envelope, record the receipt and the
+declaration, hand it all back. Only the last part -- turning the
 envelope into a response body -- differs between REST and MCP, so only that part
 lives in an adapter.
 
@@ -16,6 +17,13 @@ is a deliberate trade of availability for evidence: an answer nobody can later
 show they were given is the thing receipts exist to prevent, and a caller who
 receives one has no way to know the record is missing. Callers who want an
 unrecorded read are asking for a different operation than this one.
+
+**The instruction block's emptiness is reported three ways, never one.** A
+caller who declared nothing, a caller whose declared set was never submitted, and
+a caller for whom no correction applies all receive an empty block, and the three
+have different remedies -- only the middle one is a state the caller can leave by
+doing something, and reporting all three identically is what would make partial
+adoption of the channel invisible.
 
 **The ARC block's emptiness is reported, not merely returned.** The ARC arm is
 receipt-anchored -- it serves what an attested resolution already selected -- so
@@ -33,13 +41,15 @@ import datetime
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from contextplane.context import lifecycle
+from contextplane.context import instructions, lifecycle
 from contextplane.context.assembler import assemble
-from contextplane.context.schemas.envelope import BLOCK_ARC, BLOCK_EMPTY
+from contextplane.context.instructions import DeclarationOutcome, Disposition
+from contextplane.context.schemas.envelope import BLOCK_ARC, BLOCK_EMPTY, BLOCK_INSTRUCTIONS, BLOCK_SUCCESS
 
 if TYPE_CHECKING:
     from contextplane.arc import ArcRequestContext
     from contextplane.context.arms import ContextArms
+    from contextplane.context.instructions import InstructionChannel
     from contextplane.context.receipts import ContextReceiptService
     from contextplane.context.schemas.envelope import ContextEnvelopeV1
     from contextplane.context.schemas.trust import ExternalReferenceV1
@@ -67,6 +77,16 @@ class ResolvedContext:
     envelope: ContextEnvelopeV1
     receipt_id: uuid.UUID
     arc_block_note: str | None
+    #: Which of the three instruction dispositions this resolution ran under.
+    #: Always set, including `NOT_DECLARED`, because a caller that has to infer
+    #: "declared nothing" from a missing field will infer it for "declared
+    #: something we had never seen" too -- and those two are exactly the pair
+    #: whose conflation makes partial adoption invisible.
+    instruction_disposition: Disposition
+    #: Why the instruction block is empty, when it is. `None` when it carries
+    #: something, so a note attached regardless does not train callers to ignore
+    #: it.
+    instruction_block_note: str | None
 
 
 class ContextResolver:
@@ -78,9 +98,16 @@ class ContextResolver:
     This decides only the order, and that the receipt is not skippable.
     """
 
-    def __init__(self, *, arms: ContextArms, receipts: ContextReceiptService) -> None:
+    def __init__(
+        self,
+        *,
+        arms: ContextArms,
+        receipts: ContextReceiptService,
+        instruction_channel: InstructionChannel,
+    ) -> None:
         self._arms = arms
         self._receipts = receipts
+        self._instructions = instruction_channel
 
     async def resolve(
         self,
@@ -95,6 +122,7 @@ class ContextResolver:
         workspace_term: str | None = None,
         workspace_reference: ExternalReferenceV1 | None = None,
         lifecycle_references: tuple[ExternalReferenceV1, ...] = (),
+        instruction_digest: str | None = None,
         limit: int = 25,
         max_age_s: float | None = None,
     ) -> ResolvedContext:
@@ -105,8 +133,18 @@ class ContextResolver:
         each transport because building it is also what refuses an unknown
         reference kind, and a refusal that two adapters each have to remember is
         a refusal one of them will eventually skip.
+
+        **The instruction declaration is read here rather than inside its arm**,
+        for the same reason: the disposition this resolution records has to be a
+        statement about the read the block was built from. Splitting them would
+        admit a window in which content arrived between the two, and the record
+        would say `declared_known` about a delta read that ran against nothing.
+        A malformed digest is refused before any arm runs -- a declaration that
+        can never match a submission is indistinguishable, later, from an
+        integration that submitted nothing.
         """
         profile = lifecycle.LifecycleProfile.of(lifecycle_references) if lifecycle_references else None
+        declaration = await self._instructions.resolve_declaration(ctx, digest=instruction_digest, limit=limit)
         arms = self._arms.for_request(
             ctx,
             query=query,
@@ -119,6 +157,7 @@ class ContextResolver:
             workspace_reference=workspace_reference,
             limit=limit,
             lifecycle=profile,
+            declaration=declaration,
         )
         result = await assemble(arms, now=moment, max_age_s=max_age_s)
 
@@ -139,16 +178,45 @@ class ContextResolver:
                 workspace_term=workspace_term,
                 workspace_reference=workspace_reference,
                 profile=profile,
+                instruction_digest=declaration.digest,
                 limit=limit,
                 max_age_s=max_age_s,
             ),
         )
 
+        # Recorded against what the caller actually received, not against what
+        # the read found. An instruction arm that failed a floor served nothing,
+        # so nothing was contradicted -- and a record claiming a contradiction
+        # reached an agent that never saw one is worse than no record, because
+        # it is the record an evaluator would act on.
+        served = (
+            declaration
+            if result.envelope.block(BLOCK_INSTRUCTIONS).state == BLOCK_SUCCESS
+            else (dataclasses.replace(declaration, deltas=()))
+        )
+        await self._instructions.record(ctx, outcome=served, receipt_id=receipt_id, now=moment)
+
         return ResolvedContext(
             envelope=result.envelope,
             receipt_id=receipt_id,
             arc_block_note=self._arc_note(result.envelope, arc_receipt_id=arc_receipt_id),
+            instruction_disposition=declaration.disposition,
+            instruction_block_note=self._instruction_note(result.envelope, declaration=declaration),
         )
+
+    @staticmethod
+    def _instruction_note(envelope: ContextEnvelopeV1, *, declaration: DeclarationOutcome) -> str | None:
+        """Why the instruction block is empty, when it is and the reason is known.
+
+        Only for an *empty* block. A degraded or failed one already carries its
+        own reason from the arm, and overwriting it with "no correction applies"
+        would replace a floor's refusal with a statement that the floor did not
+        happen.
+        """
+        block = envelope.block(BLOCK_INSTRUCTIONS)
+        if block.state != BLOCK_EMPTY:
+            return None
+        return instructions.BLOCK_NOTES[declaration.disposition]
 
     @staticmethod
     def _arc_note(envelope: ContextEnvelopeV1, *, arc_receipt_id: uuid.UUID | None) -> str | None:
@@ -174,6 +242,7 @@ class ContextResolver:
         workspace_term: str | None,
         workspace_reference: ExternalReferenceV1 | None,
         profile: lifecycle.LifecycleProfile | None,
+        instruction_digest: str | None,
         limit: int,
         max_age_s: float | None,
     ) -> dict[str, Any]:
@@ -197,6 +266,12 @@ class ContextResolver:
             record["subject_entity_id"] = str(subject_entity_id)
         if intent_ids:
             record["intent_ids"] = [str(intent_id) for intent_id in intent_ids]
+        if instruction_digest is not None:
+            # The digest, never the content. The content is stored once under
+            # this key; copying it into every receipt would put the caller's
+            # instruction set on every resolution in the product, which is the
+            # second copy this channel was designed to avoid.
+            record["instruction_digest"] = instruction_digest
         if workspace_term is not None:
             record["workspace_term"] = workspace_term
         if max_age_s is not None:

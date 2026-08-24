@@ -18,13 +18,15 @@
     "canonical": "success",
     "arc": "success",
     "observed_claims": "success",
-    "workspace": "success"
+    "workspace": "success",
+    "instructions": "empty"
   },
   "trust_labels": {
     "canonical": null,
     "arc": "attested",
     "observed_claims": "observed",
-    "workspace": "observed"
+    "workspace": "observed",
+    "instructions": null
   },
   "prior_learning": {
     "retrieved": false,

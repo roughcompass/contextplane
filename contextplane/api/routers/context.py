@@ -1,9 +1,13 @@
 """The context-resolve REST surface.
 
-    POST /v1/context/resolve → ContextEnvelopeResponse
+    POST /v1/context/resolve          → ContextEnvelopeResponse
+    POST /v1/context/instruction-sets → InstructionSetResponse
 
-One route, and it is the phase's headline contract: exactly four blocks, the
-quality that describes them, and the id of the receipt that recorded them.
+The first is the phase's headline contract: exactly five blocks, the quality
+that describes them, and the id of the receipt that recorded them. The second is
+the one-time half of the instruction channel -- a caller submits the content of
+its instruction set once per distinct set, and every later resolve carries only
+the digest this returns.
 
 This router adapts and does not decide. It turns a request body into the
 resolver's arguments and a `ResolvedContext` into a response body. Which items
@@ -32,7 +36,12 @@ from fastapi import APIRouter, Depends
 from contextplane.api.auth.context import require_roles
 from contextplane.api.container import Services, services
 from contextplane.api.errors import map_catalog_error
-from contextplane.api.schemas.context import ContextEnvelopeResponse, ContextResolveRequest
+from contextplane.api.schemas.context import (
+    ContextEnvelopeResponse,
+    ContextResolveRequest,
+    InstructionSetRequest,
+    InstructionSetResponse,
+)
 from contextplane.auth.roles import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER
 from contextplane.exceptions import ValidationError
 from contextplane.types import TenantContext
@@ -52,7 +61,7 @@ async def resolve_context(
     ctx: Annotated[TenantContext, Depends(_resolve_required)],
     container: Annotated[Services, Depends(services)],
 ) -> ContextEnvelopeResponse:
-    """Resolve one context request into the four-block envelope.
+    """Resolve one context request into the block envelope.
 
     The clock is read once, here, and passed down. Every arm evaluates "active
     now" against that one moment, so a request cannot authorize on one side of a
@@ -71,6 +80,7 @@ async def resolve_context(
             workspace_term=body.workspace_term,
             workspace_reference=body.workspace_reference.to_contract() if body.workspace_reference else None,
             lifecycle_references=tuple(ref.to_contract() for ref in body.lifecycle_references),
+            instruction_digest=body.instruction_digest,
             limit=body.limit,
             max_age_s=body.max_age_s,
         )
@@ -84,4 +94,32 @@ async def resolve_context(
         resolved.envelope,
         receipt_id=resolved.receipt_id,
         arc_block_note=resolved.arc_block_note,
+        instruction_disposition=str(resolved.instruction_disposition),
+        instruction_block_note=resolved.instruction_block_note,
     )
+
+
+@router.post("/context/instruction-sets", response_model=InstructionSetResponse)
+async def declare_instruction_set(
+    body: InstructionSetRequest,
+    ctx: Annotated[TenantContext, Depends(_resolve_required)],
+    container: Annotated[Services, Depends(services)],
+) -> InstructionSetResponse:
+    """Submit the content of one instruction set, once, and get back its digest.
+
+    Idempotent, and idempotent without an `Idempotency-Key`: the digest *is* the
+    content, so a repeat submission of the same set is the same row and there is
+    no key a caller could get wrong. That is why this is not a create in the
+    sense the rest of the surface means -- it registers content under a name
+    derived from the content.
+
+    Returns the digest rather than taking one. A caller that sent both would be
+    asserting a hash of its own bytes, and the service would have to either trust
+    it or recompute it; recomputing makes the sent value decorative, and trusting
+    it lets a caller file one instruction set under another's name.
+    """
+    try:
+        digest = await container.instruction_channel.submit(ctx, content=body.content, now=container.clock.now())
+    except ValidationError as exc:
+        raise map_catalog_error(exc) from exc
+    return InstructionSetResponse(digest=digest)

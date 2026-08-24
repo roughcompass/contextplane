@@ -40,6 +40,7 @@ from contextplane.context.quality import derive_quality
 from contextplane.context.schemas.envelope import (
     BLOCK_ARC,
     BLOCK_CANONICAL,
+    BLOCK_INSTRUCTIONS,
     BLOCK_OBSERVED_CLAIMS,
     BLOCK_WORKSPACE,
     ContextBlockV1,
@@ -114,7 +115,7 @@ def _envelope(items: tuple[ContextItemV1, ...]) -> ContextEnvelopeV1:
     others = tuple(
         ContextBlockV1(name=name, state="empty") for name in (BLOCK_CANONICAL, BLOCK_ARC, BLOCK_OBSERVED_CLAIMS)
     )
-    blocks = (others[0], others[1], others[2], workspace)
+    blocks = (others[0], others[1], others[2], workspace, ContextBlockV1(name=BLOCK_INSTRUCTIONS, state="empty"))
     return ContextEnvelopeV1(blocks=blocks, quality=derive_quality(blocks), state=derive_envelope_state(blocks))
 
 

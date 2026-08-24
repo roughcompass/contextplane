@@ -996,14 +996,45 @@ answer as for a checkpoint that does not exist.
 
 ### registry_resolve_context
 
-Assemble the four-block envelope for one query.
+Assemble the five-block envelope for one query.
 
 **Inputs:** `query`, optional `subject_entity_id`, `intent_ids`,
-`workspace_term`, `workspace_reference`, `arc_receipt_id`, `limit`, `max_age_s`.
+`workspace_term`, `workspace_reference`, `arc_receipt_id`, `instruction_digest`,
+`limit`, `max_age_s`.
 
-**Returns:** four blocks in a fixed order, each with a state and, when less than
+**Returns:** five blocks in a fixed order, each with a state and, when less than
 whole, a reason; complete trust metadata on every non-canonical item; a quality
-summary; and a `receipt_id` naming a stored row.
+summary; a `receipt_id` naming a stored row; and `instruction_disposition`.
+
+The fifth block, `instructions`, carries governed corrections to the instruction
+set you declared. An item whose payload has `contradicts: true` contradicts what
+you were told, and `contradiction_note` says what — weigh it against your own
+instructions rather than applying it blindly. Either way the resolution records
+that a contradiction was served.
+
+### declare_instruction_set
+
+Submit the instruction set you are operating under, once, and get its digest.
+
+Call this when your instructions change, not on every resolve. Then send the
+digest as `instruction_digest` on `registry_resolve_context`, which costs about
+64 bytes and no extra round trip.
+
+**Inputs:** `content` — your instruction set, verbatim.
+
+**Returns:** `digest`. Submitting the same content again returns the same digest
+and changes nothing, because the digest *is* the content.
+
+**Contextplane does not become the store of record for your instructions.** What
+is kept is the set that was in force at the resolutions that declared it, which
+is a fact about those resolutions rather than about you now. Nothing reads it
+back to you as your current instructions.
+
+**Declaring is optional, and not declaring is recorded as such.** Three states
+are distinguished and never two: you sent no digest; you sent one whose content
+was never submitted, so no delta is computable against it; or you sent one that
+is known. The middle state is the one you can leave, and it resolves normally
+rather than failing.
 
 ### find_receipts_by_reference
 

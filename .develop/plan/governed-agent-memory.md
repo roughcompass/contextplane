@@ -5621,7 +5621,7 @@ nothing uses.
 
 ### E4-T7 — Evidence-bundle export, scoped to one case
 
-**Kind:** task · **Status:** blocked — and the blocker is not the one recorded · **Blocked by:** E4-T6, an obligation→subject reference nothing shipped · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done — the obligation-scoped half; the deadline half stays with E4-T6 · **Blocked by:** E4-T6 (for deadlines only) · **Hotspot:** no · **Repo:** contextplane
 
 **Picked up, and the buildable half is cut out as E4-T7b rather than smuggled in
 here.** E4-T6 sets that discipline explicitly — the useful part of a blocked
@@ -5642,6 +5642,39 @@ first two), so it is recorded here as a blocker rather than discovered again.
 What remains for this entry once both blockers clear: an obligation-scoped
 bundle that reaches evidence *through* the reference, of which E4-T7b's
 quarantine export is one member.
+
+**Delivered, once the second blocker was built.** E4-T5d made the relationship
+expressible and `service/governance/obligation_evidence.py` is the bundle: the
+obligation, the incidents it cites, and the claims whose provenance names those
+incidents.
+
+**The scope is a join and nothing is inferred.**
+
+    obligation -> context_reference_bindings   (subject_type = 'reporting_obligation')
+              -> context_external_references  (kind = 'incident')
+              -> memory_claim_provenance      (evidence_kind = 'incident', evidence_ref = external_id)
+
+That is the decision's *"three objects, one relationship, no shared name"* as a
+query. A claim reaches a bundle only by citing an incident this obligation
+cites, so the boundary this entry asks for is where the entry says it should be.
+
+**Four boundary tests, because neither failure shows in the output.** A second
+obligation in the same tenant, citing its own incident, with its own claim —
+absent. Another tenant's claim citing the *same upstream incident id* — absent,
+and the isolation is a join through `memory_claims` because
+`memory_claim_provenance` carries no `tenant_id`, the same trap
+`claim_quarantine_members` set. A claim citing that id as a `connector_run`
+rather than an `incident` — absent, because a coincidence of strings is not
+evidence. And an obligation nobody has matched to a record reports
+`is_matched = False` rather than looking like a bundle that failed to find
+anything.
+
+**The deadline half is not here and is asserted absent.**
+`test_the_bundle_carries_no_deadline_and_no_computed_materiality` fails if the
+bundle grows a `deadline`, `due_at`, `at_risk`, `report_window` or `filed_at`
+field. The bundle reports materiality **as recorded** — `unclassified`, where
+most obligations sit — because reading a row is not classifying one. E4-T6
+remains blocked on ratified thresholds and this entry does not smuggle it in.
 
 Goal: everything a regulator asks for about one incident, exported as one
 bundle, with the scope enforced rather than described.
@@ -5665,6 +5698,42 @@ says why, and says it expecting this task to be where somebody is tempted.
 
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "evidence_bundle"
+
+### E4-T5d — The relationship the governing decision named and nothing implemented
+
+**Kind:** task · **Status:** done · **Blocked by:** E4-T5 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: an obligation can cite the incident it is about, so an obligation-scoped
+export can reach evidence through it.
+
+**Filed because E4-T7 could not be built without it**, and it is the fourth time
+a decision's Consequences named an artefact nobody filed. The decision states
+the relationship exactly: *"A `reporting_obligation` may reference an `incident`
+in the sense the tree already uses — the external record — and a claim may cite
+that same incident as evidence. Three objects, one relationship, no shared
+name."*
+
+**No new table and no new column.** `context_external_references` already models
+an external record with `kind = 'incident'`, and `context_reference_bindings`
+already binds one to a subject. The whole of the missing relationship was that
+`reporting_obligation` was not a legal `subject_type` — so the promise was one
+CHECK value away from being expressible the entire time. Migration 0083 is
+shaped exactly like 0044, which widened the same constraint for
+`external_signal`.
+
+**Citing a non-incident is refused.** Admitting a `deployment` or a `build`
+would leave every read still calling it the incident while it had quietly become
+something else, and a reader checking what an obligation was about would be told
+about a deploy.
+
+**The reference stays optional**, because 0076 already decided that: `summary`
+is free text *"because an obligation can be nominated before anybody knows which
+record it concerns, and refusing the nomination until the link exists would lose
+the nomination."*
+
+Acceptance:
+    .venv/bin/python -m pytest tests/integration -q -k "reporting_obligations or obligation_evidence"
+    make all
 
 ### E4-T7b — The evidence export that needs no classification
 
@@ -9016,7 +9085,7 @@ A **contradictory** instruction is a first-class case, not an error. When the de
 
 ### E22-T1 — ADR 0018: an identifier the reader cannot know is a defect, and the three fields where it is not
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: `.develop/adr/0018-identifiers-are-chosen-not-typed.md`, recording the rule that a field asking for a server-assigned identifier is populated from a read, and enumerating the exception class so the exception is not mistaken for an oversight.
 
@@ -9034,7 +9103,7 @@ Acceptance:
 
 ### E22-T2 — ADR 0019: an agent is registered, not inferred
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `.develop/adr/0019-an-agent-is-a-registered-principal.md`, recording the reversal of E20's Decision 2 and, more importantly, recording that it is a reversal *by supplying a signal* rather than by disputing E20's finding.
 
@@ -9052,7 +9121,7 @@ Acceptance:
 
 ### E22-T3 — ADR 0020: the instruction set is seen, never stored as truth, and the delta is context
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `.develop/adr/0020-instructions-are-declared-and-deltas-are-context.md`, deciding the three forks the epic body names as undecided.
 
@@ -9083,7 +9152,7 @@ Acceptance:
 
 ### E22-T5 — The five ARC collections the dashboard already knows how to read
 
-**Kind:** task · **Status:** pending · **Blocked by:** E22-T4 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E22-T4 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: `source-connectors`, `source-upload-policies`, `observation-replay-corpora`, `approval-evidence` and `approval-verifiers` are listed, and the four fields that name them become pickers.
 
@@ -9096,6 +9165,16 @@ The verifier-list argument at `SourceGovernancePanel.tsx:244-248` gets stronger,
 Acceptance:
     pnpm --filter admin-dashboard test -- -t "source governance"
     pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**Shipped in contextplane-ui#40, and four things the entry could not have known.**
+
+**All five answer in one envelope, so there is one adapter rather than five.** That is the service's decision and not something the dashboard exploited: the ARC governance objects *"agree on intent and disagree on schema — three spellings of scope, three of tenant, and three notions of 'in force', one of which does not exist"*, and the shared response shape is the contract that reconciles them. `detail` is carried through unvalidated for the same reason — narrowing it would be five guards over five schemas the endpoint does not promise, and a guard refusing an unfamiliar key turns a service that added a field into a dashboard showing nothing.
+
+**Four fields was three, and one of them should not be a picker.** The verifier-revoke and evidence-revoke fields are the two the new reads can fill, and both are actions whose target a reader cannot name from memory. The corpus digest is not: it names something being approved for the first time, so there is no collection to choose from, and making it a picker would apply ADR 0018 past the case it is about. The two verifier *lists* are the third and fourth, and they needed a control the picker is not — see below.
+
+**The verifier-list argument was right, and it is stronger than the entry claimed.** `allowed_verifier_ids` is a comma-separated list of UUIDs on the widest field of its form, so a single-value picker does not fit it. What replaced it shows, per candidate, how many in-force registrations already grant that verifier approval authority — computable because `detail.allowed_verifier_ids` is on every connector and upload policy the read returns. A verifier already on six connectors is a broadly trusted credential and one on none is a first grant; nothing showed that before.
+
+**A sixth collection has the same false copy, and it is E22-T16's.** `/v1/arc/admin/exceptions` has a GET in the committed contract, and `ExceptionGrantPanel.tsx`, its test, and `arcExceptions.ts` all say there is no read path for an exception. Same shape as the `SourceGovernancePanel` notice this task deleted — copy describing a limitation the product does not have — and recorded here rather than folded in, because E22-T16's job is exactly to sweep for others of that shape.
 
 ### E22-T6 — The shell stops calling every reader Morgan Morris
 
@@ -9113,7 +9192,7 @@ Acceptance:
 
 ### E22-T7 — `GET /v1/actors`: the principal directory, with kind and owner
 
-**Kind:** task · **Status:** pending · **Blocked by:** E22-T2 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E22-T2 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a tenant-scoped, cursor-paginated roster of principals — `actor_id`, `display_name`, `oidc_subject`, `actor_kind`, owner, first and last seen — and the registration write that sets kind and owner.
 
@@ -9126,9 +9205,79 @@ This unblocks the field the user named first, and eleven others: `Agent actor UU
 Acceptance:
     make lint typecheck && make test-coverage && make test-integration
 
+**Outcome.** `GET /v1/admin/actors` is the roster and
+`POST /v1/admin/actors/{actor_id}/declare` is the registration. Migration 0084
+flips the default, closes the vocabulary and adds the owner.
+
+**The default flip is the part that cost something, and it was checked rather
+than assumed.** `actor_kind` shipped as `NOT NULL DEFAULT 'human'`, so every row
+already asserted something nobody had decided. It flips to `unknown`, and that
+is safe because **nothing reads `'human'` to make a decision** — the column has
+two values in use across the whole tree and only `sync_worker` is ever selected
+on. If a later reader finds a consumer branching on `'human'`, the ADR is what
+was wrong, not that consumer.
+
+**Existing rows are not rewritten.** A row saying `human` today was given that
+word by a default, but rewriting them to `unknown` would be this migration
+asserting something about principals it knows nothing about — the same error one
+column over. The default changes for what comes next.
+
+**`unknown` rows are returned, not filtered**, which is the requirement ADR
+0019's dissent is answered by rather than a hope. A roster that hid what it did
+not know would answer *"we have no agents"* to a deployment with eleven nobody
+has declared. `is_declared` is on every row, because `actor_kind` alone cannot
+tell a declared human from a principal nobody has spoken about — and under the
+old default both read as `human`.
+
+**Amended after the fact: the "nothing reads `'human'`" claim above was wrong,
+and so was "two values in use".** Both were checked, and both checks missed. Two
+consumers branch on `'human'` — `scripts/seed.py`'s dev-tenant lookup filters
+`WHERE actor_kind = 'human'`, and the claim-confirmation guard refuses a
+principal that is not one. A third value, `'service'`, was in use in three
+integration files; the column had no CHECK, so a word a test invented stored
+cleanly and looked like a vocabulary.
+
+The consequence was not subtle. Every principal materialised by the entitlement
+service landed as `unknown`, so `make dev-token` produced a tenant `seed.py`
+could not find, and every person who signed in was refused claim confirmation
+with *"only a human principal may confirm a claim"*. Forty-five integration
+setup errors and seven failures, across five files, none of them about actors.
+
+**The entry said what to do if this happened — "the ADR is what was wrong, not
+that consumer" — and on inspection the ADR is not what was wrong.** ADR 0019 is
+about *machine* principals: an agent is registered, and one nobody registered
+must not silently wear the same label as a person. A human arriving through OIDC
+is not an undeclared principal; the identity provider asserted an end-user
+identity, and that assertion is the declaration. So the three writers now declare
+rather than default — `upsert_entitlement_actor` and `bootstrap_dev_tenant`
+declare `human` attributed to the row itself, and the three test seats that said
+`'service'` say `agent`. `unknown` keeps meaning what ADR 0019 wants it to mean,
+and stops meaning "signed in".
+
+**It was invisible for a reason worth recording.** This surfaced only when the
+whole integration tier ran locally: the PR's own `integration` job hung rather
+than failing, reporting `pending` for 74 minutes and, on an earlier attempt, for
+six hours. A job with no `timeout-minutes` makes a hang indistinguishable from a
+queue. E22-T14 gives every job in every workflow one, sized at roughly 3x its
+measured green duration.
+
+**Three CHECKs, each closing a way of half-declaring.** The vocabulary closes at
+five values, because a column whose values were a convention is how `human` came
+to mean "not a sync worker". A declaration carries its declarer or neither. And
+a declared principal cannot be `unknown` — a form filled in and left blank reads
+afterwards as a decision nobody made.
+
+**Only `human` and `agent` are declarable.** `sync_worker` and `system_curator`
+are this service's own provisioning, and offering them would let an operator
+adopt an internal role; `unknown` is what a principal is before anybody speaks.
+
+The guard is in the service and not the router, per the standing rule: both
+methods scope by tenant and `declare` holds the operator bar, so a second
+transport cannot reach either without them.
+
 ### E22-T8 — `GET /v1/arc/revisions`: the index that makes `/revisions` a page
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a filterable, cursor-paginated revision index — revision, the directive it belongs to, state, activation eligibility, attached approval evidence, and whether a terminal act has already been recorded.
 
@@ -9139,9 +9288,40 @@ The list must carry enough for the decision the screen exists to support. `Revis
 Acceptance:
     make lint typecheck && make test-coverage && make test-integration
 
+**Outcome.** `GET /v1/arc/admin/revisions`, cursor-paginated, filterable by
+lifecycle state and artifact.
+
+**The field this list exists for is `resolutions_under_revision`.** The entry is
+right that the row needs what was decided under the revision, and the screen's
+own copy says why: invalidate means *"every resolution made while this revision
+was active is now in question"* and revoke means *"everything resolved while
+this revision was in force stands"*. The count comes from
+`arc_receipt_selected_revisions`, and **omitted selections are excluded** — a
+revision a resolution considered and left out is not one anything was decided
+under, and counting it would inflate the number in the direction that makes
+invalidate look worse than it is.
+
+**Activation eligibility is named, not answered.** `get_eligibility` reports ten
+predicates computed as if the calling principal were activating. Running that
+per row would be slow or would be a second, weaker computation wearing the same
+name, and two surfaces disagreeing about whether a revision can activate is
+worse than one declining to say. So the row carries three facts that are columns
+— is it a draft, does it have approval evidence, has its review window expired —
+and no verdict. A test asserts the row has grown no `can_activate` field.
+
+**Platform-scoped revisions are included.** A tenant is governed by them, and a
+list that hid them would show a partial account of what is in force. That
+correctness turned two of these tests red when they asserted set equality;
+they assert membership now, because asserting exclusivity was asserting the
+absence of a row this service is right to return.
+
+**The row also names the artifact.** A reader choosing between two irreversible
+acts needs to know what they are acting on, and a UUID is the thing this epic
+exists to remove.
+
 ### E22-T9 — `GET /v1/context/feedback`: the judgement becomes readable
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: recorded context feedback is readable by the reader who recorded it and by the evaluation surfaces, scoped and suppressed under the rules that already govern `/v1/learning/aggregates`.
 
@@ -9151,6 +9331,39 @@ ADR-0013's constraint is the live risk and is honoured rather than worked around
 
 Acceptance:
     make lint typecheck && make test-coverage && make test-integration
+
+**Outcome.** `GET /v1/context/feedback` returns the caller's own judgements;
+`GET /v1/context/receipts/{receipt_id}/feedback` returns what was judged about
+one resolution. The loop is closed at the end that was open.
+
+**The differencing constraint is honoured by this not being an aggregate**,
+which is the reconciliation the entry asked for rather than an exemption from
+it. ADR-0013's attack is two figures for one *cell*, subtracted across an
+erasure. This returns rows the caller wrote, filtered on their own reporter id:
+reading your own rows twice returns your own rows twice, so there is no
+population and no remainder. The aggregates surface's defences are neither
+weakened nor duplicated.
+
+**Two scopes are permitted and everything wider is refused by name.** Your own
+feedback, because it is attribution read back to its author; and one receipt's,
+because a receipt is a resolution the caller can already read in full — the
+ratings attached to it disclose nothing further about it. A request for another
+reporter's rows, or a count over a population, raises `RefusedScope` with a code
+rather than returning an empty page, because an empty page reads as *"no
+feedback exists"* and teaches a caller the scope is permitted.
+
+**The note is the line, and it is drawn on the same rule twice.** It is returned
+on your own judgements, where its author is the one asking, and withheld on a
+receipt's, where it would be somebody else's. 0041 calls it *"the field most
+likely to carry something personal"*, and a surface showing notes across
+reporters would be the per-actor view the aggregates surface refuses, arriving
+through a door marked evaluation.
+
+**The reporter is never an argument.** The write path already refuses a caller
+reporting as somebody else; accepting a reporter id on the read would reopen on
+one side exactly what the other closes. It comes from the caller's context, and
+a caller with no actor identity is refused by name rather than shown an empty
+list.
 
 ### E22-T10 — The five surfaces, and the routes that reach them
 
@@ -9214,7 +9427,7 @@ Acceptance:
 
 ### E22-T14 — The declared instruction set reaches the resolver
 
-**Kind:** task · **Status:** pending · **Blocked by:** E22-T3 · **Hotspot:** yes · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E22-T3 · **Hotspot:** yes · **Repo:** contextplane
 
 Goal: a caller declares the instruction set in force, and the envelope carries the governed delta back as a fifth block.
 
@@ -9226,6 +9439,18 @@ The UI contract pin bumps in the same wave, following the precedent E15-T2 and E
 
 Acceptance:
     make lint typecheck && make test-coverage && make test-integration
+
+**Shipped, and four things the entry could not have known.**
+
+**The block set was pinned in the schema, not only in the code.** `0032` put the four block names in a CHECK on `context_receipt_arms` and `context_receipt_items`, so the fifth block was a migration and not a constant. It surfaced in the integration tier on the first resolution after the block existed — nothing that reads the baseline schema could have caught it, and every unit and conformance test was green when it fired.
+
+**Suppression is per-arm here, so the arm carries the floor.** The entry called the suppression fork the reason for the hotspot label, and the shape of the answer is that `instructions_arm` calls `_refuse_if_overdue` exactly as the claims and workspace arms do, and raises the same `OverdueDerivativeRefusal` rather than a type of its own — a caller that catches one refusal and not the other would be protected on whichever arm it happened to name. The conformance gate that derives the guarded set treats a guard the rule does not require as legal, so this one is held by its own behavioural test rather than by that derivation.
+
+**The record is written against what was served, not against what was read.** An instruction arm that fails a floor served nothing, so nothing was contradicted, and the resolver records the declaration with its deltas cleared. Recording the read instead would have produced the one record an evaluator would act on and that no agent ever saw.
+
+**The core-tier ratchet moved from eight to nine, as a decision.** `registry_resolve_context` is core and now takes an `instruction_digest`; the only way to obtain a digest is `declare_instruction_set`. Left in `extended`, the default connection would document a parameter no agent on it could satisfy — the same "advertise something the caller cannot reach" defect this repo fixed in #4. The argument is on the ratchet in `scripts/check_mcp_tool_registry.py`, not in a commit message.
+
+**Retrieval policy stayed out, and the schema is what keeps it out.** A delta targets one declared digest through a foreign key to submitted content. Serving to every caller in a tenant, or to one whose content was never submitted, is a selection rule — so the schema admits only the narrow case, and a later policy is an addition rather than a reinterpretation of rows written under a different assumption.
 
 ### E22-T15 — Evaluation runs: a prompt, a set of them, and a verdict that persists
 
@@ -9251,6 +9476,8 @@ Goal: the words the product uses about itself are true and consistent, once the 
 Inherited from E10-T4 with its reasoning intact — copy written before the screens describes an intention, copy written after describes what shipped — and with its standard unchanged: "semantic data mesh" and the false "usage data" attribution were removed because neither was true, and ADR-0012's rule against calling bounded-exposure tamper-evidence *non-repudiation* is the same rule in another domain.
 
 What E10-T4 could not have known: the `SourceGovernancePanel` notice is a fourth instance, and it is the most consequential of the four because it describes a limitation the product does not have. E22-T5 removes it. This task's job is to check for others of that shape — copy that navigates, copy that disclaims a naming collision, and copy that describes a missing capability the product has — now that the screens have read paths and most such sentences have become deletable rather than merely rewordable.
+
+**E22-T5 found a fifth and left it here, which is the sweep working.** The exception surface says in three places — `ExceptionGrantPanel.tsx`, its test, and `arcExceptions.ts` — that there is no read path for an exception. `GET /v1/arc/admin/exceptions` is in the committed contract. It was not folded into E22-T5 because that task's scope is the five collections it names, and because a sentence repeated in three files including a test is the shape this task exists to sweep rather than a line to delete in passing. E22-T5 also removed a second copy of its own false sentence from `arcSourceGovernance.ts`, which is the same lesson: this copy propagates into adapter docstrings, so the sweep reads those too.
 
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build

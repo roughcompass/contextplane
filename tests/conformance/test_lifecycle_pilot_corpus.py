@@ -206,7 +206,7 @@ def test_a_scenario_covers_a_pre_code_and_a_later_point(name: str, scenario: dic
 
 @pytest.mark.parametrize(("name", "scenario"), _SCENARIOS, ids=_IDS)
 def test_a_scenario_expects_every_block_in_a_legal_state(name: str, scenario: dict[str, Any]) -> None:
-    """Coverage is recorded for all four blocks, in states the envelope defines."""
+    """Coverage is recorded for every block, in states the envelope defines."""
     coverage = scenario["expected_source_coverage"]
     assert set(coverage) == set(
         BLOCK_NAMES
@@ -217,13 +217,21 @@ def test_a_scenario_expects_every_block_in_a_legal_state(name: str, scenario: di
 
 @pytest.mark.parametrize(("name", "scenario"), _SCENARIOS, ids=_IDS)
 def test_a_scenario_labels_trust_the_way_the_blocks_do(name: str, scenario: dict[str, Any]) -> None:
-    """Canonical carries no trust; every other block carries a legal level.
+    """Canonical carries no trust; every other block that served something does.
 
     This is the corpus's tie to the code rather than to itself. Canonical items
     are built by a constructor that sets trust to `None` by contract, and every
     other block goes through one that refuses an item without it.
+
+    **The two recorded fields are checked against each other, not each alone.** A
+    block whose coverage is `empty` or `failed` returned no items, so there is
+    nothing for a trust level to describe and the corpus records `null`. Checking
+    the label in isolation would demand a level for a block that served nothing,
+    which is how a fixture comes to claim a scenario labelled something it never
+    returned -- and the corpus exists to record what happened.
     """
     labels = scenario["trust_labels"]
+    coverage = scenario["expected_source_coverage"]
     assert set(labels) == set(
         BLOCK_NAMES
     ), f"{name} labels trust for {sorted(labels)}, and the blocks are {sorted(BLOCK_NAMES)}"
@@ -233,6 +241,12 @@ def test_a_scenario_labels_trust_the_way_the_blocks_do(name: str, scenario: dict
     ), f"{name} claims canonical items carry trust {labels[BLOCK_CANONICAL]!r}; they carry none by contract"
     for block, level in labels.items():
         if block == BLOCK_CANONICAL:
+            continue
+        if coverage[block] in ("empty", "failed"):
+            assert level is None, (
+                f"{name} labels {block} {level!r} while recording it as {coverage[block]}; a block that "
+                "returned no items has nothing for a level to describe"
+            )
             continue
         assert level in TRUST_LEVELS, f"{name} labels {block} {level!r}, which is not a trust level"
 

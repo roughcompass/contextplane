@@ -47,6 +47,7 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from contextplane.context.assembler import ArmOutcome
+from contextplane.context.instructions import InstructionChannel
 from contextplane.context.receipts import ContextReceiptService
 from contextplane.context.resolve import ContextResolver
 from contextplane.context.schemas.envelope import BLOCK_NAMES, ENVELOPE_COMPLETE
@@ -95,8 +96,11 @@ def _register_seat(sync_engine: Engine, *, ceiling: int) -> tuple[uuid.UUID, uui
         )
         conn.execute(
             text(
+                # `agent` rather than the `service` this said before `0084`
+                # closed the vocabulary; see the note in
+                # `test_context_arm_composition.py` for why that word existed.
                 "INSERT INTO actors (actor_id, tenant_id, oidc_subject, display_name, actor_kind)"
-                " VALUES (:a, :t, :sub, 'CI seat', 'service')"
+                " VALUES (:a, :t, :sub, 'CI seat', 'agent')"
             ),
             {"a": actor_id, "t": tenant_id, "sub": f"s-{actor_id.hex[:8]}"},
         )
@@ -400,7 +404,14 @@ def _resolver(pg_container: str) -> tuple[ContextResolver, Any]:
     engine = create_async_engine(_async_url(pg_container))
     factory = async_sessionmaker(engine, expire_on_commit=False)
     receipts = ContextReceiptService(session_factory=factory, clock=SystemClock())
-    return ContextResolver(arms=_ArmsThatCannotRead(), receipts=receipts), engine
+    return (
+        ContextResolver(
+            arms=_ArmsThatCannotRead(),
+            receipts=receipts,
+            instruction_channel=InstructionChannel(factory),
+        ),
+        engine,
+    )
 
 
 def test_a_resolution_that_could_not_read_never_calls_itself_complete(
@@ -492,6 +503,7 @@ def test_a_resolution_whose_evidence_cannot_be_written_fails_instead_of_answerin
     resolver = ContextResolver(
         arms=_ArmsThatCannotRead(),
         receipts=ContextReceiptService(session_factory=factory, clock=SystemClock()),
+        instruction_channel=InstructionChannel(factory),
     )
 
     async def run() -> Any:

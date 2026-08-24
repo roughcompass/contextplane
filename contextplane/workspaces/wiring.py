@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.arc import ReceiptReader
 from contextplane.context.arms import ContextArms
+from contextplane.context.instructions import InstructionChannel
 from contextplane.context.receipts import ContextReceiptService
 from contextplane.context.references import ReceiptReferenceIndex
 from contextplane.context.resolve import ContextResolver
@@ -50,6 +51,7 @@ class LayeredContextServices:
     context_arms: ContextArms
     context_receipts: ContextReceiptService
     context_resolver: ContextResolver
+    instruction_channel: InstructionChannel
     context_reference_index: ReceiptReferenceIndex
     context_resume: ContextResumeService
 
@@ -78,12 +80,14 @@ def build_layered_context_services(
     be made to load one.
     """
     workspace_recall = WorkspaceRecall(session_factory=session_factory)
+    instruction_channel = InstructionChannel(session_factory)
     context_arms = ContextArms(
         session_factory=session_factory,
         retrieval=retrieval,
         claims=claim_serving,
         arc_receipts=arc_receipt_reader,
         recall=workspace_recall,
+        instructions=instruction_channel,
         embedder=embedder,
     )
     context_receipts = ContextReceiptService(session_factory=session_factory, clock=clock)
@@ -93,7 +97,12 @@ def build_layered_context_services(
         workspace_recall=workspace_recall,
         context_arms=context_arms,
         context_receipts=context_receipts,
-        context_resolver=ContextResolver(arms=context_arms, receipts=context_receipts),
+        context_resolver=ContextResolver(
+            arms=context_arms,
+            receipts=context_receipts,
+            instruction_channel=instruction_channel,
+        ),
+        instruction_channel=instruction_channel,
         context_reference_index=ReceiptReferenceIndex(session_factory=session_factory),
         context_resume=ContextResumeService(session_factory=session_factory, clock=clock),
     )

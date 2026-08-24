@@ -37,10 +37,13 @@ from contextplane.arc.types import ArcRequestContext
 from contextplane.config import Settings
 from contextplane.context.arms import ContextArms
 from contextplane.context.assembler import assemble
+from contextplane.context.instructions import InstructionChannel
 from contextplane.context.lifecycle import LifecycleProfile
 from contextplane.context.schemas.envelope import (
     BLOCK_ARC,
     BLOCK_CANONICAL,
+    BLOCK_EMPTY,
+    BLOCK_INSTRUCTIONS,
     BLOCK_NAMES,
     BLOCK_OBSERVED_CLAIMS,
     BLOCK_SUCCESS,
@@ -99,8 +102,13 @@ async def tenant_and_actor(factory: async_sessionmaker[AsyncSession]) -> tuple[u
         )
         await session.execute(
             text(
+                # `agent`, not the `service` this said before `0084` closed the
+                # vocabulary. `service` was never a kind anybody chose -- the
+                # column had no CHECK, so a test invented a word and it stored
+                # cleanly. This seat is a machine principal resolving context,
+                # which is what `agent` means.
                 "INSERT INTO actors (actor_id, tenant_id, display_name, oidc_subject, actor_kind, created_at) "
-                "VALUES (:aid, :tid, 'composer', :sub, 'service', :now)"
+                "VALUES (:aid, :tid, 'composer', :sub, 'agent', :now)"
             ),
             {"aid": actor_id, "tid": tenant_id, "sub": f"s-{actor_id.hex[:8]}", "now": _NOW},
         )
@@ -395,7 +403,7 @@ async def _seed_arc_receipt(
 
 
 def _composer(factory: async_sessionmaker[AsyncSession], pg_url: str) -> ContextArms:
-    """The composer as the container builds it, over the four real services."""
+    """The composer as the container builds it, over the real services."""
     settings = Settings(database_url=pg_url, pgbouncer_url=pg_url, scheduler_jobstore_url=pg_url)
     clock = FakeClock(_NOW)
     return ContextArms(
@@ -404,6 +412,7 @@ def _composer(factory: async_sessionmaker[AsyncSession], pg_url: str) -> Context
         claims=ClaimServingService(factory, clock=clock),
         arc_receipts=ReceiptReader(factory, authorization=ArcAuthorizationService(visibility=_NoCapabilities())),
         recall=WorkspaceRecall(session_factory=factory),
+        instructions=InstructionChannel(factory),
     )
 
 
@@ -430,11 +439,17 @@ async def seeded(
 async def test_the_four_arms_compose_into_one_complete_envelope(
     factory: async_sessionmaker[AsyncSession], pg_container: str, seeded: dict[str, Any]
 ) -> None:
-    """Every block populated from its own service, and nothing degraded.
+    """Every block that this request asks for, populated from its own service.
 
     `complete` is the strict assertion: one arm degrading, failing, withholding an
     item or tripping its bound would move the envelope off it. The per-block
     assertions that follow exist to say which arm did if that happens.
+
+    The instruction block is excluded from the populated check and only from
+    that: this request declares no instruction set, so an empty block is the
+    correct answer rather than a gap. It is still asserted `empty` below --
+    excluding it from the state check as well would let a failed instruction arm
+    pass here, and a failed arm is exactly what this test exists to catch.
     """
     ctx = _ctx(seeded["tenant_id"], seeded["actor_id"])
     arms = _composer(factory, pg_container).for_request(
@@ -451,6 +466,9 @@ async def test_the_four_arms_compose_into_one_complete_envelope(
 
     assert tuple(block.name for block in envelope.blocks) == BLOCK_NAMES
     for block in envelope.blocks:
+        if block.name == BLOCK_INSTRUCTIONS:
+            assert block.state == BLOCK_EMPTY, f"{block.name}: {block.reason}"
+            continue
         assert block.state == BLOCK_SUCCESS, f"{block.name}: {block.reason}"
         assert block.items, f"{block.name} came back with no items"
     assert envelope.state == ENVELOPE_COMPLETE

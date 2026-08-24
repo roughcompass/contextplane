@@ -32,6 +32,7 @@ from contextplane.context.schemas.envelope import (
     BLOCK_DEGRADED,
     BLOCK_EMPTY,
     BLOCK_FAILED,
+    BLOCK_INSTRUCTIONS,
     BLOCK_NAMES,
     BLOCK_OBSERVED_CLAIMS,
     BLOCK_SUCCESS,
@@ -76,12 +77,13 @@ def _arm(outcome: ArmOutcome):
 
 
 def _all_arms(**overrides):
-    """Four healthy arms, with named ones replaced."""
+    """One healthy arm per block, with named ones replaced."""
     arms = {
         BLOCK_CANONICAL: _arm(ArmOutcome(items=(_canonical(),))),
         BLOCK_ARC: _arm(ArmOutcome(items=(_contextual(BLOCK_ARC, "arc-1"),))),
         BLOCK_OBSERVED_CLAIMS: _arm(ArmOutcome(items=(_contextual(BLOCK_OBSERVED_CLAIMS, "claim-1"),))),
         BLOCK_WORKSPACE: _arm(ArmOutcome(items=(_contextual(BLOCK_WORKSPACE, "cp-1"),))),
+        BLOCK_INSTRUCTIONS: _arm(ArmOutcome(items=(_contextual(BLOCK_INSTRUCTIONS, "delta-1"),))),
     }
     arms.update(overrides)
     return arms

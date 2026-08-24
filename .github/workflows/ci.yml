@@ -72,8 +72,20 @@ jobs:
   # doc-links, doc-refs and env-documented; making it also pay ~20 minutes of
   # unit, integration and image buys nothing. Plain git rather than a
   # third-party action, so the check has no supply chain of its own.
+  # **Every job below carries `timeout-minutes`, and the number is not a
+  # performance target.** GitHub's default is 360 minutes, so a job that hangs
+  # blocks a PR for six hours and reports the whole time as "pending" -- which
+  # is what happened three times to `integration`, most recently for 6h0m17s
+  # with no output. A hang is then indistinguishable from a queue, and the only
+  # signal is somebody noticing.
+  #
+  # Each budget is roughly 3x the job's measured duration on a green run, so a
+  # slow runner is not failed for being slow while a hang surfaces in minutes
+  # with a log attached. Raise one when a job legitimately grows; do not raise
+  # one to make a hanging job pass.
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       code: ${{ steps.probe.outputs.code }}
     steps:
@@ -106,6 +118,7 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -140,6 +153,7 @@ jobs:
   # cold-install wall clock while the pip cache path was broken.
   typecheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -163,6 +177,7 @@ jobs:
   # than after the integration tier.
   unit:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     needs: changes
     if: needs.changes.outputs.code == 'true'
     # `make test-coverage` runs tests/unit AND tests/conformance, and the
@@ -188,6 +203,7 @@ jobs:
   # reported under one name. A parity claim needs both members pinned.
   integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # `needs: changes`, not `needs: unit`. Nothing is passed between these two
     # jobs -- each does its own checkout and its own `make install-dev` -- so
     # chaining them only serialized two independent tiers, which is the argument
@@ -228,6 +244,7 @@ jobs:
   # costs runner minutes and no wall clock at all.
   conformance:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: changes
     if: needs.changes.outputs.code == 'true'
     steps:
@@ -252,6 +269,7 @@ jobs:
   # other jobs and needs nothing upstream of it.
   arc-vectors:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -271,6 +289,7 @@ jobs:
   # bare runner, pip is the only one, so this job pins to where the wheel is.
   native-stack:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: unit
     # Nightly and on-demand, not on every PR. This job proves the
     # no-container-runtime path still works — a developer-environment
@@ -398,6 +417,7 @@ jobs:
   # the cache and fail verification — the manifest stays the trust anchor.
   image:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # Same reasoning as `integration`: the build consumes nothing `unit` makes.
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -439,6 +459,7 @@ jobs:
   perf:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: unit
     steps:
       - uses: actions/checkout@v4
@@ -473,6 +494,7 @@ jobs:
   # So a skip can never hide a failure behind it. A new job that depends on
   # something outside this list breaks that argument and must be added here.
   gate:
+    timeout-minutes: 5
     if: always()
     needs:
       - changes

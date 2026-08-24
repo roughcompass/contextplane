@@ -31,6 +31,7 @@ from contextplane.context.receipts import (
 from contextplane.context.schemas.envelope import (
     BLOCK_ARC,
     BLOCK_CANONICAL,
+    BLOCK_INSTRUCTIONS,
     BLOCK_NAMES,
     BLOCK_OBSERVED_CLAIMS,
     BLOCK_SUCCESS,
@@ -94,6 +95,19 @@ def _envelope() -> ContextEnvelopeV1:
             items=(
                 contextual_item(
                     block=BLOCK_WORKSPACE, source="intent_checkpoint", item_key="cp1", payload={"k": 3}, trust=_trust()
+                ),
+            ),
+        ),
+        ContextBlockV1(
+            name=BLOCK_INSTRUCTIONS,
+            state=BLOCK_SUCCESS,
+            items=(
+                contextual_item(
+                    block=BLOCK_INSTRUCTIONS,
+                    source="contextplane.instruction_delta",
+                    item_key="d1",
+                    payload={"k": 4},
+                    trust=_trust(),
                 ),
             ),
         ),
@@ -184,7 +198,7 @@ def test_an_arm_that_returned_nothing_still_reports_what_it_considered() -> None
     assert outcome.exclusions[0].reason == "withheld"
 
 
-def test_the_four_blocks_are_the_four_the_receipt_will_store() -> None:
+def test_the_blocks_are_the_ones_the_receipt_will_store() -> None:
     """The receipt writes one arm row per block. If the envelope ever carried a
     different set, the receipt would silently record fewer arms than ran."""
     assert tuple(block.name for block in _envelope().blocks) == BLOCK_NAMES

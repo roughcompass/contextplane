@@ -124,6 +124,13 @@
       "rest": null
     },
     {
+      "name": "declare_instruction_set",
+      "module": "contextplane/api/mcp/tools/context.py",
+      "tier": "core",
+      "intent_kind": "data_access",
+      "rest": "POST /v1/context/instruction-sets"
+    },
+    {
       "name": "delete_session_event",
       "module": "contextplane/api/mcp/tools/memory.py",
       "tier": "extended",

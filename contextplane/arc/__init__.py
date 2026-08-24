@@ -224,6 +224,18 @@ from contextplane.arc.service.review_package import (
     ReviewPackageService,
     ReviewPackageUnavailable,
 )
+from contextplane.arc.service.revision_index import (
+    LIFECYCLE_STATES,
+    RevisionIndexService,
+    RevisionPage,
+    RevisionRow,
+)
+from contextplane.arc.service.revision_index import (
+    MAX_PAGE_SIZE as REVISION_MAX_PAGE_SIZE,
+)
+from contextplane.arc.service.revision_index import (
+    parse_cursor as parse_revision_cursor,
+)
 from contextplane.arc.service.risk import (
     RiskClassificationError,
     RiskEnvelopeValidator,
@@ -314,7 +326,13 @@ from contextplane.arc.workers.source_status_refresh import (
 __all__ = [
     "GovernanceObject",
     "SourceGrantService",
+    "LIFECYCLE_STATES",
+    "REVISION_MAX_PAGE_SIZE",
     "GovernanceReadService",
+    "RevisionIndexService",
+    "RevisionPage",
+    "RevisionRow",
+    "parse_revision_cursor",
     "APPROVAL_VERIFIER_ENROLLMENT_PROFILE",
     "ARTIFACT_SEMANTICS_PROFILE",
     "ActivationEligibility",

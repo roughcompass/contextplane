@@ -69,6 +69,7 @@ from contextplane.arc.service.replay import ResponseReplayProvider
 from contextplane.arc.service.replay_corpus import ReplayCorpusService
 from contextplane.arc.service.resolution import ResolutionService
 from contextplane.arc.service.review_package import ReviewPackageService
+from contextplane.arc.service.revision_index import RevisionIndexService
 from contextplane.arc.service.risk import RiskEnvelopeValidator
 from contextplane.arc.service.selection import (
     SELECTION_ENGINE_VERSION,
@@ -98,6 +99,7 @@ class ArcServices:
     """
 
     arc_governance_reads: GovernanceReadService
+    arc_revision_index: RevisionIndexService
     arc_source_grants: SourceGrantService
 
     arc_signing: ReceiptSigningProvider
@@ -425,6 +427,7 @@ def build_arc_services(
 
     return ArcServices(
         arc_governance_reads=GovernanceReadService(session_factory, clock=clock),
+        arc_revision_index=RevisionIndexService(session_factory, clock=clock),
         arc_source_grants=SourceGrantService(session_factory, clock=clock, authorization=authorization),
         arc_signing=signing,
         arc_authorization=authorization,

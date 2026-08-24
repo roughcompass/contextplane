@@ -143,8 +143,10 @@ FAMILIES: tuple[SurfaceFamily, ...] = (
             "return nothing on their own."
         ),
         members=(
+            "arm_payloads.py",
             "arms.py",
             "assembler.py",
+            "instructions.py",
             "lifecycle.py",
             "resolve.py",
             "receipts.py",

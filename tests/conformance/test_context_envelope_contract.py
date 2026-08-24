@@ -95,10 +95,10 @@ def _envelope(states: dict[str, str]) -> ContextEnvelopeV1:
     return ContextEnvelopeV1(blocks=blocks, quality=quality, state=derive_envelope_state(blocks))
 
 
-# --- the four blocks are always present, in order -----------------------------
+# --- every block is always present, in order ----------------------------------
 
 
-def test_an_envelope_carries_exactly_the_four_blocks_in_order() -> None:
+def test_an_envelope_carries_exactly_the_named_blocks_in_order() -> None:
     envelope = _envelope(dict.fromkeys(BLOCK_NAMES, BLOCK_EMPTY))
     assert tuple(block.name for block in envelope.blocks) == BLOCK_NAMES
 
@@ -107,7 +107,7 @@ def test_a_missing_block_is_refused_rather_than_defaulted() -> None:
     """A caller that branches on whether a block exists gets it wrong once, and
     the failure reads as missing data rather than a missing check."""
     blocks = tuple(_block(name, BLOCK_EMPTY) for name in BLOCK_NAMES if name != BLOCK_WORKSPACE)
-    with pytest.raises(InvalidContextItem, match="exactly the four blocks"):
+    with pytest.raises(InvalidContextItem, match="exactly these blocks"):
         ContextEnvelopeV1(
             blocks=blocks,
             quality=QualityStateV1(degraded_blocks=(), reasons=(), cacheable=True),
@@ -129,7 +129,7 @@ def test_blocks_out_of_order_are_refused() -> None:
 # --- every arm-failure combination --------------------------------------------
 
 
-@pytest.mark.parametrize("states", list(itertools.product(sorted(BLOCK_STATES), repeat=4)))
+@pytest.mark.parametrize("states", list(itertools.product(sorted(BLOCK_STATES), repeat=len(BLOCK_NAMES))))
 def test_every_arm_state_combination_derives_one_defined_envelope_state(states: tuple[str, ...]) -> None:
     """All 256 combinations. The rule is small enough to state in one line, and
     exhaustive coverage is what stops a later edit adding a case nobody derived."""

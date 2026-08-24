@@ -39,13 +39,26 @@ import datetime
 import uuid
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Path, Request
+from fastapi import APIRouter, Depends, Path, Query, Request
 from pydantic import BaseModel, Field
 
 from contextplane.api.container import Services
 from contextplane.api.errors import map_catalog_error
 from contextplane.api.routers._admin_common import _admin_required
 from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
+from contextplane.service.governance.actors import (
+    ALL_KINDS,
+    DECLARABLE_KINDS,
+    MAX_OWNER,
+    MIN_OWNER,
+    Principal,
+)
+from contextplane.service.governance.actors import (
+    MAX_PAGE_SIZE as ACTOR_MAX_PAGE_SIZE,
+)
+from contextplane.service.governance.actors import (
+    parse_cursor as parse_actor_cursor,
+)
 from contextplane.service.governance.obligations import (
     MATERIALITY_MATERIAL,
     MATERIALITY_NOT_MATERIAL,
@@ -202,3 +215,119 @@ async def obligation_backlog(
 CLASSIFIABLE_ON_THE_WIRE: frozenset[str] = frozenset({MATERIALITY_MATERIAL, MATERIALITY_NOT_MATERIAL})
 
 __all__ = ["CLASSIFIABLE_ON_THE_WIRE", "router"]
+
+
+# --- the principal directory --------------------------------------------------
+
+
+class PrincipalResponse(BaseModel):
+    """One principal, and what is known about it.
+
+    `is_declared` is the field a roster reader needs: `actor_kind` alone cannot
+    tell a declared human from a principal nobody has spoken about, and both
+    read as `human` under the old default.
+    """
+
+    actor_id: uuid.UUID
+    display_name: str | None
+    oidc_subject: str
+    actor_kind: str
+    owner_principal: str | None
+    declared_at: datetime.datetime | None
+    declared_by: uuid.UUID | None
+    created_at: datetime.datetime
+    is_declared: bool
+
+
+class PrincipalPageResponse(BaseModel):
+    items: list[PrincipalResponse]
+    next_cursor: str | None
+
+
+class DeclarePrincipalRequest(BaseModel):
+    """What a principal is, and who is accountable for it."""
+
+    actor_kind: str = Field(description=f"One of {list(DECLARABLE_KINDS)}.")
+    owner_principal: str = Field(
+        min_length=MIN_OWNER,
+        max_length=MAX_OWNER,
+        description=(
+            "Who to talk to about this principal. A principal whose owner is unrecorded is "
+            "one nobody is accountable for."
+        ),
+    )
+
+
+def _principal_response(principal: Principal) -> PrincipalResponse:
+    return PrincipalResponse(
+        actor_id=principal.actor_id,
+        display_name=principal.display_name,
+        oidc_subject=principal.oidc_subject,
+        actor_kind=principal.actor_kind,
+        owner_principal=principal.owner_principal,
+        declared_at=principal.declared_at,
+        declared_by=principal.declared_by,
+        created_at=principal.created_at,
+        is_declared=principal.is_declared,
+    )
+
+
+@router.get("/actors", response_model=PrincipalPageResponse)
+async def list_principals(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(_admin_required)],
+    actor_kind: str | None = Query(None, description=f"One of {list(ALL_KINDS)}."),
+    cursor: str | None = Query(None),
+    page_size: int = Query(50, ge=1, le=ACTOR_MAX_PAGE_SIZE),
+) -> PrincipalPageResponse:
+    """Every principal in this tenant, newest first.
+
+    **Undeclared principals are returned, not filtered.** An agent nobody has
+    declared is the state most deployments start in, and a roster that hid it
+    would answer "we have no agents" to a deployment that has eleven. The row
+    says what is not known and the caller can act on it.
+    """
+    services: Services = request.app.state.services
+    try:
+        page = await services.actor_directory.list_principals(
+            ctx,
+            actor_kind=actor_kind,
+            cursor=parse_actor_cursor(cursor),
+            page_size=page_size,
+        )
+    except ValidationError as exc:
+        raise map_catalog_error(exc) from exc
+    return PrincipalPageResponse(
+        items=[_principal_response(item) for item in page.items],
+        next_cursor=page.next_cursor,
+    )
+
+
+@router.post("/actors/{actor_id}/declare", response_model=PrincipalResponse)
+async def declare_principal(
+    request: Request,
+    body: DeclarePrincipalRequest,
+    actor_id: Annotated[uuid.UUID, Path()],
+    ctx: Annotated[TenantContext, Depends(_admin_required)],
+) -> PrincipalResponse:
+    """Say what a principal is, and who is accountable for it.
+
+    A declaration, never a classification. A human in an IDE and an unattended
+    agent arrive over the identical transport, so nothing here reads behaviour
+    to guess — somebody says, and the row records that they said so and when.
+
+    Re-declaring overwrites: a principal that was a person's session and is now
+    an unattended agent is a real change, and refusing it would leave the roster
+    wrong in the direction that matters.
+    """
+    services: Services = request.app.state.services
+    try:
+        principal = await services.actor_directory.declare(
+            ctx,
+            actor_id=actor_id,
+            actor_kind=body.actor_kind,
+            owner_principal=body.owner_principal,
+        )
+    except (NotFoundError, ValidationError) as exc:
+        raise map_catalog_error(exc) from exc
+    return _principal_response(principal)
