@@ -77,6 +77,7 @@ from contextplane.arc import (
     ReplayCorpusService,
     ResolutionService,
     ReviewPackageService,
+    RevisionIndexService,
     RevisionIntegrityService,
     RiskEnvelopeValidator,
     SemanticTestService,
@@ -108,7 +109,9 @@ from contextplane.service.catalog.lifecycle import LifecycleService
 from contextplane.service.catalog.projections import ProjectionService
 from contextplane.service.catalog.schema import SchemaService
 from contextplane.service.catalog.vocabulary import VocabularyService
+from contextplane.service.governance.actors import ActorDirectoryService
 from contextplane.service.governance.erasure import ErasureRegistry
+from contextplane.service.governance.obligation_evidence import ObligationEvidenceService
 from contextplane.service.governance.obligations import ReportingObligationService
 from contextplane.service.governance.visibility import VisibilityService
 from contextplane.service.memory.agent_accuracy import AgentAccuracyService
@@ -174,6 +177,8 @@ class Services:
     schema: SchemaService
     visibility: VisibilityService
     reporting_obligations: ReportingObligationService
+    actor_directory: ActorDirectoryService
+    obligation_evidence: ObligationEvidenceService
     catalog: CatalogService
     lifecycle: LifecycleService
     retrieval: RetrievalService
@@ -325,6 +330,7 @@ class Services:
     # Sec.8). Predicate 10 (`operational_integrity`) calls `arc_integrity.
     # assess` directly -- see `activation.py`'s own module docstring.
     arc_governance_reads: GovernanceReadService
+    arc_revision_index: RevisionIndexService
     arc_source_grants: SourceGrantService
     arc_activation: ActivationService
     # None on every deployment today: ARC key material is not yet

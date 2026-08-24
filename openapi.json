@@ -5486,6 +5486,29 @@
         "title": "DailySeriesOut",
         "type": "object"
       },
+      "DeclarePrincipalRequest": {
+        "description": "What a principal is, and who is accountable for it.",
+        "properties": {
+          "actor_kind": {
+            "description": "One of ['human', 'agent'].",
+            "title": "Actor Kind",
+            "type": "string"
+          },
+          "owner_principal": {
+            "description": "Who to talk to about this principal. A principal whose owner is unrecorded is one nobody is accountable for.",
+            "maxLength": 200,
+            "minLength": 3,
+            "title": "Owner Principal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor_kind",
+          "owner_principal"
+        ],
+        "title": "DeclarePrincipalRequest",
+        "type": "object"
+      },
       "DeltaCode": {
         "description": "Derived by import from `authoring_profile_shapes.DELTA_CODES` (ADR 041 Section 4); see `RiskClassification` for why this is a same-layer import.",
         "enum": [
@@ -8526,6 +8549,35 @@
         "title": "InterfaceSurfaceResponse",
         "type": "object"
       },
+      "JudgementPageResponse": {
+        "description": "One page, and where the next one starts. The cursor is opaque.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecordedJudgementResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "JudgementPageResponse",
+        "type": "object"
+      },
       "JudgmentAuthor": {
         "additionalProperties": false,
         "description": "Response-only. See Appendix A.4: recorded authors, server-written.",
@@ -10184,6 +10236,120 @@
         ],
         "title": "PrincipalBindingKind",
         "type": "string"
+      },
+      "PrincipalPageResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PrincipalResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "PrincipalPageResponse",
+        "type": "object"
+      },
+      "PrincipalResponse": {
+        "description": "One principal, and what is known about it.\n\n`is_declared` is the field a roster reader needs: `actor_kind` alone cannot\ntell a declared human from a principal nobody has spoken about, and both\nread as `human` under the old default.",
+        "properties": {
+          "actor_id": {
+            "format": "uuid",
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "actor_kind": {
+            "title": "Actor Kind",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "declared_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared At"
+          },
+          "declared_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared By"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "is_declared": {
+            "title": "Is Declared",
+            "type": "boolean"
+          },
+          "oidc_subject": {
+            "title": "Oidc Subject",
+            "type": "string"
+          },
+          "owner_principal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Principal"
+          }
+        },
+        "required": [
+          "actor_id",
+          "display_name",
+          "oidc_subject",
+          "actor_kind",
+          "owner_principal",
+          "declared_at",
+          "declared_by",
+          "created_at",
+          "is_declared"
+        ],
+        "title": "PrincipalResponse",
+        "type": "object"
       },
       "ProfileAttributionV1": {
         "additionalProperties": false,
@@ -12464,6 +12630,79 @@
         "title": "RecordEventRequest",
         "type": "object"
       },
+      "RecordedJudgementResponse": {
+        "description": "One judgement as it was recorded.\n\n`note` is present on the caller's own judgements and absent on a receipt's,\nwhich is the whole of this surface's disclosure rule expressed as a nullable\nfield \u2014 see `feedback_reads`'s module docstring.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "feedback_id": {
+            "format": "uuid",
+            "title": "Feedback Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "learning_eligible": {
+            "title": "Learning Eligible",
+            "type": "boolean"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "rating": {
+            "title": "Rating",
+            "type": "string"
+          },
+          "receipt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Id"
+          },
+          "receipt_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Item Id"
+          }
+        },
+        "required": [
+          "feedback_id",
+          "kind",
+          "rating",
+          "learning_eligible",
+          "receipt_id",
+          "receipt_item_id",
+          "note",
+          "created_at"
+        ],
+        "title": "RecordedJudgementResponse",
+        "type": "object"
+      },
       "ReferenceListResponse": {
         "description": "Every piece of external work one resolution cites.",
         "properties": {
@@ -13732,6 +13971,180 @@
           "state"
         ],
         "title": "ReviewProposalRequest",
+        "type": "object"
+      },
+      "RevisionIndexResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RevisionIndexRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "RevisionIndexResponse",
+        "type": "object"
+      },
+      "RevisionIndexRow": {
+        "description": "One revision, and what a reader needs before opening it.\n\nThe three activation fields are columns, not a verdict. Whether a revision\ncan activate is ten predicates computed as if the caller were the one\nactivating, and that stays at\n`GET /v1/arc/revisions/{revision_id}/activation-eligibility` \u2014 a list that\nanswered it would be a second, weaker computation two surfaces could\ndisagree over.",
+        "properties": {
+          "activated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated At"
+          },
+          "approval_evidence_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Evidence Id"
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "artifact_kind": {
+            "title": "Artifact Kind",
+            "type": "string"
+          },
+          "artifact_slug": {
+            "title": "Artifact Slug",
+            "type": "string"
+          },
+          "content_digest": {
+            "title": "Content Digest",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "effective_from": {
+            "format": "date-time",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "effective_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Until"
+          },
+          "has_approval_evidence": {
+            "title": "Has Approval Evidence",
+            "type": "boolean"
+          },
+          "is_draft": {
+            "title": "Is Draft",
+            "type": "boolean"
+          },
+          "is_terminal": {
+            "title": "Is Terminal",
+            "type": "boolean"
+          },
+          "lifecycle_state": {
+            "title": "Lifecycle State",
+            "type": "string"
+          },
+          "resolutions_under_revision": {
+            "title": "Resolutions Under Revision",
+            "type": "integer"
+          },
+          "review_expired": {
+            "title": "Review Expired",
+            "type": "boolean"
+          },
+          "review_expires_at": {
+            "format": "date-time",
+            "title": "Review Expires At",
+            "type": "string"
+          },
+          "revision_id": {
+            "format": "uuid",
+            "title": "Revision Id",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "source_revision_locator": {
+            "title": "Source Revision Locator",
+            "type": "string"
+          },
+          "source_system": {
+            "title": "Source System",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision_id",
+          "artifact_id",
+          "artifact_slug",
+          "artifact_kind",
+          "lifecycle_state",
+          "source_system",
+          "source_revision_locator",
+          "content_digest",
+          "approval_evidence_id",
+          "effective_from",
+          "effective_until",
+          "review_expires_at",
+          "activated_at",
+          "revoked_at",
+          "created_at",
+          "resolutions_under_revision",
+          "is_draft",
+          "has_approval_evidence",
+          "review_expired",
+          "is_terminal"
+        ],
+        "title": "RevisionIndexRow",
         "type": "object"
       },
       "RevisionLifecycleState": {
@@ -17047,6 +17460,140 @@
         },
         "security": [],
         "summary": "Readyz"
+      }
+    },
+    "/v1/admin/actors": {
+      "get": {
+        "description": "Every principal in this tenant, newest first.\n\n**Undeclared principals are returned, not filtered.** An agent nobody has\ndeclared is the state most deployments start in, and a roster that hid it\nwould answer \"we have no agents\" to a deployment that has eleven. The row\nsays what is not known and the caller can act on it.",
+        "operationId": "list_principals_v1_admin_actors_get",
+        "parameters": [
+          {
+            "description": "One of ['unknown', 'human', 'agent', 'sync_worker', 'system_curator'].",
+            "in": "query",
+            "name": "actor_kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One of ['unknown', 'human', 'agent', 'sync_worker', 'system_curator'].",
+              "title": "Actor Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Principals",
+        "tags": [
+          "admin: obligations"
+        ]
+      }
+    },
+    "/v1/admin/actors/{actor_id}/declare": {
+      "post": {
+        "description": "Say what a principal is, and who is accountable for it.\n\nA declaration, never a classification. A human in an IDE and an unattended\nagent arrive over the identical transport, so nothing here reads behaviour\nto guess \u2014 somebody says, and the row records that they said so and when.\n\nRe-declaring overwrites: a principal that was a person's session and is now\nan unattended agent is a real change, and refusing it would leave the roster\nwrong in the direction that matters.",
+        "operationId": "declare_principal_v1_admin_actors__actor_id__declare_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "actor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Actor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeclarePrincipalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Declare Principal",
+        "tags": [
+          "admin: obligations"
+        ]
       }
     },
     "/v1/admin/actors/{actor_id}/personal-data": {
@@ -21443,6 +21990,103 @@
           }
         },
         "summary": "Describe Operator Identity",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/revisions": {
+      "get": {
+        "description": "Which revisions exist \u2014 the read the lifecycle screen never had.\n\nSeven paths already act on a revision and every one is keyed by an id the\ncaller must already hold. That is why the lifecycle screen is four text\nboxes: nothing could have been designed well against a surface with no way\nto ask what exists.\n\nEach row carries `resolutions_under_revision`, which is the field the choice\nbetween the two terminal acts turns on \u2014 invalidate puts what was decided\nunder a revision in question, revoke leaves it standing \u2014 so a reader is not\nchoosing between them on the strength of a paragraph.",
+        "operationId": "list_arc_revisions_v1_arc_admin_revisions_get",
+        "parameters": [
+          {
+            "description": "One of ['draft', 'active', 'superseded', 'revoked', 'expired'].",
+            "in": "query",
+            "name": "lifecycle_state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One of ['draft', 'active', 'superseded', 'revoked', 'expired'].",
+              "title": "Lifecycle State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "artifact_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Artifact Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionIndexResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Arc Revisions",
         "tags": [
           "arc: admin"
         ]
@@ -25989,6 +26633,66 @@
       }
     },
     "/v1/context/feedback": {
+      "get": {
+        "description": "The caller's own recorded judgements, newest first.\n\n**The one loop the product has for \"how might this be improved\" was open at\nthe far end**: a reader could record that a served item was irrelevant and\nnever see what their assessment did. This closes it, and closes it narrowly.\n\nScoped to the caller by their own identity rather than by an argument. The\nwrite path already refuses a caller reporting as somebody else; accepting a\nreporter id here would reopen on the read side exactly what that closes on\nthe write side.",
+        "operationId": "list_my_context_feedback_v1_context_feedback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JudgementPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List My Context Feedback",
+        "tags": [
+          "context-feedback"
+        ]
+      },
       "post": {
         "description": "Report feedback about a served answer, bound to exactly what it is about.\n\nItem-specific feedback cites a receipt and an exact item on it; receipt-level\ncites a receipt and no item; a diagnostic observation cites neither and is\nnever learning-eligible. The binding is resolved against the receipt's own\nrows before anything is written, so an item belonging to a different receipt\nis refused rather than stored.\n\nNothing is inferred: no rating is derived from an external outcome, and a\nsubmission that is refused leaves no row behind.",
         "operationId": "record_context_feedback_v1_context_feedback_post",
@@ -26025,6 +26729,62 @@
           }
         },
         "summary": "Record Context Feedback",
+        "tags": [
+          "context-feedback"
+        ]
+      }
+    },
+    "/v1/context/receipts/{receipt_id}/feedback": {
+      "get": {
+        "description": "What was judged about one resolution, without saying by whom.\n\nThe receipt is something the caller can already read in full, so the ratings\nattached to it disclose nothing further about the resolution. The reporter\nand the note are withheld: those are facts about a person, and a surface\nreturning them across reporters would be the per-actor view the aggregates\nsurface refuses, arriving through a door marked evaluation.",
+        "operationId": "list_feedback_for_receipt_v1_context_receipts__receipt_id__feedback_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "receipt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Receipt Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JudgementPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Feedback For Receipt",
         "tags": [
           "context-feedback"
         ]

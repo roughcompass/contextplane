@@ -36,6 +36,8 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from contextplane.service.governance.actors import ActorDirectoryService
+from contextplane.service.governance.obligation_evidence import ObligationEvidenceService
 from contextplane.service.governance.obligations import ReportingObligationService
 from contextplane.service.governance.visibility import VisibilityService
 from contextplane.types import Clock
@@ -59,6 +61,8 @@ class GovernanceServices:
     #: collaborator: an obligation is owned by exactly one tenant and is never
     #: cross-tenant readable, so there is no decision for one to make.
     reporting_obligations: ReportingObligationService
+    actor_directory: ActorDirectoryService
+    obligation_evidence: ObligationEvidenceService
 
 
 def build_governance_services(
@@ -66,8 +70,11 @@ def build_governance_services(
     clock: Clock,
 ) -> GovernanceServices:
     """Construct the governance area's services."""
+    obligations = ReportingObligationService(session_factory, clock=clock)
     return GovernanceServices(
-        reporting_obligations=ReportingObligationService(session_factory, clock=clock),
+        reporting_obligations=obligations,
+        actor_directory=ActorDirectoryService(session_factory, clock=clock),
+        obligation_evidence=ObligationEvidenceService(session_factory, obligations=obligations),
         visibility=VisibilityService(session_factory, clock),
     )
 

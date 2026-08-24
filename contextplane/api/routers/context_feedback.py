@@ -36,10 +36,11 @@ so a client can stop retrying rather than reading it as a generic conflict.
 
 from __future__ import annotations
 
+import datetime
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Path, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from contextplane.api.auth.context import require_roles
@@ -51,6 +52,13 @@ from contextplane.signals.feedback import (
     FeedbackService,
     FeedbackSubmissionV1,
     RecordedFeedback,
+)
+from contextplane.signals.feedback_reads import (
+    MAX_PAGE_SIZE,
+    FeedbackReadService,
+    JudgementPage,
+    RefusedScope,
+    parse_cursor,
 )
 from contextplane.types import TenantContext
 
@@ -128,6 +136,104 @@ class ContextFeedbackResponse(BaseModel):
 def _feedback_service(container: Services) -> FeedbackService:
     """Build the service from what the container already publishes."""
     return FeedbackService(container.session_factory, clock=container.clock)
+
+
+def _feedback_reads(container: Services) -> FeedbackReadService:
+    """The read half. Built the same way and holding no policy of its own."""
+    return FeedbackReadService(container.session_factory)
+
+
+class RecordedJudgementResponse(BaseModel):
+    """One judgement as it was recorded.
+
+    `note` is present on the caller's own judgements and absent on a receipt's,
+    which is the whole of this surface's disclosure rule expressed as a nullable
+    field — see `feedback_reads`'s module docstring.
+    """
+
+    feedback_id: uuid.UUID
+    kind: str
+    rating: str
+    learning_eligible: bool
+    receipt_id: uuid.UUID | None
+    receipt_item_id: str | None
+    note: str | None
+    created_at: datetime.datetime
+
+
+class JudgementPageResponse(BaseModel):
+    """One page, and where the next one starts. The cursor is opaque."""
+
+    items: list[RecordedJudgementResponse]
+    next_cursor: str | None
+
+
+def _page_response(page: JudgementPage) -> JudgementPageResponse:
+    return JudgementPageResponse(
+        items=[
+            RecordedJudgementResponse(
+                feedback_id=item.feedback_id,
+                kind=item.kind,
+                rating=item.rating,
+                learning_eligible=item.learning_eligible,
+                receipt_id=item.receipt_id,
+                receipt_item_id=item.receipt_item_id,
+                note=item.note,
+                created_at=item.created_at,
+            )
+            for item in page.items
+        ],
+        next_cursor=page.next_cursor,
+    )
+
+
+@router.get("/context/feedback", response_model=JudgementPageResponse)
+async def list_my_context_feedback(
+    ctx: Annotated[TenantContext, Depends(_feedback_required)],
+    container: Annotated[Services, Depends(services)],
+    cursor: str | None = Query(None),
+    page_size: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
+) -> JudgementPageResponse:
+    """The caller's own recorded judgements, newest first.
+
+    **The one loop the product has for "how might this be improved" was open at
+    the far end**: a reader could record that a served item was irrelevant and
+    never see what their assessment did. This closes it, and closes it narrowly.
+
+    Scoped to the caller by their own identity rather than by an argument. The
+    write path already refuses a caller reporting as somebody else; accepting a
+    reporter id here would reopen on the read side exactly what that closes on
+    the write side.
+    """
+    try:
+        page = await _feedback_reads(container).mine(ctx, cursor=parse_cursor(cursor), page_size=page_size)
+    except RefusedScope as refused:
+        raise build_error(status.HTTP_403_FORBIDDEN, code=refused.code, message=str(refused)) from refused
+    except ValidationError as exc:
+        raise map_catalog_error(exc) from exc
+    return _page_response(page)
+
+
+@router.get("/context/receipts/{receipt_id}/feedback", response_model=JudgementPageResponse)
+async def list_feedback_for_receipt(
+    receipt_id: Annotated[uuid.UUID, Path()],
+    ctx: Annotated[TenantContext, Depends(_feedback_required)],
+    container: Annotated[Services, Depends(services)],
+    page_size: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
+) -> JudgementPageResponse:
+    """What was judged about one resolution, without saying by whom.
+
+    The receipt is something the caller can already read in full, so the ratings
+    attached to it disclose nothing further about the resolution. The reporter
+    and the note are withheld: those are facts about a person, and a surface
+    returning them across reporters would be the per-actor view the aggregates
+    surface refuses, arriving through a door marked evaluation.
+    """
+    try:
+        page = await _feedback_reads(container).for_receipt(ctx, receipt_id=receipt_id, page_size=page_size)
+    except ValidationError as exc:
+        raise map_catalog_error(exc) from exc
+    return _page_response(page)
 
 
 @router.post("/context/feedback", response_model=ContextFeedbackResponse)

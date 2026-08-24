@@ -116,6 +116,47 @@ _COLUMNS = (
 )
 
 
+# ---------------------------------------------------------------------------
+# What the obligation is about
+# ---------------------------------------------------------------------------
+
+#: This obligation, as a citing subject. Named here rather than in the reference
+#: module for the same reason `SUBJECT_RECEIPT` and `SUBJECT_TASK_CHECKPOINT`
+#: live with the things they name: the subject type belongs to whatever owns the
+#: subject, and a single module holding all of them would be a place every new
+#: subject has to be remembered in.
+SUBJECT_REPORTING_OBLIGATION: Final = "reporting_obligation"
+
+#: The only reference kind an obligation may cite, and the refusal is the point.
+#: The decision that named this governed object names the relationship exactly
+#: too -- an obligation references an
+#: *incident* in the sense the tree already uses, the external record -- and
+#: binding a `deployment` or a `build` here would quietly make the relationship
+#: mean something else while every read still called it the incident.
+_INCIDENT_KIND: Final = "incident"
+
+_BIND = """
+INSERT INTO context_reference_bindings (binding_id, tenant_id, reference_id, subject_type, subject_id, bound_at)
+VALUES (:bid, :tid, :rid, :subject_type, :oid, :now)
+ON CONFLICT DO NOTHING
+RETURNING binding_id
+"""
+
+_CITED = """
+SELECT r.reference_id, r.source_system, r.source_namespace, r.external_id, r.kind,
+       r.authorized_uri, r.observed_at, b.bound_at
+  FROM context_reference_bindings b
+  JOIN context_external_references r ON r.reference_id = b.reference_id
+ WHERE b.tenant_id = :tid AND b.subject_type = :subject_type AND b.subject_id = :oid
+ ORDER BY b.bound_at, r.reference_id
+"""
+
+_KIND_OF = """
+SELECT kind FROM context_external_references
+ WHERE reference_id = :rid AND tenant_id = :tid
+"""
+
+
 def _age_seconds(oldest: datetime.datetime | None, now: datetime.datetime) -> float:
     """Seconds since the longest wait began, or zero when nothing is waiting."""
     return 0.0 if oldest is None else max(0.0, (now - oldest).total_seconds())
@@ -290,6 +331,98 @@ class ReportingObligationService:
             msg = "no such reporting obligation"
             raise NotFoundError(msg)
         return _to_obligation(row)
+
+    async def cite_incident(
+        self,
+        ctx: TenantContext,
+        *,
+        obligation_id: uuid.UUID,
+        reference_id: uuid.UUID,
+    ) -> bool:
+        """Record that this obligation is about that incident. Returns whether it was new.
+
+        **This is the relationship the decision promised and nothing implemented**,
+        and it needed no new table: `context_external_references` already models
+        the external record and `context_reference_bindings` already binds one to
+        a subject. The whole of the gap was that `reporting_obligation` was not a
+        legal `subject_type`.
+
+        Refuses a reference that is not an incident. That decision says an
+        obligation references an *incident*; admitting a `build` or a
+        `deployment` would leave every read still calling it the incident while
+        it had become something else.
+
+        Idempotent per pair. Citing the same incident twice is one relationship
+        stated twice, and a citation list that grew on re-statement would read as
+        two independent records of the same event.
+
+        The obligation is read first, so citing one that does not exist -- or
+        belongs to another tenant -- is a `NotFoundError` rather than a binding
+        pointing at nothing.
+        """
+        await self.get(ctx, obligation_id=obligation_id)
+
+        async with self._session_factory() as session, session.begin():
+            kind = (
+                await session.execute(text(_KIND_OF), {"rid": reference_id, "tid": ctx.tenant_id})
+            ).scalar_one_or_none()
+            if kind is None:
+                msg = "no such external reference in this tenant"
+                raise NotFoundError(msg)
+            if kind != _INCIDENT_KIND:
+                msg = (
+                    f"a reporting obligation cites an {_INCIDENT_KIND!r} reference and this one is "
+                    f"{kind!r}; the relationship is about the incident that created the obligation"
+                )
+                raise ValidationError(msg)
+            # `RETURNING` rather than `rowcount`: the driver's row count is
+            # typed as unavailable on an async result, and asking the statement
+            # what it wrote is a better answer than asking the cursor anyway.
+            written = (
+                await session.execute(
+                    text(_BIND),
+                    {
+                        "bid": uuid.uuid4(),
+                        "tid": ctx.tenant_id,
+                        "rid": reference_id,
+                        "subject_type": SUBJECT_REPORTING_OBLIGATION,
+                        "oid": obligation_id,
+                        "now": self._clock.now(),
+                    },
+                )
+            ).scalar_one_or_none()
+        return written is not None
+
+    async def incidents_for(
+        self,
+        ctx: TenantContext,
+        *,
+        obligation_id: uuid.UUID,
+    ) -> tuple[dict[str, object], ...]:
+        """Every incident this obligation cites, oldest citation first.
+
+        Returns an empty tuple for an obligation nobody has matched to a record
+        yet, which is the state most of them start in -- 0076 made `summary`
+        free text precisely so a nomination need not wait for the link. An empty
+        result here is a nomination in progress, not a missing one.
+        """
+        await self.get(ctx, obligation_id=obligation_id)
+        async with self._session_factory() as session:
+            rows = (
+                (
+                    await session.execute(
+                        text(_CITED),
+                        {
+                            "tid": ctx.tenant_id,
+                            "subject_type": SUBJECT_REPORTING_OBLIGATION,
+                            "oid": obligation_id,
+                        },
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return tuple(dict(row) for row in rows)
 
     async def unclassified_backlog(self, ctx: TenantContext) -> UnclassifiedBacklog:
         """How many are waiting for this tenant, and how long the longest has waited.

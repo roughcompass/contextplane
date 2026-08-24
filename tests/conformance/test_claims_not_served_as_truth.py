@@ -118,6 +118,23 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # role and behind a justification recorded before the figure is
         # returned, in the same transaction.
         "service/memory/audit_drilldown.py",
+        # The obligation-scoped evidence export. Reads `memory_claim_provenance`
+        # to find which claims cite a given external incident, and joins
+        # `memory_claims` for one thing only: the tenant filter, which the
+        # provenance table does not carry.
+        #
+        # On this list on the same ground as the two above -- it serves **ids**.
+        # Its entire output about a claim is a claim id and the incident string
+        # that claim's provenance names; never a value, subject, predicate,
+        # confidence or authority. `test_the_bundle_names_claims_and_does_not_
+        # serve_what_they_assert` holds it there, asserting each row carries
+        # exactly `{claim_id, incident}`.
+        #
+        # The risk this gate exists for is a staged claim acquiring canonical
+        # authority by leaking through a capability read. A regulator-facing
+        # export that says "these claim ids cite the incident you asked about"
+        # asserts nothing about whether any of them is true.
+        "service/governance/obligation_evidence.py",
         # Provenance-scoped quarantine. Reads both tables to decide which
         # claims a predicate reaches -- `memory_claim_provenance` is where a
         # connector run is recorded, so selecting by provenance is not possible
