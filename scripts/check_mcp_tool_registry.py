@@ -53,6 +53,7 @@ import ast
 import json
 import sys
 from pathlib import Path
+from typing import Final
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -95,6 +96,53 @@ _TOOLS_DIR = Path("contextplane/api/mcp/tools")
 #: requires an envelope that names it. A third tier is a deliberate change here,
 #: not a value a branch invents.
 _TIERS = frozenset({"core", "extended"})
+
+
+#: The two `IntentKind` members a tool's act can correspond to. Two rather than
+#: seven because the distinction that matters for autonomy is read versus write:
+#: the other five name changes to code, dependencies, configuration, security
+#: posture and deployments, none of which an MCP tool here performs.
+_INTENT_KINDS: Final = frozenset({"read_only", "data_access"})
+
+#: A tool whose name begins with one of these writes something. Derived rather
+#: than listed per tool, so adding a verb does not mean remembering to classify
+#: it -- and checked against the registry in both directions, so a name that
+#: does not fit the rule has to be an exception somebody wrote a reason for.
+_WRITE_PREFIXES: Final = (
+    "add_",
+    "adjudicate_",
+    "append_",
+    "arc_complete_",
+    "arc_issue_",
+    "assert_",
+    "confirm_",
+    "create_",
+    "delete_",
+    "discard_",
+    "grant_",
+    "ingest_",
+    "link_",
+    "open_",
+    "raise_",
+    "record_",
+    "reverse_",
+    "review_",
+    "revoke_",
+    "route_",
+    "triage_",
+    "update_",
+)
+
+#: Tools whose name does not fit the rule, each with the reason. Empty today,
+#: and the point of having it is that filling it costs somebody a sentence.
+_INTENT_KIND_EXCEPTIONS: Final[dict[str, tuple[str, str]]] = {}
+
+
+def _expected_intent_kind(name: str) -> str:
+    """What the naming rule says this tool's act is."""
+    if name in _INTENT_KIND_EXCEPTIONS:
+        return _INTENT_KIND_EXCEPTIONS[name][0]
+    return "data_access" if name.startswith(_WRITE_PREFIXES) else "read_only"
 
 
 def _registered(source: str) -> set[str]:
@@ -145,6 +193,23 @@ def main() -> int:
         # able to find the REST operation it corresponds to without grepping.
         if entry.get("tier") == "core" and not str(entry.get("rest") or "").strip():
             problems.append(f"{name}: core tools name the REST operation they mirror")
+        # The intent kind the envelope selects on when it decides whether this
+        # principal sees this verb. Checked against the same rule that produced
+        # it, so a tool added later cannot arrive unclassified -- an unclassified
+        # extended tool would be listed to everybody or to nobody, and both are
+        # decisions nobody made.
+        declared = entry.get("intent_kind")
+        if declared not in _INTENT_KINDS:
+            problems.append(
+                f"{name}: intent_kind is {declared!r}, expected one of {sorted(_INTENT_KINDS)}. "
+                "It decides whether a principal's envelope lets them see this verb."
+            )
+        elif (expected := _expected_intent_kind(name)) != declared:
+            problems.append(
+                f"{name}: intent_kind is {declared!r} and the naming rule derives {expected!r}. "
+                "A tool that writes is `data_access`; one that only reads is `read_only`. "
+                "If this tool is the exception, add it to _INTENT_KIND_EXCEPTIONS with the reason."
+            )
 
     registered: dict[str, str] = {}
     for path in sorted((root / _TOOLS_DIR).glob("*.py")):

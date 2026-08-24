@@ -30,6 +30,41 @@ nobody could reach cheaply.
 The target produces figures; it does not record them. This file is the record,
 and the table below is filled at phase exit.
 
+## Time to first memory
+
+**Defined before it was measured**, because the epic quotes the figure and an
+undefined one is a marketing figure.
+
+**From** an authenticated MCP session on the default surface — the eight core
+verbs a connection is handed without asking for anything wider. **To** the first
+recall that returns something the agent itself remembered. **Measured** as the
+wall clock across exactly those two calls, in-process, against a real database.
+
+Excluded, deliberately:
+
+* *The operator's setup.* Cloning, installing, migrating and starting the
+  service are somebody else's minutes, and `scripts/prove_quickstart.py`
+  already runs and times that sequence from a clean clone.
+* *Authentication.* The clock starts on a resolved session; token issuance is
+  the deployment's identity provider, and a number that moved when somebody
+  changed OIDC caching would not be about this service.
+* *Retrieval quality.* This says the loop closes, not that what comes back is
+  good — `recall@10` and the multi-session recall fixtures are that.
+
+So the sentence this number supports is: **once an agent is connected,
+remembering something and getting it back takes about this long.** Nothing
+beyond it.
+
+First measurement: **27 ms**, `record_session_event` + `list_session_events`,
+on `surface=core`, local Postgres, stub embedder.
+
+No threshold. A first measurement with no prior distribution is a number, not a
+bar, and one invented alongside the first measurement is one chosen to pass —
+the discipline the extraction ground truth set here. The test asserts the loop
+*closes* and reports the duration;
+`tests/integration/test_time_to_first_memory.py` is both the claim and its
+evidence.
+
 ## Metrics
 
 | Phase | recall@10 | time-travel correctness | retrieval p95 | sync full-pass | notes |

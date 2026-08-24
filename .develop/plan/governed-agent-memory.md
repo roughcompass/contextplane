@@ -4724,7 +4724,7 @@ Acceptance:
 
 ### E7-T3 — The full surface is opt-in, per envelope
 
-**Kind:** task · **Status:** pending — half its premise was false; see E7-T3a · **Blocked by:** E7-T1, E7-T3a · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E7-T1, E7-T3a · **Hotspot:** no · **Repo:** contextplane
 
 **Two grounding findings, and one of them is now its own task.**
 
@@ -4764,6 +4764,50 @@ principal its own permitted set in one request. Telling a principal what *it*
 may do is not telling it the rule that decided; the listing may omit, and must
 not explain.
 
+**Outcome.** `install_envelope_listing` filters the extended tier per principal,
+and the registry's long-standing claim that `extended` *"requires an autonomy
+envelope that names it"* is true for the first time.
+
+**Two kinds, not sixty-two.** Every tool declares the `IntentKind` its act
+corresponds to, derived from one rule — a tool that writes is `data_access`, one
+that only reads is `read_only` — and the other five kinds name changes to code,
+dependencies, configuration, security posture and deployments, none of which a
+tool here performs. So the envelope is asked twice per listing and every tool of
+a kind shares the answer. `check_mcp_tool_registry.py` derives the same
+classification from the name and fails on disagreement, with an exceptions map
+that is empty and costs a sentence to fill — so a verb added later cannot arrive
+unclassified.
+
+**Three things that are deliberately not filtered.** The core tier, because a
+principal that could not see those eight verbs could not open the two-call loop,
+and an envelope has no business deciding whether an agent may say who it is.
+`advisory`, because the bargain is a property of the decision and a listing that
+hid verbs there would be a refusal there, on one transport only. And every case
+where the question cannot honestly be answered — no ARC on the deployment, no
+resolvable identity, no validated issuer — because filtering on an unanswered
+question would hide verbs from a principal nobody had decided anything about,
+and would make adopting ARC a prerequisite for using the tools.
+
+**An unclassified tool defaults to the *restrictive* kind**, the rule this tree
+applies to an unregistered sensitivity tier and an unconfigured sampling
+category: a value nobody registered must not escape every rule that names one.
+
+**Both listing entry points are replaced, and finding out why cost a failing
+test.** A client's `tools/list` travels through
+`_mcp_server.request_handlers[ListToolsRequest]`; anything in-process calls
+`FastMCP.list_tools`. Filtering only the first left the second unfiltered — so
+the first version of the behavioural test showed an enforcing principal every
+extended verb while a real client would have seen eight. A test that can show a
+listing no client can receive is worse than no test, so both are replaced and
+cannot disagree.
+
+**The listing is not the enforcement, and one test says so by construction.**
+`test_hiding_a_verb_is_not_what_stops_it_being_called` asserts
+`record_session_event` is *in* the filtered listing and still refused at call
+time, by E7-T3a's guard. FastMCP shares one `_tool_cache` across connections and
+refills it from whichever listing ran last, so the listing could not be the
+boundary even if it were meant to be.
+
 Goal: a principal sees the core verbs by default and the wider surface only where
 its autonomy envelope says so.
 
@@ -4789,7 +4833,7 @@ Acceptance:
 
 ### E7-T4 — Safe defaults on the two-call loop, and a quickstart that proves them
 
-**Kind:** task · **Status:** pending · **Blocked by:** E7-T1 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E7-T1 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the remember/recall pair an agent reaches first is the safe one, and a
 quickstart measures how long it takes to get there.
@@ -4809,6 +4853,47 @@ Acceptance:
     make eval
     .venv/bin/python -m pytest tests/integration -q -k "two_call or quickstart"
     make all
+
+**Outcome.** `tests/integration/test_time_to_first_memory.py`, in `make eval`,
+recorded in `eval/EVAL.md`. **First measurement: 27 ms.**
+
+**The definition came before the number, which is the whole of this task.**
+*From* an authenticated MCP session on the default surface — the eight core
+verbs a connection is handed without asking for anything wider. *To* the first
+recall that returns something the agent itself remembered. *Measured* as the
+wall clock across exactly those two calls, in-process, against a real database.
+
+Three exclusions, each with a reason, because a figure is only as honest as what
+it leaves out. **The operator's setup**, because cloning, installing and
+starting the service are somebody else's minutes and `prove_quickstart.py`
+already times that sequence from a clean clone — folding it in would measure a
+laptop's Docker pull and call it an agent's experience. **Authentication**,
+because token issuance is the deployment's identity provider and a number that
+moved when somebody changed OIDC caching would not be about this service. **And
+retrieval quality**, because this says the loop closes, not that what comes back
+is good; conflating them would let a fast, useless loop report well.
+
+So the sentence the number supports is: *once an agent is connected, remembering
+something and getting it back takes about this long.* Nothing beyond it.
+
+**Reported, not asserted.** The test asserts the loop *closes* — the event comes
+back, with its body, in the session it was written to — and prints the duration.
+A first measurement with no prior distribution is a number rather than a bar,
+and a threshold invented alongside the first measurement is one chosen to pass.
+The extraction ground truth set that discipline here and this follows it.
+
+**The safe-defaults half turned out to be a property of subtraction.** The entry
+says nothing makes the safe path the default an agent gets without asking. It
+does now, and not by routing: the default surface carries **exactly one write**,
+`record_session_event`, and that write goes through admission and — since
+E7-T3a — the autonomy envelope. There is no faster, unscanned way to record
+something because there is no other way at all. Pinned, so a second write added
+to the core tier is a decision somebody makes rather than a widening nobody
+notices.
+
+The measurement runs on `surface=core` rather than the full server every other
+MCP test builds, because a figure measured on a surface no default connection
+receives would be a figure about a different product.
 
 ## Task decomposition — ninth wave (E4, whose central noun does not exist yet)
 
