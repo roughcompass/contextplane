@@ -59,6 +59,9 @@ from contextplane.types import Clock
 #: tables are one table.
 KIND_VERIFIER: Final[str] = "approval_verifier"
 KIND_EXCEPTION: Final[str] = "approved_exception"
+KIND_CONNECTOR: Final[str] = "source_connector"
+KIND_UPLOAD_POLICY: Final[str] = "source_upload_policy"
+KIND_REPLAY_CORPUS: Final[str] = "observation_replay_corpus"
 
 #: How long a page may be. A governance surface answers "what is in force", and
 #: an operator scrolling six pages of it has already lost the answer.
@@ -164,6 +167,166 @@ class GovernanceReadService:
                     "provider_id": row.provider_id,
                     "valid_from": row.valid_from,
                     "revoked_at": row.revoked_at,
+                },
+            )
+            for row in rows
+        ]
+        return [item for item in found if item.in_force] if in_force_only else found
+
+    async def list_source_connectors(
+        self,
+        *,
+        tenant_id: uuid.UUID | None,
+        in_force_only: bool = False,
+        page_size: int = DEFAULT_PAGE,
+    ) -> list[GovernanceObject]:
+        """What ARC may fetch, and from where.
+
+        Global grants are included for the same reason verifiers are: a global
+        connector admits material for this tenant, so a list that showed only
+        the tenant's own would understate what may reach it.
+
+        **This entry's own premise changed while it waited.** E14-T1b was written
+        when a connector could not be revoked at all, and said its honest
+        in-force answer was "permanent". E14-T2 gave both tables a `revoked_at`,
+        so the answer is now a real one — and `in_force_until` stays null,
+        because a live connector still has no expiry. Withdrawal is the only
+        thing that ends it.
+        """
+        return await self._list_grant(
+            table="arc_source_connectors",
+            id_column="connector_id",
+            kind=KIND_CONNECTOR,
+            extra_columns="allowed_schemes, allowed_hosts, allowed_media_types, " "allowed_verifier_ids, max_bytes",
+            tenant_id=tenant_id,
+            in_force_only=in_force_only,
+            page_size=page_size,
+        )
+
+    async def list_upload_policies(
+        self,
+        *,
+        tenant_id: uuid.UUID | None,
+        in_force_only: bool = False,
+        page_size: int = DEFAULT_PAGE,
+    ) -> list[GovernanceObject]:
+        """The same grant, pushed rather than pulled."""
+        return await self._list_grant(
+            table="arc_source_upload_policies",
+            id_column="policy_id",
+            kind=KIND_UPLOAD_POLICY,
+            extra_columns="allowed_media_types, allowed_verifier_ids, max_bytes",
+            tenant_id=tenant_id,
+            in_force_only=in_force_only,
+            page_size=page_size,
+        )
+
+    async def _list_grant(
+        self,
+        *,
+        table: str,
+        id_column: str,
+        kind: str,
+        extra_columns: str,
+        tenant_id: uuid.UUID | None,
+        in_force_only: bool,
+        page_size: int,
+    ) -> list[GovernanceObject]:
+        """Connectors and upload policies, which differ only in their payload.
+
+        One method because they are the same governed thing with different
+        columns — and two tables that are supposed to behave identically are
+        exactly the pair that drifts when each gets its own query.
+        """
+        # No clock read: unlike a verifier or a corpus, these two have no time
+        # component at all. A grant is live until somebody withdraws it, so
+        # "in force" is a null check, and asking the clock would imply otherwise.
+        async with self._session_factory() as session:
+            rows = (
+                await session.execute(
+                    text(
+                        f"SELECT {id_column} AS object_id, owning_scope, tenant_id, registered_at, "  # noqa: S608 - table and column names are module constants, not caller input
+                        f"       revoked_at, revocation_reason, {extra_columns} "
+                        f"  FROM {table} "
+                        " WHERE (CAST(:tid AS UUID) IS NULL "
+                        "        OR owning_scope = 'global' OR tenant_id = CAST(:tid AS UUID)) "
+                        f" ORDER BY registered_at DESC, {id_column} "
+                        " LIMIT :limit"
+                    ),
+                    {"tid": tenant_id, "limit": min(page_size, MAX_PAGE)},
+                )
+            ).mappings()
+
+        found = [
+            GovernanceObject(
+                kind=kind,
+                object_id=row["object_id"],
+                scope=row["owning_scope"],
+                target_tenant_id=row["tenant_id"],
+                in_force=row["revoked_at"] is None,
+                # Null, and not because nobody filled it in: a live grant has no
+                # expiry. Withdrawal is the only thing that ends one, which is
+                # why `in_force` and `in_force_until` disagree here in a way they
+                # do not for a verifier.
+                in_force_until=None,
+                created_at=row["registered_at"],
+                detail={
+                    key: (list(row[key]) if isinstance(row[key], list) else row[key])
+                    for key in ("revoked_at", "revocation_reason", *extra_columns.replace(" ", "").split(","))
+                },
+            )
+            for row in rows
+        ]
+        return [item for item in found if item.in_force] if in_force_only else found
+
+    async def list_replay_corpora(
+        self,
+        *,
+        tenant_id: uuid.UUID | None,
+        in_force_only: bool = False,
+        page_size: int = DEFAULT_PAGE,
+    ) -> list[GovernanceObject]:
+        """What observation is replayed against, and until when.
+
+        The only one of the three with a real expiry: a corpus approval lapses on
+        its own, where a connector runs until somebody withdraws it. So this is
+        the one where `in_force_until` carries a date, and a reader comparing the
+        three learns something true about how they differ.
+        """
+        now = self._clock.now()
+        async with self._session_factory() as session:
+            rows = (
+                await session.execute(
+                    text(
+                        "SELECT corpus_id, owning_scope, target_tenant_id, generator_version, "
+                        "       canonical_corpus_digest, fixture_class_count, approved_at, expires_at "
+                        "  FROM arc_observation_replay_corpora "
+                        " WHERE (CAST(:tid AS UUID) IS NULL "
+                        "        OR owning_scope = 'global' OR target_tenant_id = CAST(:tid AS UUID)) "
+                        " ORDER BY approved_at DESC, corpus_id "
+                        " LIMIT :limit"
+                    ),
+                    {"tid": tenant_id, "limit": min(page_size, MAX_PAGE)},
+                )
+            ).all()
+
+        found = [
+            GovernanceObject(
+                kind=KIND_REPLAY_CORPUS,
+                object_id=str(row.corpus_id),
+                scope=row.owning_scope,
+                target_tenant_id=row.target_tenant_id,
+                in_force=row.approved_at <= now < row.expires_at,
+                in_force_until=row.expires_at,
+                created_at=row.approved_at,
+                detail={
+                    "generator_version": row.generator_version,
+                    # The digest *is* the corpus. A regenerated one at the same
+                    # generator version is a different digest and a separate
+                    # approval, which is what keeps "it behaved correctly"
+                    # meaning one thing across qualifications.
+                    "canonical_corpus_digest": row.canonical_corpus_digest,
+                    "fixture_class_count": row.fixture_class_count,
                 },
             )
             for row in rows

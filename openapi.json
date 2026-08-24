@@ -20831,6 +20831,48 @@
       }
     },
     "/v1/arc/admin/observation-replay-corpora": {
+      "get": {
+        "description": "What observation is replayed against, and until when.\n\nThe only one of the three source grants that lapses on its own, which is why\nthis is where `in_force_until` carries a date.",
+        "operationId": "list_replay_corpora_v1_arc_admin_observation_replay_corpora_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "in_force_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "In Force Only",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceObjectListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Replay Corpora",
+        "tags": [
+          "arc: admin"
+        ]
+      },
       "post": {
         "description": "Approve a replay corpus for the ADR 041 Sec.5 seven-day fallback.\n\nThe digest named here is one `QualificationService.compute` already\nreported back (via `QualificationResponse.reason_codes`, once a\ncandidate reaches its seven-day cap still insufficient) -- see\n`replay_corpus.py`'s own module docstring for why this route accepts a\ndigest rather than a corpus body, and how an operator or tenant admin\nknows which digest to approve.",
         "operationId": "approve_observation_replay_corpus_v1_arc_admin_observation_replay_corpora_post",
@@ -21113,6 +21155,48 @@
       }
     },
     "/v1/arc/admin/source-connectors": {
+      "get": {
+        "description": "What ARC may fetch, from where, and who may approve what comes back.\n\n`in_force_until` is null even for a live connector, and that is not a gap: a\nconnector has no expiry, so withdrawal is the only thing that ends one. The\ncorpora list below is the one where that field carries a date, and comparing\nthe two tells a reader something true about how the grants differ.",
+        "operationId": "list_source_connectors_v1_arc_admin_source_connectors_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "in_force_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "In Force Only",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceObjectListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Source Connectors",
+        "tags": [
+          "arc: admin"
+        ]
+      },
       "post": {
         "description": "Admit a configured-connector authority.\n\nOperator-gated regardless of the body's own declared scope \u2014 see\n`SourceAdmissionService.register_connector`'s docstring for why this\ntakes the same gate as approval-verifier registration rather than the\ntenant-admin path admission itself uses. A caller admitting a source\nnames one of these by id; it can never supply a fetch scheme, host, or\ncredential of its own \u2014 those live only here, in the registered\nallowlist, checked again on every redirect hop at fetch time.",
         "operationId": "register_source_connector_v1_arc_admin_source_connectors_post",
@@ -21208,6 +21292,48 @@
       }
     },
     "/v1/arc/admin/source-upload-policies": {
+      "get": {
+        "description": "The same grant, for material pushed in rather than fetched.",
+        "operationId": "list_source_upload_policies_v1_arc_admin_source_upload_policies_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "in_force_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "In Force Only",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceObjectListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Source Upload Policies",
+        "tags": [
+          "arc: admin"
+        ]
+      },
       "post": {
         "description": "Admit an authorized-upload authority.\n\nOperator-gated for the same reason connector registration is \u2014 see\n`register_source_connector`. The authenticated caller uploads bytes\ndirectly under one of these; it supplies no URL, so there is no host\nor redirect to validate at fetch time \u2014 only the scope, media type,\nbyte ceiling, and verifier allowlist registered here.",
         "operationId": "register_source_upload_policy_v1_arc_admin_source_upload_policies_post",

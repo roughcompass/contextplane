@@ -7318,7 +7318,7 @@ only the integration tier reads the live one.
 
 ### E14-T1b — Read back what ARC may ingest: connectors, policies, corpora
 
-**Kind:** task · **Status:** pending · **Blocked by:** E14-T1a · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E14-T1a · **Hotspot:** no · **Repo:** contextplane
 
 Goal: the three source-governance objects can be listed and read by id.
 
@@ -7334,6 +7334,25 @@ exactly what an operator reading this list needs to see.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "arc and source"
     make all
+
+**This entry's premise changed while it waited, and the change is the good
+kind.** It was written when a connector could not be revoked at all, and said
+its honest in-force answer was "permanent". E14-T2 landed first and gave both
+tables a `revoked_at`, so the answer is now real: a connector is in force until
+somebody withdraws it, and a withdrawn one still lists — "what was ever
+registered" is a question an operator asks — carrying the reason, because a
+withdrawal nobody can explain is one they will re-make.
+
+`in_force_until` stays **null** for a connector and an upload policy even when
+live, and that is not a gap. Neither has an expiry; withdrawal is the only thing
+that ends one. The replay corpus is the single source grant that lapses on its
+own, so it is the one where the field carries a date — and a reader comparing
+the three learns something true about how the grants differ rather than seeing a
+column that is sometimes filled in.
+
+Connectors and upload policies share one query method. They are the same
+governed thing with different payload columns, and two tables that are supposed
+to behave identically are exactly the pair that drifts when each gets its own.
 
 ### E14-T1c — Approval evidence, read back
 
