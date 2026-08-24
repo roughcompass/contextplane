@@ -179,4 +179,30 @@ async def list_replay_corpora(
     )
 
 
+@router.get("/approval-evidence", response_model=GovernanceObjectListResponse)
+async def list_approval_evidence(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    revision_id: uuid.UUID | None = None,
+    in_force_only: bool = False,
+) -> GovernanceObjectListResponse:
+    """The approvals on record, and whether each still stands.
+
+    `revision_id` narrows to one revision's approvals, which is the question the
+    revision-lifecycle surface actually asks: it can attach evidence and until
+    now had no way to see what was attached.
+
+    **Whether an approval still stands is a join here, not a column** — revocation
+    lives in its own table — and both halves are checked: an approval inside its
+    validity window that has been withdrawn is withdrawn, and reading only the
+    window would show it as good.
+    """
+    services: Services = request.app.state.services
+    return _governance_response(
+        await services.arc_governance_reads.list_approval_evidence(
+            tenant_id=ctx.tenant_id, revision_id=revision_id, in_force_only=in_force_only
+        )
+    )
+
+
 __all__ = ["router"]

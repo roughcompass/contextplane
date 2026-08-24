@@ -62,6 +62,7 @@ KIND_EXCEPTION: Final[str] = "approved_exception"
 KIND_CONNECTOR: Final[str] = "source_connector"
 KIND_UPLOAD_POLICY: Final[str] = "source_upload_policy"
 KIND_REPLAY_CORPUS: Final[str] = "observation_replay_corpus"
+KIND_APPROVAL_EVIDENCE: Final[str] = "approval_evidence"
 
 #: How long a page may be. A governance surface answers "what is in force", and
 #: an operator scrolling six pages of it has already lost the answer.
@@ -327,6 +328,84 @@ class GovernanceReadService:
                     # meaning one thing across qualifications.
                     "canonical_corpus_digest": row.canonical_corpus_digest,
                     "fixture_class_count": row.fixture_class_count,
+                },
+            )
+            for row in rows
+        ]
+        return [item for item in found if item.in_force] if in_force_only else found
+
+    async def list_approval_evidence(
+        self,
+        *,
+        tenant_id: uuid.UUID | None,
+        revision_id: uuid.UUID | None = None,
+        in_force_only: bool = False,
+        page_size: int = DEFAULT_PAGE,
+    ) -> list[GovernanceObject]:
+        """The approvals on record, and whether each still stands.
+
+        **The only one of the six where "still good" is a join rather than a
+        column.** Revocation lives in `arc_approval_evidence_revocations`, keyed
+        one-to-one, so the answer needs a LEFT JOIN and cannot be read off the
+        evidence row. That is why this is last of the three reads: the shape was
+        worth settling on the easy cases first.
+
+        The join is `LEFT` and not `INNER` on purpose — the common case is
+        evidence with no revocation, and an inner join would have returned only
+        the revoked, which is the subset a reader least often wants and would
+        look exactly like "there are no approvals".
+
+        `revision_id` narrows to one revision's approvals, which is the question
+        the revision-lifecycle screen actually asks: it attaches evidence and
+        then has no way to see what is attached.
+        """
+        now = self._clock.now()
+        async with self._session_factory() as session:
+            rows = (
+                await session.execute(
+                    text(
+                        "SELECT e.evidence_id, e.evidence_type, e.scope_kind, e.scope_tenant_id, "
+                        "       e.approved_revision_id, e.approved_exception_id, "
+                        "       e.approving_principal, e.approving_role, e.approval_timestamp, "
+                        "       e.expires_at, r.revoked_at, r.reason_code "
+                        "  FROM arc_approval_evidence e "
+                        "  LEFT JOIN arc_approval_evidence_revocations r "
+                        "         ON r.evidence_id = e.evidence_id "
+                        " WHERE (CAST(:tid AS UUID) IS NULL "
+                        "        OR e.scope_kind = 'global' OR e.scope_tenant_id = CAST(:tid AS UUID)) "
+                        "   AND (CAST(:rev AS UUID) IS NULL "
+                        "        OR e.approved_revision_id = CAST(:rev AS UUID)) "
+                        " ORDER BY e.approval_timestamp DESC, e.evidence_id "
+                        " LIMIT :limit"
+                    ),
+                    {"tid": tenant_id, "rev": revision_id, "limit": min(page_size, MAX_PAGE)},
+                )
+            ).all()
+
+        found = [
+            GovernanceObject(
+                kind=KIND_APPROVAL_EVIDENCE,
+                object_id=str(row.evidence_id),
+                scope=row.scope_kind,
+                target_tenant_id=row.scope_tenant_id,
+                # Both halves, and the revocation wins. An approval inside its
+                # window that has been withdrawn is withdrawn; reading only the
+                # window would show it as good.
+                in_force=row.revoked_at is None and (row.expires_at is None or row.expires_at > now),
+                in_force_until=row.expires_at,
+                created_at=row.approval_timestamp,
+                detail={
+                    "evidence_type": row.evidence_type,
+                    "approved_revision_id": (str(row.approved_revision_id) if row.approved_revision_id else None),
+                    "approved_exception_id": (str(row.approved_exception_id) if row.approved_exception_id else None),
+                    "approving_principal": row.approving_principal,
+                    "approving_role": row.approving_role,
+                    "revoked_at": row.revoked_at,
+                    # The code, not the digest. `reason_digest` is a hash of text
+                    # this surface does not hold and could not show, and
+                    # returning it would look like a reason while being
+                    # unreadable to everybody.
+                    "revocation_reason_code": row.reason_code,
                 },
             )
             for row in rows

@@ -20457,6 +20457,67 @@
         ]
       }
     },
+    "/v1/arc/admin/approval-evidence": {
+      "get": {
+        "description": "The approvals on record, and whether each still stands.\n\n`revision_id` narrows to one revision's approvals, which is the question the\nrevision-lifecycle surface actually asks: it can attach evidence and until\nnow had no way to see what was attached.\n\n**Whether an approval still stands is a join here, not a column** \u2014 revocation\nlives in its own table \u2014 and both halves are checked: an approval inside its\nvalidity window that has been withdrawn is withdrawn, and reading only the\nwindow would show it as good.",
+        "operationId": "list_approval_evidence_v1_arc_admin_approval_evidence_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "revision_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revision Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "in_force_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "In Force Only",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceObjectListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Approval Evidence",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
     "/v1/arc/admin/approval-evidence/{evidence_id}/revoke": {
       "post": {
         "description": "Withdraw one piece of approval evidence.\n\nNarrower than revoking a verifier: the verifier stays trusted, but this\nparticular approval no longer counts -- an approval granted in error, or\none whose approver turned out to lack the authority.",
