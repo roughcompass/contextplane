@@ -6762,9 +6762,69 @@ than this constraint: `AssertionProvenanceInputV1` requires `external_record_id`
 and `observed_time` unconditionally, with the note that *"both are the caller's
 to state; when the platform took delivery is not."*
 
+### E5-T2b — The halt, which is one comparison between two shipped numbers
+
+**Kind:** task · **Status:** done · **Blocked by:** E5-T2, E5-T4 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a sampling policy that cannot draw its minimum sample stops, rather than
+accepting a lot on a short one.
+
+**Raised against E5-T2 on E12-T3's own instruction**, which says the halt must
+not be defined by its consumer: *"a halt defined by its consumer is the second
+regime this task refuses."* Filed here as its own entry rather than edited into
+E5-T2, because E5-T2 shipped and this is a property it did not have.
+
+**It is one comparison, and both sides already existed.** E5-T2 derived
+`min_sample` from a stated defect tolerance and consumer's risk, and wrote down
+what the arithmetic assumes. E5-T4 built `inspected_dispositions` — *"the number
+acceptance sampling is entitled to use"* — and wrote down why automated
+disposals are excluded from it. **Nothing compared them**, and
+`inspected_dispositions` had no consumer at all. So a tenant could set a budget,
+review a tenth of it, and nothing anywhere said so.
+
+That is what makes this worth building now rather than when a bulk import
+arrives: it is not a mechanism awaiting a consumer, it is the missing join
+between two mechanisms that shipped, and it gives the third its first reader.
+
+**The seam is deliberate.** The floor is `sampling_policy`'s, the count is
+`CurationCaseService`'s, and `acceptance_for` takes the count as an argument. A
+module that computed both would be free to compute the second in a way that
+suited the first — and `inspected_dispositions` excluding automated disposals is
+precisely the property a caller must not be able to route around by automating
+more.
+
+**The refusal says what a short sample costs**, because whoever reads it is
+deciding whether to override it: proceeding does not weaken the guarantee, it
+removes it, while leaving a number that still looks like one.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit -q -k "sampling_halt"
+    make all
+
 ### E12-T3 — The migrated-canonical disposition, and a halt E5 has not defined
 
-**Kind:** task · **Status:** pending · **Blocked by:** E5-T2, E5-T4, E12-T2 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** blocked — on two surfaces the epic names and no task built · **Blocked by:** E5-T4's policy-disposition writer, a bulk-import surface · **Hotspot:** no · **Repo:** contextplane
+
+**The halt this entry was blocked on now exists**, as E5-T2b, defined where this
+entry said it had to be. Two other blockers took its place, and both were found
+the same way: by grepping for what the entry presumed.
+
+**There is no bulk-import surface.** E12's epic names one; no task covers it.
+The connectors *are* the import path, and they produce claims, not dispositions —
+so "a bulk import records its own dispositions" has no subject. This is the
+fourth time an epic's Consequences named an artefact nobody filed, after E5-T1b,
+E4-T5b and E4-T7's obligation reference.
+
+**Nothing writes a policy disposition.** `record_disposition` accepts
+`actor_kind` and `DISPOSITION_BY_POLICY` is a permitted value, and **no caller
+in the tree passes it.** E5-T4 built the vocabulary and the exclusion that
+depends on it; the writer that would produce one does not exist. So
+`disposition_actor = policy-automated` cannot be recorded honestly here because
+it cannot be recorded at all.
+
+Both are real tasks and neither is this one. Recorded rather than worked around,
+because a bulk import invented inside this entry would be exactly the
+self-marking batch its own text refuses.
 
 Goal: a bulk import records its own dispositions honestly, sampled under the one
 governed sampling policy rather than a second regime.
@@ -8274,7 +8334,6 @@ would reintroduce a disclosure this decision says nothing about.
 ### E20-T2 — Remove the floor: `learning_reads.py` and every consumer
 
 **Kind:** task · **Status:** done · **Blocked by:** E20-T1 · **Hotspot:** yes — service/memory/ · **Repo:** contextplane
-**Kind:** task · **Status:** pending · **Blocked by:** E20-T1 · **Hotspot:** yes — service/memory/ · **Repo:** contextplane
 
 Goal: `contextplane/service/memory/learning_reads.py` loses `Floors`, `FloorsTooLoose`, `MIN_COHORT_ACTORS`, `MIN_CELL_EVENTS`, `Cell.suppressed`/`Cell.value`'s null-on-suppress behavior, and `build_breakdown`'s remainder-combination/withholding logic — replaced by a `Breakdown` that always carries every cell's true value, no `partial`/`withheld` states (a breakdown is either built or the query returned no rows), and `LearningReadService`'s three methods (`claim_aging`, `contradiction_backlog`, `promotion_yield`) construct cells directly from query rows with no floor test. The module docstring is rewritten to state the module's new, narrower claim: these are tenant-scope learning aggregates with no suppression, and the sentence "individual surveillance and team-performance evaluation are both forbidden" is deleted, not softened, per ADR-0017.
 
@@ -8373,7 +8432,6 @@ Acceptance:
 ### E20-T4 — `AgentAccuracyService`: per-author accuracy, on read
 
 **Kind:** task · **Status:** done · **Blocked by:** E20-T2, E20-T3 · **Hotspot:** no · **Repo:** contextplane
-**Kind:** task · **Status:** pending · **Blocked by:** E20-T2, E20-T3 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `contextplane/service/memory/agent_accuracy.py`, structurally parallel to `calibration.py` (frozen dataclasses + pure aggregation + a thin service over `session_factory`), not to `learning_reads.py` (no `Floors` — none apply after E20-T1/T2).
 
