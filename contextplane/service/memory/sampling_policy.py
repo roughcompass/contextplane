@@ -302,7 +302,116 @@ class SamplingPolicyService:
             )
         return tuple(self._checked(row) for row in rows)
 
+    async def acceptance_for(
+        self,
+        ctx: TenantContext,
+        *,
+        claim_category: str,
+        inspected: int,
+    ) -> AcceptanceState:
+        """This category's floor, against a count of what a person inspected.
+
+        The count is passed in rather than read here, and that is the seam: the
+        floor is this module's, the count is `CurationCaseService`'s, and a
+        module that computed both would be free to compute the second in a way
+        that suited the first. `inspected_dispositions` already excludes
+        automated disposals, and its docstring is the argument for why -- so a
+        caller wanting to satisfy the floor cannot do it by automating more.
+
+        Unknown categories fall back to the tenant's heaviest plan, the same way
+        every other read here does: a category nobody registered must not escape
+        the floor by not being named.
+        """
+        policy = await self.policy_for(ctx, claim_category=claim_category)
+        return acceptance_state(policy, inspected=inspected)
+
     @staticmethod
     def _require_operator(ctx: TenantContext) -> None:
         if not (set(ctx.roles) & _OPERATOR_ROLES):
             raise PermissionError("setting a review sampling policy requires the producer or admin role")
+
+
+# ---------------------------------------------------------------------------
+# The halt
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass(frozen=True)
+class AcceptanceState:
+    """Whether a category's lot may be accepted, and by how much it falls short.
+
+    Carries the shortfall rather than only a boolean, because "not yet" and "not
+    nearly" are different operational situations and a caller told only that it
+    may not proceed cannot tell an operator which one they are in.
+    """
+
+    claim_category: str
+    #: The floor, derived from the policy's stated tolerance and consumer's risk.
+    min_sample: int
+    #: Dispositions a *person* made in the window. Automated disposals are
+    #: excluded upstream, and that exclusion is the whole reason this number is
+    #: the one acceptance sampling is entitled to use.
+    inspected: int
+
+    @property
+    def met(self) -> bool:
+        """Whether enough was actually looked at."""
+        return self.inspected >= self.min_sample
+
+    @property
+    def shortfall(self) -> int:
+        """How many more inspections the floor needs. Zero once it is met."""
+        return max(0, self.min_sample - self.inspected)
+
+
+class SampleTooSmall(ValidationError):
+    """A lot was offered for acceptance on fewer inspections than its floor.
+
+    Its own type rather than a bare `ValidationError`, because a caller has to
+    treat it as terminal for the *lot* rather than for the request: the fix is
+    more review, not a corrected argument.
+    """
+
+
+def acceptance_state(policy: SamplingPolicy, *, inspected: int) -> AcceptanceState:
+    """The comparison this module was missing.
+
+    E5-T2b. `min_sample` shipped with E5-T2 and `inspected_dispositions` shipped
+    with E5-T4 -- the floor and the count acceptance sampling is entitled to use,
+    each with its derivation written down, and **nothing compared them.** So a
+    tenant could set a budget, review a tenth of it, and nothing anywhere said
+    so.
+
+    Pure, so the halt is testable without a database and cannot depend on how a
+    caller happened to obtain either number.
+    """
+    return AcceptanceState(
+        claim_category=policy.claim_category,
+        min_sample=policy.min_sample,
+        inspected=inspected,
+    )
+
+
+def require_minimum_sample(state: AcceptanceState) -> None:
+    """Stop rather than accept a lot on a short sample.
+
+    **Defined here, once, and not by whoever wants to accept something.** E12
+    inherits this halt rather than defining its own, because a batch import that
+    sampled itself under its own rules would be grading its own homework with a
+    marking scheme it chose -- and acceptance sampling's arithmetic says nothing
+    at all about a lot inspected fewer times than the plan requires. Proceeding
+    on a short sample does not weaken the guarantee; it removes it, while leaving
+    a number that still looks like one.
+
+    Raises rather than returning a verdict, because the one thing a caller must
+    not be able to do is read this and continue anyway without saying so.
+    """
+    if state.met:
+        return
+    msg = (
+        f"the review sample for {state.claim_category!r} is {state.inspected} of a required "
+        f"{state.min_sample}; {state.shortfall} more must be inspected by a person before this "
+        "lot can be accepted. Acceptance sampling says nothing about a lot inspected fewer times "
+        "than its plan requires."
+    )
+    raise SampleTooSmall(msg)

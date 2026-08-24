@@ -67,7 +67,7 @@ def _provenance(**overrides: object) -> AssertionProvenance:
 _CORPUS: dict[str, dict[str, object]] = {
     CANONICAL_OWNER: {},
     OBSERVED: {"observed_at": _NOW, "event_time": _NOW},
-    EXTERNAL_AUTHORITY: {"external_record_id": "SYS-1", "external_revision": "v7"},
+    EXTERNAL_AUTHORITY: {"external_record_id": "SYS-1", "external_revision": "v7", "observed_at": _NOW},
     DERIVED: {"derivation_method": "closure-walk", "derivation_profile": "default", "confidence": 0.75},
 }
 
@@ -179,6 +179,44 @@ def test_an_external_authority_assertion_identifies_its_upstream_record(field: s
         _provenance(authority=EXTERNAL_AUTHORITY, **fields)
 
 
+@pytest.mark.parametrize("authority", sorted(AUTHORITIES))
+def test_an_upstream_record_with_no_observation_time_is_refused_by_name(authority: str) -> None:
+    """Every authority, not only `external_authority`.
+
+    The database constraint keys off the column rather than off the authority,
+    so a check narrower than the table would let an `observed` assertion naming
+    an upstream record reach Postgres and come back as an `IntegrityError`
+    several frames from the writer -- where `IncompleteProvenance` is documented
+    as "a programming error in a writer" and is the refusal that names the field.
+    """
+    # Built on each authority's own complete fixture, so the refusal under test
+    # is reached rather than pre-empted by that authority's other requirements --
+    # a `derived` assertion is refused for its missing derivation method first.
+    fields = {**_CORPUS[authority], "external_record_id": "SYS-1", "external_revision": "v7"}
+    fields.pop("observed_at", None)
+
+    with pytest.raises(IncompleteProvenance, match="when it was observed"):
+        _provenance(authority=authority, **fields)
+
+
+def test_a_revision_of_no_record_is_refused_by_name() -> None:
+    with pytest.raises(IncompleteProvenance, match="revision of some record"):
+        _provenance(external_revision="v7", observed_at=_NOW)
+
+
+def test_an_observation_time_with_no_upstream_record_is_a_real_statement() -> None:
+    """The converse is not required, and that is deliberate.
+
+    "We saw this, and the source has no record id for it" is a thing an importer
+    can truthfully say. A symmetric constraint -- 0067's shape -- would refuse
+    it, which is why this one is conditional on the record id instead.
+    """
+    provenance = _provenance(authority=OBSERVED, observed_at=_NOW, event_time=_NOW)
+
+    assert provenance.observed_at == _NOW
+    assert provenance.external_record_id is None
+
+
 # --- the single writer, and immutability --------------------------------------------
 
 
@@ -266,7 +304,7 @@ async def test_every_authority_in_the_corpus_persists_with_its_fields_intact(
                     text(
                         "SELECT authority, freshness_state, source_system, source_namespace, produced_by,"
                         "       validating_profile_revision_id, external_record_id, external_revision,"
-                        "       derivation_method, confidence, ingested_at"
+                        "       derivation_method, confidence, ingested_at, observed_at, event_time"
                         "  FROM assertion_provenance WHERE provenance_id = :pid"
                     ),
                     {"pid": provenance_id},
@@ -283,6 +321,12 @@ async def test_every_authority_in_the_corpus_persists_with_its_fields_intact(
     assert row["external_revision"] == provenance.external_revision
     assert row["derivation_method"] == provenance.derivation_method
     assert row["confidence"] == provenance.confidence
+    # The two caller-supplied times, read back because they were not.
+    # `observed_at` was an unchecked field on this round trip, which is exactly
+    # the shape this test's docstring warns about: "a writer that dropped
+    # `derivation_method` on the floor would still produce one row."
+    assert row["observed_at"] == provenance.observed_at
+    assert row["event_time"] == provenance.event_time
 
 
 @pytest.mark.asyncio
@@ -347,3 +391,95 @@ async def test_provenance_rolls_back_with_the_assertion_it_describes(
         ).scalar_one()
 
     assert remaining == 0
+
+
+# --- the times are the caller's, and the schema keeps them that way -----------
+
+
+@pytest.mark.asyncio
+async def test_provenance_is_never_server_defaulted(factory: async_sessionmaker[AsyncSession]) -> None:
+    """No column default on the two times a caller states, or on the record id.
+
+    E12-T2's goal in one assertion. A `DEFAULT now()` on `observed_at` would be a
+    server-defaulted value wearing a caller-supplied name, and afterwards it
+    would be indistinguishable from a genuine one -- which is the whole reason
+    the epic names this property.
+
+    Read off `information_schema` rather than off the migration, because the
+    property is about the schema a deployment actually has: a later migration
+    adding a default would pass a test that only read 0051.
+
+    `ingested_at` is deliberately not in this list. When the platform took
+    delivery is the platform's to state, and the table's own comment keeps the
+    three times apart for exactly that reason.
+    """
+    async with factory() as session:
+        defaults = dict(
+            (
+                await session.execute(
+                    text(
+                        "SELECT column_name, column_default FROM information_schema.columns "
+                        " WHERE table_name = 'assertion_provenance'"
+                    )
+                )
+            ).all()
+        )
+
+    for column in ("observed_at", "event_time", "external_record_id", "external_revision"):
+        assert defaults[column] is None, (
+            f"{column} has acquired a column default ({defaults[column]!r}). It is the caller's to state, "
+            "and a defaulted value is indistinguishable afterwards from one a source supplied."
+        )
+
+
+@pytest.mark.asyncio
+async def test_an_upstream_record_with_no_observation_time_is_refused_by_the_database(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The constraint, not the class that also refuses it.
+
+    `AssertionProvenance` refuses this earlier and by name, which is why the
+    dataclass check exists -- but the class is one writer's discipline and the
+    CHECK is the property. Asserted against the database directly, so removing
+    the class's check would not quietly remove the guarantee too.
+    """
+    async with factory() as session, session.begin():
+        tenant_id, revision_id = await _tenant_and_revision(session)
+
+    with pytest.raises(Exception, match="ck_assertion_provenance_external_record_is_dated"):
+        async with factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "INSERT INTO assertion_provenance ("
+                    "  provenance_id, tenant_id, source_system, source_namespace, external_record_id,"
+                    "  ingested_at, authority, freshness_state, produced_by,"
+                    "  validating_profile_revision_id, created_at"
+                    ") VALUES (:pid, :tid, 'sys', 'ns', 'SYS-1', :now, 'external_authority', 'fresh',"
+                    "          'test', :rev, :now)"
+                ),
+                {"pid": uuid.uuid4(), "tid": tenant_id, "rev": revision_id, "now": _NOW},
+            )
+
+
+@pytest.mark.asyncio
+async def test_a_revision_of_no_record_is_refused_by_the_database(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """An `external_revision` with no record is a version of nothing, and it
+    reads afterwards as though somebody knew which record it belonged to."""
+    async with factory() as session, session.begin():
+        tenant_id, revision_id = await _tenant_and_revision(session)
+
+    with pytest.raises(Exception, match="ck_assertion_provenance_revision_needs_a_record"):
+        async with factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "INSERT INTO assertion_provenance ("
+                    "  provenance_id, tenant_id, source_system, source_namespace, external_revision,"
+                    "  ingested_at, authority, freshness_state, produced_by,"
+                    "  validating_profile_revision_id, created_at"
+                    ") VALUES (:pid, :tid, 'sys', 'ns', 'v7', :now, 'observed', 'fresh',"
+                    "          'test', :rev, :now)"
+                ),
+                {"pid": uuid.uuid4(), "tid": tenant_id, "rev": revision_id, "now": _NOW},
+            )

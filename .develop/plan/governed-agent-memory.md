@@ -6364,7 +6364,7 @@ Acceptance:
 
 ### E5-T6 — The reviewer cockpit
 
-**Kind:** task · **Status:** pending · **Blocked by:** E5-T3, E5-T4, E5-T6a · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — shipped in contextplane-ui#37 · **Blocked by:** E5-T3, E5-T4, E5-T6a · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
 
 Goal: the disposition surface a reviewer actually works in, with the rank's
 reasoning visible and the consequence of each disposition shown before it is
@@ -6386,6 +6386,37 @@ E19-T7's defect is the one to keep in mind while building the adapter: the
 endpoint is part of the behaviour, and a test that asserts the body and method
 but not the path will pass while the call goes somewhere that does something
 else entirely.
+
+**Outcome.** `/curation`, its own feature, reading both of E5-T6a's surfaces.
+
+**Both cautions this entry raised turned out to be checkable, and are checked.**
+The rank is presented with its terms and with the absence of a loss model
+stated in the same place — *"ordered by escalation age, then by how much depends
+on the subject, then by the sampling policy for its category. Confidence does
+not move a row, and nothing here weighs what getting it wrong would cost."* The
+second half of that sentence is the one E5-T6 asked for; the first half is the
+adjacent misreading, because the queue carries a confidence beside a position
+and a reader assumes the first produced the second.
+
+**A term the service reported as zero is omitted rather than badged.** A
+`Leverage 0` reads as a measured finding. A row with nothing raising it says
+`Arrival order`, because an empty cell reads as a screen that failed to load.
+
+**Whether a disposition asks for a write is read from `target_kind`.** Matching
+on a `propose_` prefix would be this client deciding which dispositions are
+consequential; the service already says. And a disposition is labelled with the
+verb the audit log will record — rewording "supersede" into something friendlier
+would put a different verb in front of the person than the one they will be
+asked about.
+
+**With no vocabulary published the screen refuses to describe a decision at
+all**, rather than showing controls it cannot explain. That is the design
+standard's rule about client-only governance gates applied to its own absence.
+
+Two smaller findings. The three rank terms are parsed as *required*: a missing
+term reading as zero would render "no dependants" for a subject the service
+ranked highly. And `pnpm format` already fails on 35 files on `main`, unrelated
+to this change — noted here rather than fixed inside a feature PR.
 
 ## Task decomposition — twelfth wave (E10, E11, E12 — the last three undecomposed epics)
 
@@ -6577,7 +6608,7 @@ edit that selected a value fails before it reaches the list.
 
 ### E12-T1 — The connector framework exists; three named sources do not
 
-**Kind:** task · **Status:** pending · **Blocked by:** E5-T4 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E5-T4 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: Backstage, CMDB and wiki reach the catalog through the connector
 framework that already ships, not through a second import path.
@@ -6596,9 +6627,60 @@ Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "connector"
     make all
 
+**Outcome.** `backstage`, `cmdb_servicenow` and `wiki_confluence` join
+`CONNECTORS`. The entry was right that this is three connectors and not a
+framework — nothing about `Connector`, `connector_registry` or the runner
+changed.
+
+**The registry keys name products, and that is the first decision.** "CMDB" and
+"wiki" name *markets*, and a connector cannot be written against a market. The
+tree had already made half this choice: `source_governance.py` uses *"A
+Confluence page is not an owner's OpenAPI sync"* as the example of why authority
+is declared before the first write. So: ServiceNow's Table API and Confluence
+Cloud's v2 pages API, each named in the key, so registering a source is choosing
+a protocol rather than a category.
+
+**Each endpoint and envelope was read from the vendor's published reference
+before anything was written against it**, which changed two designs:
+
+- *Backstage entities are keyed on `kind:namespace/name`, not `uid`.* The
+  descriptor format says the uid *"can change over time"* and should not be used
+  as an external reference — so keying on it would mint a new subject here every
+  time the other side re-ingested the same component. It also means
+  `metadata.etag` is a real `content_revision`, which is exactly what that field
+  was added for.
+- *The paged Backstage endpoint is `by-query`, not `entities`.* The older
+  offset-paged form can skip or repeat a row when the catalog changes mid-page.
+
+**Where each connector refuses to invent a timestamp.** A Backstage entity
+states no validity, so `valid_from` stays absent rather than taking this
+process's clock: a server-defaulted instant is indistinguishable afterwards from
+one the source stated, which is the property E12-T2 turns into a schema
+constraint. Confluence states one — `version.createdAt` — and it is used.
+ServiceNow's `sys_updated_on` is used and labelled for what it is: a claim about
+the record, not about the world. Stating it beats omitting it, because a CMDB's
+value is that somebody maintains it and the date is how a reader judges whether
+anybody still does.
+
+**Two absences worth their own note.** ServiceNow gets **no `content_revision`**
+— it is not content-addressed, and `sys_updated_on` answers "when did somebody
+touch this", not "are these the same bytes"; filling the field with a clock
+would make a downstream content comparison silently wrong rather than absent.
+And nothing here sets a source's authority tier: registration does, before the
+first write, and a connector that implied otherwise would be the second place
+that decision lived.
+
+**What the tests do not claim.** That `discover` pages correctly against a real
+Backstage, ServiceNow or Confluence. Nothing in this repository can stand one
+up, and a test against a mock of an API this code also models would agree with
+itself by construction. `parse` is the half the contract requires to be pure, so
+it is the half a fixture can decide — including that it is reproducible, which
+is the contract's own wording and the property a connector minting a fresh id or
+reading a clock would break.
+
 ### E12-T2 — Provenance mapping, following the precedent E2 already set
 
-**Kind:** task · **Status:** pending · **Blocked by:** E12-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E12-T1 · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: `observed_time` and `external_record_id` come from the source record and
 are never server-defaulted — enforced by the schema, not by the importer.
@@ -6624,9 +6706,125 @@ Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "import and provenance"
     make all
 
+**Outcome.** Migration 0082 adds two CHECKs to `assertion_provenance`, and the
+property the entry names is now read off the live schema rather than assumed.
+
+**The table was already the right shape and enforced by nothing.** 0051 keeps
+the three times apart with the reason written into the column comments -- *"when
+it happened, when we saw it, when we stored it. Collapsing them makes staleness
+unmeasurable"* -- and `ingested_at` is `NOT NULL` and server-set while
+`event_time` and `observed_at` are nullable and caller-supplied. Nothing stopped
+a writer naming an upstream record and declining to date it.
+
+**The discriminator had to change, and copying 0067's would have been wrong.**
+That migration keys off `source_namespace IS NOT NULL`; here `source_namespace`
+is `NOT NULL` always, so it cannot say whether a record came from upstream.
+`external_record_id` can: 0051 states it is *"NULL for a record with no upstream
+identity of its own, which is a different statement from an empty external id."*
+So the rule is conditional on it rather than symmetric with it -- an
+`observed_at` with no external id stays legal, because *"we saw this, and the
+source has no record id for it"* is a thing an importer can truthfully say, and
+0067's symmetric shape would refuse it.
+
+**Enforced twice, deliberately.** `AssertionProvenance` refuses it earlier and
+by name -- the pattern `_check_revocation` already states: *"the database says
+the same, and this says it earlier and by name."* The dataclass check applies to
+**every** authority rather than only `external_authority`, because the CHECK
+keys off the column; a narrower class check would let an `observed` assertion
+naming an upstream record reach Postgres and return an `IntegrityError` several
+frames from the writer, where `IncompleteProvenance` is documented as *"a
+programming error in a writer"*.
+
+**Three things the review turned up, all of them mine.**
+
+*The conformance corpus was incomplete.* `_CORPUS[EXTERNAL_AUTHORITY]` was the
+only place in the tree pairing an `external_record_id` with no observation time,
+and the file's own docstring calls the corpus *"one complete fixture per
+authority."* It never had to state one because nothing checked.
+
+*The round-trip test would not have verified it.* Its SELECT did not read
+`observed_at` back, so adding it to the corpus would have proved nothing -- the
+exact shape that test's own docstring warns about: *"a writer that dropped
+`derivation_method` on the floor would still produce one row."* Both times are
+now read back and asserted.
+
+*The migration cited a test that did not exist.* Its docstring claimed
+`test_provenance_is_never_server_defaulted` read the absence of a default off
+the live schema. Nothing by that name existed. It exists now, reading
+`information_schema.columns.column_default` for the caller-supplied columns --
+because a migration claiming a guardrail it does not have is the same class of
+error the migration is arguing against.
+
+**No production write path was affected.** The table has one permitted writer,
+enforced by `make privileged-writes`, and both live call sites pass no
+`external_record_id` at all. The caller-facing schema was already *stricter*
+than this constraint: `AssertionProvenanceInputV1` requires `external_record_id`
+and `observed_time` unconditionally, with the note that *"both are the caller's
+to state; when the platform took delivery is not."*
+
+### E5-T2b — The halt, which is one comparison between two shipped numbers
+
+**Kind:** task · **Status:** done · **Blocked by:** E5-T2, E5-T4 · **Hotspot:** no · **Repo:** contextplane
+
+Goal: a sampling policy that cannot draw its minimum sample stops, rather than
+accepting a lot on a short one.
+
+**Raised against E5-T2 on E12-T3's own instruction**, which says the halt must
+not be defined by its consumer: *"a halt defined by its consumer is the second
+regime this task refuses."* Filed here as its own entry rather than edited into
+E5-T2, because E5-T2 shipped and this is a property it did not have.
+
+**It is one comparison, and both sides already existed.** E5-T2 derived
+`min_sample` from a stated defect tolerance and consumer's risk, and wrote down
+what the arithmetic assumes. E5-T4 built `inspected_dispositions` — *"the number
+acceptance sampling is entitled to use"* — and wrote down why automated
+disposals are excluded from it. **Nothing compared them**, and
+`inspected_dispositions` had no consumer at all. So a tenant could set a budget,
+review a tenth of it, and nothing anywhere said so.
+
+That is what makes this worth building now rather than when a bulk import
+arrives: it is not a mechanism awaiting a consumer, it is the missing join
+between two mechanisms that shipped, and it gives the third its first reader.
+
+**The seam is deliberate.** The floor is `sampling_policy`'s, the count is
+`CurationCaseService`'s, and `acceptance_for` takes the count as an argument. A
+module that computed both would be free to compute the second in a way that
+suited the first — and `inspected_dispositions` excluding automated disposals is
+precisely the property a caller must not be able to route around by automating
+more.
+
+**The refusal says what a short sample costs**, because whoever reads it is
+deciding whether to override it: proceeding does not weaken the guarantee, it
+removes it, while leaving a number that still looks like one.
+
+Acceptance:
+    .venv/bin/python -m pytest tests/unit -q -k "sampling_halt"
+    make all
+
 ### E12-T3 — The migrated-canonical disposition, and a halt E5 has not defined
 
-**Kind:** task · **Status:** pending · **Blocked by:** E5-T2, E5-T4, E12-T2 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** blocked — on two surfaces the epic names and no task built · **Blocked by:** E5-T4's policy-disposition writer, a bulk-import surface · **Hotspot:** no · **Repo:** contextplane
+
+**The halt this entry was blocked on now exists**, as E5-T2b, defined where this
+entry said it had to be. Two other blockers took its place, and both were found
+the same way: by grepping for what the entry presumed.
+
+**There is no bulk-import surface.** E12's epic names one; no task covers it.
+The connectors *are* the import path, and they produce claims, not dispositions —
+so "a bulk import records its own dispositions" has no subject. This is the
+fourth time an epic's Consequences named an artefact nobody filed, after E5-T1b,
+E4-T5b and E4-T7's obligation reference.
+
+**Nothing writes a policy disposition.** `record_disposition` accepts
+`actor_kind` and `DISPOSITION_BY_POLICY` is a permitted value, and **no caller
+in the tree passes it.** E5-T4 built the vocabulary and the exclusion that
+depends on it; the writer that would produce one does not exist. So
+`disposition_actor = policy-automated` cannot be recorded honestly here because
+it cannot be recorded at all.
+
+Both are real tasks and neither is this one. Recorded rather than worked around,
+because a bulk import invented inside this entry would be exactly the
+self-marking batch its own text refuses.
 
 Goal: a bulk import records its own dispositions honestly, sampled under the one
 governed sampling policy rather than a second regime.
@@ -8136,7 +8334,6 @@ would reintroduce a disclosure this decision says nothing about.
 ### E20-T2 — Remove the floor: `learning_reads.py` and every consumer
 
 **Kind:** task · **Status:** done · **Blocked by:** E20-T1 · **Hotspot:** yes — service/memory/ · **Repo:** contextplane
-**Kind:** task · **Status:** pending · **Blocked by:** E20-T1 · **Hotspot:** yes — service/memory/ · **Repo:** contextplane
 
 Goal: `contextplane/service/memory/learning_reads.py` loses `Floors`, `FloorsTooLoose`, `MIN_COHORT_ACTORS`, `MIN_CELL_EVENTS`, `Cell.suppressed`/`Cell.value`'s null-on-suppress behavior, and `build_breakdown`'s remainder-combination/withholding logic — replaced by a `Breakdown` that always carries every cell's true value, no `partial`/`withheld` states (a breakdown is either built or the query returned no rows), and `LearningReadService`'s three methods (`claim_aging`, `contradiction_backlog`, `promotion_yield`) construct cells directly from query rows with no floor test. The module docstring is rewritten to state the module's new, narrower claim: these are tenant-scope learning aggregates with no suppression, and the sentence "individual surveillance and team-performance evaluation are both forbidden" is deleted, not softened, per ADR-0017.
 
@@ -8235,7 +8432,6 @@ Acceptance:
 ### E20-T4 — `AgentAccuracyService`: per-author accuracy, on read
 
 **Kind:** task · **Status:** done · **Blocked by:** E20-T2, E20-T3 · **Hotspot:** no · **Repo:** contextplane
-**Kind:** task · **Status:** pending · **Blocked by:** E20-T2, E20-T3 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `contextplane/service/memory/agent_accuracy.py`, structurally parallel to `calibration.py` (frozen dataclasses + pure aggregation + a thin service over `session_factory`), not to `learning_reads.py` (no `Floors` — none apply after E20-T1/T2).
 
