@@ -48,6 +48,7 @@ import dataclasses
 import enum
 import logging
 import uuid
+from typing import Final
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -259,10 +260,77 @@ def stage_of(value: str | None) -> EnforcementStage:
     return EnforcementStage(value) if value is not None else _DEFAULT_STAGE
 
 
+#: One refusal code per verdict, and the reason they are distinct: the caller's
+#: remedy differs. `envelope_absent` is somebody else's job; `envelope_excluded`
+#: is the agent doing something it should not.
+#:
+#: Moved down here from the HTTP adapter when the MCP transport needed the same
+#: codes. A second copy would have been a second vocabulary, and the transport
+#: that got the newer one would say a different thing about the same decision.
+REFUSAL_CODES: Final[dict[str, str]] = {
+    "no_envelope": "envelope_absent",
+    "envelope_suspended": "envelope_suspended",
+    "envelope_withdrawn": "envelope_withdrawn",
+    "outside_envelope": "envelope_excluded",
+}
+
+#: What the caller is told, on either transport. Deliberately not the matched
+#: rule, the bound revision, or anything about the matrix: a refusal that
+#: explained itself would let a caller map its own envelope by probing.
+REFUSAL_MESSAGE: Final = "this principal's autonomy envelope does not authorise this action"
+
+
+class EnvelopeRefused(Exception):
+    """The envelope refused, and the transport decides how to say so.
+
+    A distinct type rather than a transport error, for the reason
+    `AdmissionRefused` is one: every caller has to treat it as terminal, and the
+    two transports have to shape the same decision into a 403 and a `ToolError`
+    without either owning the vocabulary.
+
+    Carries the whole outcome rather than just the code, because a caller that
+    wants to record what happened should not have to ask a second time.
+    """
+
+    def __init__(self, outcome: EnforcementOutcome) -> None:
+        self.outcome = outcome
+        self.code = REFUSAL_CODES.get(str(outcome.decision.verdict), "envelope_excluded")
+        super().__init__(REFUSAL_MESSAGE)
+
+
+async def enforce_or_refuse(
+    enforcement: AutonomyEnforcementService,
+    arc_context: ArcRequestContext,
+    manifest: IntentManifest,
+) -> EnforcementOutcome:
+    """Evaluate the envelope and raise if the stage says to refuse.
+
+    **Transport-neutral on purpose.** This lived in `api/envelope_guard.py`,
+    which meant it governed the one HTTP route that called it and no MCP tool at
+    all -- so the same act performed through the tool bypassed the envelope
+    entirely. Every service here has two transports, and a guard that lives in
+    an HTTP adapter is always missing from the second one; `admit_or_refuse` was
+    moved for exactly this reason, and the MCP memory tool still carries the
+    comment about the period when it scanned nothing.
+
+    In `advisory` this always returns rather than raising. That is the whole of
+    the rollout bargain: the decision runs, the would-be refusal is recorded,
+    and the caller proceeds.
+    """
+    outcome = await enforcement.evaluate(arc_context, manifest)
+    if outcome.blocked:
+        raise EnvelopeRefused(outcome)
+    return outcome
+
+
 __all__ = [
+    "REFUSAL_CODES",
+    "REFUSAL_MESSAGE",
     "AutonomyEnforcementService",
     "EnforcementOutcome",
     "EnforcementStage",
-    "stage_of",
+    "EnvelopeRefused",
     "EnvelopeVerdict",
+    "enforce_or_refuse",
+    "stage_of",
 ]
