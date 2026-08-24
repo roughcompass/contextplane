@@ -97,6 +97,17 @@ class ReportingObligation:
     classified_by: uuid.UUID | None
     classification_note: str | None
 
+    #: Stamped by `ReportingDeadlineService` when a classification as material
+    #: starts the clock (E4-T6). All three or none, held by a CHECK. Carried on
+    #: the read because E4-T6's goal is that approach and breach are visible
+    #: *without anybody asking*, and a detail read that omitted them would make
+    #: the operator ask.
+    initial_report_due_at: datetime.datetime | None = None
+    intermediate_report_due_at: datetime.datetime | None = None
+    final_report_due_at: datetime.datetime | None = None
+    #: `default` or `tenant_policy`: which durations produced the three above.
+    deadline_basis: str | None = None
+
 
 @dataclasses.dataclass(frozen=True)
 class UnclassifiedBacklog:
@@ -112,7 +123,8 @@ class UnclassifiedBacklog:
 
 _COLUMNS = (
     "obligation_id, summary, materiality, nominated_at, nominated_by, "
-    "classified_at, classified_by, classification_note"
+    "classified_at, classified_by, classification_note, "
+    "initial_report_due_at, intermediate_report_due_at, final_report_due_at, deadline_basis"
 )
 
 
@@ -172,6 +184,10 @@ def _to_obligation(row: object) -> ReportingObligation:
         classified_at=row.classified_at,  # type: ignore[attr-defined]
         classified_by=row.classified_by,  # type: ignore[attr-defined]
         classification_note=row.classification_note,  # type: ignore[attr-defined]
+        initial_report_due_at=row.initial_report_due_at,  # type: ignore[attr-defined]
+        intermediate_report_due_at=row.intermediate_report_due_at,  # type: ignore[attr-defined]
+        final_report_due_at=row.final_report_due_at,  # type: ignore[attr-defined]
+        deadline_basis=row.deadline_basis,  # type: ignore[attr-defined]
     )
 
 
