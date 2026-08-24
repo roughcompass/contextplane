@@ -6364,7 +6364,7 @@ Acceptance:
 
 ### E5-T6 — The reviewer cockpit
 
-**Kind:** task · **Status:** pending · **Blocked by:** E5-T3, E5-T4, E5-T6a · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done — shipped in contextplane-ui#37 · **Blocked by:** E5-T3, E5-T4, E5-T6a · **Hotspot:** yes — vendored openapi.json + generated client · **Repo:** contextplane-ui
 
 Goal: the disposition surface a reviewer actually works in, with the rank's
 reasoning visible and the consequence of each disposition shown before it is
@@ -6386,6 +6386,37 @@ E19-T7's defect is the one to keep in mind while building the adapter: the
 endpoint is part of the behaviour, and a test that asserts the body and method
 but not the path will pass while the call goes somewhere that does something
 else entirely.
+
+**Outcome.** `/curation`, its own feature, reading both of E5-T6a's surfaces.
+
+**Both cautions this entry raised turned out to be checkable, and are checked.**
+The rank is presented with its terms and with the absence of a loss model
+stated in the same place — *"ordered by escalation age, then by how much depends
+on the subject, then by the sampling policy for its category. Confidence does
+not move a row, and nothing here weighs what getting it wrong would cost."* The
+second half of that sentence is the one E5-T6 asked for; the first half is the
+adjacent misreading, because the queue carries a confidence beside a position
+and a reader assumes the first produced the second.
+
+**A term the service reported as zero is omitted rather than badged.** A
+`Leverage 0` reads as a measured finding. A row with nothing raising it says
+`Arrival order`, because an empty cell reads as a screen that failed to load.
+
+**Whether a disposition asks for a write is read from `target_kind`.** Matching
+on a `propose_` prefix would be this client deciding which dispositions are
+consequential; the service already says. And a disposition is labelled with the
+verb the audit log will record — rewording "supersede" into something friendlier
+would put a different verb in front of the person than the one they will be
+asked about.
+
+**With no vocabulary published the screen refuses to describe a decision at
+all**, rather than showing controls it cannot explain. That is the design
+standard's rule about client-only governance gates applied to its own absence.
+
+Two smaller findings. The three rank terms are parsed as *required*: a missing
+term reading as zero would render "no dependants" for a subject the service
+ranked highly. And `pnpm format` already fails on 35 files on `main`, unrelated
+to this change — noted here rather than fixed inside a feature PR.
 
 ## Task decomposition — twelfth wave (E10, E11, E12 — the last three undecomposed epics)
 
