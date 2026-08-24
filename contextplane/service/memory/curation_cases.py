@@ -48,16 +48,18 @@ DISPOSITION_BY_HUMAN: Final[str] = "human"
 DISPOSITION_BY_POLICY: Final[str] = "policy"
 DISPOSITION_ACTOR_KINDS: Final[frozenset[str]] = frozenset({DISPOSITION_BY_HUMAN, DISPOSITION_BY_POLICY})
 
-#: What a *person* may record, which is not the whole vocabulary.
+#: What a *person* may record. Equal to `DISPOSITIONS` today, and deliberately a
+#: separate name anyway.
 #:
-#: `migrated_canonical` is written by `MigrationAcceptanceService` and by nothing
-#: else. Offering it on the operator surface would let somebody mark a claim
-#: migrated without a lot, without a sample and without the halt -- the
-#: self-marking batch ADR 0022 exists to refuse, reachable by one POST. The
-#: transports build their accepted set from this rather than from `DISPOSITIONS`,
-#: and a conformance test holds them equal.
+#: A withdrawn attempt at a policy-written disposition established that the two
+#: transports do not agree about their accepted set on their own: the HTTP route
+#: hand-writes a `Literal` and the MCP tool takes a bare `str`, so a value that
+#: was meant to be service-only was reachable from the agent-facing surface while
+#: a conformance test inspecting only the HTTP model reported them closed. Both
+#: transports now build from this name, so the next policy-only disposition
+#: cannot reopen that gap.
 #:
-#: Defined below the vocabulary it subsets; see `OPERATOR_DISPOSITIONS`.
+#: See `OPERATOR_DISPOSITIONS` below.
 
 # What an owner may decide. The first three settle the disagreement itself; the last
 # three ask a different surface to write something, and asking is all they do.
@@ -68,12 +70,6 @@ DISPOSITION_PROPOSE_CANONICAL: Final[str] = "propose_canonical"
 DISPOSITION_PROPOSE_RUNBOOK: Final[str] = "propose_runbook"
 DISPOSITION_PROPOSE_ARC: Final[str] = "propose_arc"
 
-# The seventh, and the only one a policy performs. ADR 0022: a migration is a
-# lot, the lot is accepted on a sample a *person* inspected, and this records the
-# same outcome across the uninspected remainder. It asks the promotion surface
-# like the three above it -- nothing here writes canon.
-DISPOSITION_MIGRATED_CANONICAL: Final[str] = "migrated_canonical"
-
 # The three things a promotion proposal can ask for. Carried as a named kind rather
 # than inferred from the disposition string so a reader of a stored case can tell
 # what was asked for without parsing a verb.
@@ -82,7 +78,7 @@ TARGET_RUNBOOK: Final[str] = "runbook"
 TARGET_ARC_ARTIFACT: Final[str] = "arc_artifact"
 
 
-#: The six a person may record. `DISPOSITIONS` minus the policy-only one.
+#: The six a person may record.
 OPERATOR_DISPOSITIONS: Final[tuple[str, ...]] = (
     DISPOSITION_CONFIRM,
     DISPOSITION_REJECT,
@@ -92,10 +88,11 @@ OPERATOR_DISPOSITIONS: Final[tuple[str, ...]] = (
     DISPOSITION_PROPOSE_ARC,
 )
 
-#: The dispositions no transport offers, because a service writes them. Stated as
-#: its own name so "why is this one missing from the endpoint" has an answer in
-#: the code rather than in a reviewer's memory.
-POLICY_ONLY_DISPOSITIONS: Final[frozenset[str]] = frozenset({DISPOSITION_MIGRATED_CANONICAL})
+#: The dispositions no transport offers, because a service would write them.
+#: Empty today. Kept as a name so that adding one is a change to this line --
+#: which both transports and a conformance test already read -- rather than a
+#: change somebody has to remember to make in three places.
+POLICY_ONLY_DISPOSITIONS: Final[frozenset[str]] = frozenset()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -185,26 +182,6 @@ DISPOSITIONS: Final[dict[str, DispositionPolicy]] = {
         rollback="reinstate the previous revision",
         audit_action=actions.CLAIM_PROMOTION_PROPOSED,
         target_kind=TARGET_RUNBOOK,
-    ),
-    DISPOSITION_MIGRATED_CANONICAL: DispositionPolicy(
-        disposition=DISPOSITION_MIGRATED_CANONICAL,
-        # Not a new signatory. `catalog_owner` already answers "who may put a
-        # fact in the canonical graph", and a migration is exactly the moment
-        # somebody would want to give that question a second answer.
-        approval_authority="catalog_owner",
-        # The one dimension that is this disposition's own. Every other
-        # disposition's threshold is a statement about one claim; this is a
-        # statement about a lot, which is what makes it a migration rather than
-        # a promotion somebody read.
-        evidence_threshold="a lot whose review sample a person inspected to its category's policy floor",
-        # The remaining three are the target's, and match `propose_canonical`
-        # exactly. A migration that wrote canon by different rules would be a
-        # second canonical graph.
-        scope="one subject and predicate in the canonical graph",
-        supersession="the canonical row it replaces is closed at the asserted interval",
-        rollback="reverse the promotion from its journal entry",
-        audit_action=actions.CLAIM_PROMOTION_PROPOSED,
-        target_kind=TARGET_CANONICAL_FACT,
     ),
     DISPOSITION_PROPOSE_ARC: DispositionPolicy(
         disposition=DISPOSITION_PROPOSE_ARC,

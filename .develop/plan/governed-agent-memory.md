@@ -7032,7 +7032,7 @@ Acceptance:
 
 ### E12-T3 — The migrated-canonical disposition, and a halt E5 has not defined
 
-**Kind:** task · **Status:** done — ADR 0022 decided it, and the sampled audit is E5's halt inherited rather than redefined · **Blocked by:** E12-T4, E12-T5 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** blocked — on a lot-scoped sample-and-review flow that does not exist (ADR 0023) · **Blocked by:** E12-T4, E12-T5 · **Hotspot:** no · **Repo:** contextplane
 
 **The halt this entry was blocked on now exists**, as E5-T2b, defined where this
 entry said it had to be. Two other blockers took its place, and both were found
@@ -7111,7 +7111,7 @@ Acceptance:
 
 ### E12-T4 — Nothing writes a policy disposition
 
-**Kind:** task · **Status:** done — `MigrationAcceptanceService` is `DISPOSITION_BY_POLICY`'s first caller · **Blocked by:** E12-T5 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** blocked — on E12-T5 · **Blocked by:** E12-T5 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a connector run opens curation cases for what it imported and disposes
 them under a stated rule, recorded as `policy` rather than as a person.
@@ -7141,7 +7141,7 @@ Acceptance:
 
 ### E12-T5 — What a migrated claim's disposition commits to
 
-**Kind:** task · **Status:** done — ADR 0022 · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** blocked — on the staged flow ADR 0023 sketches · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `migrated_canonical` exists in the disposition vocabulary with its five
 dimensions decided and written down.
@@ -7173,7 +7173,24 @@ migration is allowed to assert about data nobody read.
 Acceptance:
     an ADR under `.develop/adr/`, and `make all`
 
-**Decided in ADR 0022, and the deferral above was wrong.** This entry was filed
+**Decided in ADR 0022, and then withdrawn in ADR 0023. Both corrections are
+recorded because the second is the more useful one.**
+
+An adversarial review of the merged change found the central claim false. The
+paragraphs below are kept as written, and every one of them is wrong in the same
+place: `inspected_dispositions` counts a tenant's *prior* human dispositions, and
+the check ran before the lot's cases existed — so not one inspected item could
+have come from the lot being accepted. `sampling_policy.py` had already said the
+figure is *"a floor on effort, not a guarantee about the residue"* and that *"no
+caller should describe it as the second"*. The reasoning below describes it as
+exactly the second.
+
+What this task is actually blocked on is a **staged flow**: stage the lot, draw a
+sample *from it*, put that sample in front of a person, and complete acceptance on
+their decisions. None of the four mechanisms that needs exists. ADR 0023 sketches
+it and says plainly that the sketch has not itself been attacked.
+
+**The original reasoning, kept for the record and now known to be wrong:** This entry was filed
 saying the answer had to come from outside the repo. It did not, and the reason
 it looked that way is worth keeping: stated as *"a policy decides that unreviewed
 material is canonical"*, it reads as handing a batch job the authority a person
@@ -9984,26 +10001,31 @@ statements encode a rule that is not in the schema.
 Named on the same convention the section above follows: a wave is the claimable
 frontier and not the scope.
 
-**This list is shorter than its first draft, and the reason is worth keeping.**
-It opened with E12-T5 on it — what a migrated claim's disposition commits to —
-described as needing an answer from outside the repo. That was wrong, and
-re-reading the mechanisms is what showed it: `require_minimum_sample` already
-required a person's inspection, `inspected_dispositions` already excluded
-automated disposals, and the halt's own docstring already named E12 as its
-consumer. Every constraint on the answer was built and every one pointed the same
-way. ADR 0022 records it.
+**This list has been wrong in both directions in one wave, and that is the thing
+worth carrying.**
 
-The distinction that entry blurred is the one worth carrying: **"blocked on a
-decision" is not the same as "blocked on somebody else."** A decision about this
-system's own semantics is an ADR waiting to be written. A decision about a legal
-threshold is not.
+It first held E12-T5 as needing an answer from outside the repo. That was wrong:
+the decision was this system's own semantics, and **"blocked on a decision" is not
+the same as "blocked on somebody else."** So it was decided, built and merged.
 
-- **Ratified DORA thresholds** (E4-T6). The only task in this file still
-  blocked, and the only one blocked on something no amount of reasoning here
-  produces. Deadlines stamp at classification time, nothing can classify without
-  the thresholds, and ADR-0015's own dissent is why the clock was not half-built
-  against a placeholder — it would be a mechanism nothing consults, authored
-  deliberately. The useful half was cut out and shipped as E4-T5b.
+Then an adversarial review of the merged change found the decision false — a
+count of prior curation is not a sample of a new batch — and it was withdrawn.
+E12 is blocked again, on a mechanism nobody had identified until the wrong thing
+was built and attacked.
+
+Both corrections are real progress and neither is embarrassing. What is worth
+noticing is that the second one **only arrived because somebody was asked to
+attack merged code**. It had passed every gate: 11,103 unit tests, 3,316
+integration tests, and a conformance tier written specifically to pin that
+vocabulary. Gates check that code does what it says. Nothing in this repo checks
+whether what it says is true, and for a governance mechanism that is the
+property that matters.
+
+- **A lot-scoped sample-and-review flow** (E12-T5, and E12-T4 and E12-T3 behind
+  it). Re-opened after ADR 0022 was withdrawn: a count of prior curation is not
+  a sample of a new batch, and there is no lot record, no sampling frame, no way
+  to mark a case as a lot's sample and no resumable acceptance. ADR 0023 sketches
+  the flow and says the sketch has not itself been attacked.
 - **Whether ADR 0018 gains a fifth exception class.** E23-T7 took the baseline
   from 66 to 28 and stopped at one shape it could not classify: a stable slug
   minted on a create form. It passes the ADR's own test — a list of the slugs
