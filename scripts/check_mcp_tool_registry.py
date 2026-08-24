@@ -133,9 +133,20 @@ _WRITE_PREFIXES: Final = (
     "update_",
 )
 
-#: Tools whose name does not fit the rule, each with the reason. Empty today,
-#: and the point of having it is that filling it costs somebody a sentence.
-_INTENT_KIND_EXCEPTIONS: Final[dict[str, tuple[str, str]]] = {}
+#: Tools whose name does not fit the rule, each with the reason. The point of
+#: having it is that filling it costs somebody a sentence.
+_INTENT_KIND_EXCEPTIONS: Final[dict[str, tuple[str, str]]] = {
+    "declare_instruction_set": (
+        "data_access",
+        "`declare_` is not a write prefix and this writes. The verb was chosen "
+        "for what the caller is doing -- stating what it was told -- rather than "
+        "for what the service does with it, and the service stores a row: the "
+        "instruction set that was in force at every resolution declaring that "
+        "digest. Adding `declare_` to the prefix list would be the wrong fix, "
+        "because a future `declare_` tool that only reads back a declaration is "
+        "a plausible verb and would then be mislabelled by the rule.",
+    ),
+}
 
 
 def _expected_intent_kind(name: str) -> str:
