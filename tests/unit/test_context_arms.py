@@ -26,6 +26,7 @@ import pytest
 
 from contextplane.context.arms import ContextArms
 from contextplane.context.assembler import ArmOutcome, AssemblyResult, assemble
+from contextplane.context.instructions import InstructionChannel
 from contextplane.context.lifecycle import LifecycleProfile
 from contextplane.context.schemas.envelope import (
     BLOCK_ARC,
@@ -229,6 +230,7 @@ def _arms(
         claims=claims or _FakeClaims(),
         arc_receipts=receipts or _FakeReceipts(),
         recall=recall or _FakeRecall(),
+        instructions=InstructionChannel(session_factory or (lambda: _NoOverdueSession())),
     )
 
 

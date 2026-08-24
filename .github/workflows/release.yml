@@ -38,6 +38,7 @@ jobs:
   # weakly than a PR — this list and ci.yml's are kept in lockstep.
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -58,6 +59,7 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: lint
     steps:
       - uses: actions/checkout@v4
@@ -71,6 +73,7 @@ jobs:
 
   unit:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     needs: typecheck
     steps:
       - uses: actions/checkout@v4
@@ -86,6 +89,7 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: unit
     steps:
       - uses: actions/checkout@v4
@@ -99,6 +103,7 @@ jobs:
 
   conformance:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: integration
     steps:
       - uses: actions/checkout@v4
@@ -117,6 +122,7 @@ jobs:
   # dev-seed gives search real data, dev-jwt mints a real bearer.
   k6-smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: conformance
     steps:
       - uses: actions/checkout@v4
@@ -152,6 +158,7 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: k6-smoke
     steps:
       - uses: actions/checkout@v4

@@ -4,6 +4,7 @@
     "canonical": "success",
     "arc": "failed",
     "observed_claims": "empty",
-    "workspace": "success"
+    "workspace": "success",
+    "instructions": "empty"
   }
 }

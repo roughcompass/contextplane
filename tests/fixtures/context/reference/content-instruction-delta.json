@@ -1,0 +1,6 @@
+{
+  "delta_id": "3f1b9a5e-6d24-4c8b-9f70-2a1e5c8d4b63",
+  "body": "Deprecation checks are not optional for this tenant. Run them before proposing any interface change, including internal ones.",
+  "contradicts": true,
+  "contradiction_note": "the declared set says internal interfaces skip deprecation review"
+}

@@ -16,6 +16,7 @@ import pytest
 from contextplane.context.schemas.envelope import (
     BLOCK_ARC,
     BLOCK_CANONICAL,
+    BLOCK_INSTRUCTIONS,
     BLOCK_NAMES,
     BLOCK_OBSERVED_CLAIMS,
     BLOCK_WORKSPACE,
@@ -23,6 +24,7 @@ from contextplane.context.schemas.envelope import (
 from contextplane.context.schemas.reference import (
     ArcContentV1,
     CanonicalContentV1,
+    InstructionDeltaContentV1,
     ObservedClaimContentV1,
     WorkspaceContentV1,
     normalize_reference,
@@ -122,6 +124,7 @@ def test_an_observed_claim_with_a_structured_value_is_refused() -> None:
         (BLOCK_ARC, "content-arc.json", ArcContentV1),
         (BLOCK_OBSERVED_CLAIMS, "content-observed-claim.json", ObservedClaimContentV1),
         (BLOCK_WORKSPACE, "content-workspace.json", WorkspaceContentV1),
+        (BLOCK_INSTRUCTIONS, "content-instruction-delta.json", InstructionDeltaContentV1),
     ],
 )
 def test_each_block_parses_into_its_own_shape(block: str, fixture: str, expected: type) -> None:
@@ -135,6 +138,7 @@ def test_every_block_has_a_content_fixture() -> None:
         BLOCK_ARC: "arc",
         BLOCK_OBSERVED_CLAIMS: "observed-claim",
         BLOCK_WORKSPACE: "workspace",
+        BLOCK_INSTRUCTIONS: "instruction-delta",
     }
     for block in BLOCK_NAMES:
         assert (FIXTURES / f"content-{names[block]}.json").is_file(), f"no content fixture for {block}"

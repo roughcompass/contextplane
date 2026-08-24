@@ -9300,7 +9300,7 @@ Acceptance:
 
 ### E22-T14 — The declared instruction set reaches the resolver
 
-**Kind:** task · **Status:** pending · **Blocked by:** E22-T3 · **Hotspot:** yes · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E22-T3 · **Hotspot:** yes · **Repo:** contextplane
 
 Goal: a caller declares the instruction set in force, and the envelope carries the governed delta back as a fifth block.
 
@@ -9312,6 +9312,18 @@ The UI contract pin bumps in the same wave, following the precedent E15-T2 and E
 
 Acceptance:
     make lint typecheck && make test-coverage && make test-integration
+
+**Shipped, and four things the entry could not have known.**
+
+**The block set was pinned in the schema, not only in the code.** `0032` put the four block names in a CHECK on `context_receipt_arms` and `context_receipt_items`, so the fifth block was a migration and not a constant. It surfaced in the integration tier on the first resolution after the block existed — nothing that reads the baseline schema could have caught it, and every unit and conformance test was green when it fired.
+
+**Suppression is per-arm here, so the arm carries the floor.** The entry called the suppression fork the reason for the hotspot label, and the shape of the answer is that `instructions_arm` calls `_refuse_if_overdue` exactly as the claims and workspace arms do, and raises the same `OverdueDerivativeRefusal` rather than a type of its own — a caller that catches one refusal and not the other would be protected on whichever arm it happened to name. The conformance gate that derives the guarded set treats a guard the rule does not require as legal, so this one is held by its own behavioural test rather than by that derivation.
+
+**The record is written against what was served, not against what was read.** An instruction arm that fails a floor served nothing, so nothing was contradicted, and the resolver records the declaration with its deltas cleared. Recording the read instead would have produced the one record an evaluator would act on and that no agent ever saw.
+
+**The core-tier ratchet moved from eight to nine, as a decision.** `registry_resolve_context` is core and now takes an `instruction_digest`; the only way to obtain a digest is `declare_instruction_set`. Left in `extended`, the default connection would document a parameter no agent on it could satisfy — the same "advertise something the caller cannot reach" defect this repo fixed in #4. The argument is on the ratchet in `scripts/check_mcp_tool_registry.py`, not in a commit message.
+
+**Retrieval policy stayed out, and the schema is what keeps it out.** A delta targets one declared digest through a foreign key to submitted content. Serving to every caller in a tenant, or to one whose content was never submitted, is a selection rule — so the schema admits only the narrow case, and a later policy is an addition rather than a reinterpretation of rows written under a different assumption.
 
 ### E22-T15 — Evaluation runs: a prompt, a set of them, and a verdict that persists
 

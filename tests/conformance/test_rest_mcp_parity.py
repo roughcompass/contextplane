@@ -48,8 +48,9 @@ _PAIRS: tuple[tuple[str, str, str], ...] = (
     ("POST", "/v1/intents/{intent_id}/checkpoints", "append_intent_checkpoint"),
     ("GET", "/v1/intents/{intent_id}/checkpoints/{checkpoint_id}", "get_intent_checkpoint"),
     ("GET", "/v1/checkpoints/by-digest/{digest}", "get_intent_checkpoint_by_digest"),
-    # Context resolution
+    # Context resolution, and the one-time half of the instruction channel
     ("POST", "/v1/context/resolve", "registry_resolve_context"),
+    ("POST", "/v1/context/instruction-sets", "declare_instruction_set"),
     # Receipts and resume
     ("GET", "/v1/receipts/by-reference", "find_receipts_by_reference"),
     ("GET", "/v1/receipts/{receipt_id}", "get_context_receipt"),

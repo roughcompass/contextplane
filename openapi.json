@@ -4553,12 +4553,29 @@
             "title": "Arc Block Note"
           },
           "blocks": {
-            "description": "Exactly ['canonical', 'arc', 'observed_claims', 'workspace'], in that order.",
+            "description": "Exactly ['canonical', 'arc', 'observed_claims', 'workspace', 'instructions'], in that order.",
             "items": {
               "$ref": "#/components/schemas/ContextBlockResponse"
             },
             "title": "Blocks",
             "type": "array"
+          },
+          "instruction_block_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the instructions block is empty, when it is. Distinguishes the three empties from each other in words, since only one of them is a state the caller can leave.",
+            "title": "Instruction Block Note"
+          },
+          "instruction_disposition": {
+            "description": "What was known about the caller's instruction set at resolve time: `not_declared` (no digest was sent), `declared_unknown` (a digest arrived whose content was never submitted, so no delta is computable against it), or `declared_known`. Always present, including for callers that declare nothing -- a client that has to infer `not_declared` from a missing field will infer it for `declared_unknown` too, and those two are exactly the pair whose conflation hides partial adoption of the channel.",
+            "title": "Instruction Disposition",
+            "type": "string"
           },
           "quality": {
             "$ref": "#/components/schemas/QualityResponse"
@@ -4578,7 +4595,8 @@
           "state",
           "blocks",
           "quality",
-          "receipt_id"
+          "receipt_id",
+          "instruction_disposition"
         ],
         "title": "ContextEnvelopeResponse",
         "type": "object"
@@ -4784,6 +4802,19 @@
             ],
             "description": "An attested ARC resolution to serve. Omit it and the ARC block comes back empty, not failed.",
             "title": "Arc Receipt Id"
+          },
+          "instruction_digest": {
+            "anyOf": [
+              {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A digest of the instruction set in force for this caller, as `sha256:` and 64 lowercase hex characters. Optional: omit it and the `instructions` block comes back empty, and the resolution records that no instruction set was declared. Submit the content once per distinct digest through `POST /v1/context/instruction-sets`; a digest whose content was never submitted resolves normally and is recorded as declared-but-unknown, which is a different state from having declared nothing.",
+            "title": "Instruction Digest"
           },
           "intent_ids": {
             "description": "Tasks whose workspace material may be recalled, subject to the caller's participation.",
@@ -8288,6 +8319,38 @@
           "superseded_at"
         ],
         "title": "InstructionOut",
+        "type": "object"
+      },
+      "InstructionSetRequest": {
+        "description": "The content of one instruction set, submitted once.\n\nNo digest field. A caller that sent one would be asserting a hash of its own\nbytes, and the service would have to either trust it -- letting a caller file\none instruction set under another's name -- or recompute it, which makes the\nsent value decorative. The digest comes back in the response.",
+        "properties": {
+          "content": {
+            "description": "The instruction set in force for this caller, verbatim. Stored as the set that was in force at the resolutions that declare it -- a historical fact about those resolutions, not a copy of your instructions that anything here reads back to you as current.",
+            "maxLength": 262144,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "InstructionSetRequest",
+        "type": "object"
+      },
+      "InstructionSetResponse": {
+        "description": "The digest to send on every later resolve.",
+        "properties": {
+          "digest": {
+            "description": "Send this as `instruction_digest` on resolve. Resubmitting the same content returns it again.",
+            "title": "Digest",
+            "type": "string"
+          }
+        },
+        "required": [
+          "digest"
+        ],
+        "title": "InstructionSetResponse",
         "type": "object"
       },
       "IntegrationListResponse": {
@@ -26734,6 +26797,48 @@
         ]
       }
     },
+    "/v1/context/instruction-sets": {
+      "post": {
+        "description": "Submit the content of one instruction set, once, and get back its digest.\n\nIdempotent, and idempotent without an `Idempotency-Key`: the digest *is* the\ncontent, so a repeat submission of the same set is the same row and there is\nno key a caller could get wrong. That is why this is not a create in the\nsense the rest of the surface means -- it registers content under a name\nderived from the content.\n\nReturns the digest rather than taking one. A caller that sent both would be\nasserting a hash of its own bytes, and the service would have to either trust\nit or recompute it; recomputing makes the sent value decorative, and trusting\nit lets a caller file one instruction set under another's name.",
+        "operationId": "declare_instruction_set_v1_context_instruction_sets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstructionSetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstructionSetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Declare Instruction Set",
+        "tags": [
+          "context"
+        ]
+      }
+    },
     "/v1/context/receipts/{receipt_id}/feedback": {
       "get": {
         "description": "What was judged about one resolution, without saying by whom.\n\nThe receipt is something the caller can already read in full, so the ratings\nattached to it disclose nothing further about the resolution. The reporter\nand the note are withheld: those are facts about a person, and a surface\nreturning them across reporters would be the per-actor view the aggregates\nsurface refuses, arriving through a door marked evaluation.",
@@ -26792,7 +26897,7 @@
     },
     "/v1/context/resolve": {
       "post": {
-        "description": "Resolve one context request into the four-block envelope.\n\nThe clock is read once, here, and passed down. Every arm evaluates \"active\nnow\" against that one moment, so a request cannot authorize on one side of a\ngrant's expiry and read on the other -- and the receipt records the same\ninstant the answer was resolved at.",
+        "description": "Resolve one context request into the block envelope.\n\nThe clock is read once, here, and passed down. Every arm evaluates \"active\nnow\" against that one moment, so a request cannot authorize on one side of a\ngrant's expiry and read on the other -- and the receipt records the same\ninstant the answer was resolved at.",
         "operationId": "resolve_context_v1_context_resolve_post",
         "requestBody": {
           "content": {

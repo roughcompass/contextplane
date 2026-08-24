@@ -68,9 +68,17 @@ def test_the_core_set_is_small_and_comes_from_the_artifact() -> None:
 
     document = json.loads(_REGISTRY.read_text(encoding="utf-8"))
     assert core == frozenset(e["name"] for e in document["tools"] if e["tier"] == "core")
-    assert 6 <= len(core) <= 8, (
+    # Six to nine. E7 asked for six to eight; the ninth is
+    # `declare_instruction_set`, added by E22-T14, and the argument for widening
+    # is on the ratchet in `scripts/check_mcp_tool_registry.py` rather than
+    # restated here. In short: `registry_resolve_context` is core and now takes
+    # an `instruction_digest`, and the only way to obtain a digest is that tool
+    # -- left off a default connection, the core surface would document a
+    # parameter no agent on it could satisfy.
+    assert 6 <= len(core) <= 9, (
         f"the core set is {len(core)}; E7 asks for six to eight verbs on a default connection, "
-        "and a set that drifts past that is the surface this epic exists to bound"
+        "widened to nine by E22-T14 with its reason on the ratchet, and a set that drifts past "
+        "that is the surface this epic exists to bound"
     )
     assert len(document["tools"]) > len(core), "a registry where everything is core bounds nothing"
 

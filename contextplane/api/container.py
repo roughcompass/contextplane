@@ -90,6 +90,7 @@ from contextplane.arc import (
 from contextplane.auth.entitlements.resolver import EntitlementResolver
 from contextplane.config import Settings
 from contextplane.context.arms import ContextArms
+from contextplane.context.instructions import InstructionChannel
 from contextplane.context.receipts import ContextReceiptService
 from contextplane.context.references import ReceiptReferenceIndex
 from contextplane.context.resolve import ContextResolver
@@ -285,6 +286,11 @@ class Services:
     # and a second instance would mean two clocks stamping one table.
     context_receipts: ContextReceiptService
     context_resolver: ContextResolver
+    # The instruction channel, reachable on its own as well as through the
+    # resolver: submission is its own surface on both transports, and a second
+    # instance would mean a set submitted through one and declared through the
+    # other resolving as `declared_unknown`.
+    instruction_channel: InstructionChannel
     # The index that makes a receipt findable from the work it describes, and
     # bounded resume over both. One instance each, so a receipt written
     # through one transport is the receipt the other reads.
