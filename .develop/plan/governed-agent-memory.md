@@ -6269,7 +6269,7 @@ receipt" unbuildable until `findReceiptsByReference` was added.
 
 ### E11-T3 — Audit-role drill-down, and the justification that is the control
 
-**Kind:** task · **Status:** pending · **Blocked by:** E11-T1 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E11-T1 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: an auditor can see per-actor detail nobody else can, and every such read
 records why it was made.
@@ -6292,6 +6292,61 @@ to have read back to them.
 Acceptance:
     .venv/bin/python -m pytest tests/integration -q -k "audit and justification"
     make all
+
+**Outcome.** Migration 0081 adds `audit_justified_reads`;
+`service/memory/audit_drilldown.py` writes the justification and runs the query
+in one transaction with the insert first; `api/routers/audit_drilldown.py`
+serves both behind `_auditor_required`.
+
+**The entry assumed the drill-down would be a path on the aggregate surface, and
+it must not be.** `api/routers/learning_reads.py` has no per-actor path at all,
+and `tests/conformance/test_feedback_privacy.py` pins that *structurally, over
+its whole route table* — `test_no_route_on_this_surface_names_an_actor_or_a_ranking`
+scans every path for actor-shaped words, and `test_no_route_takes_an_actor_or_cohort_parameter`
+refuses every path parameter. Adding `/{actor_id}` there would not have failed
+one assertion; it would have forced the deletion of both, and with them the only
+thing keeping that surface actor-free. The pin's own docstring says a failure
+means *"somebody widened this surface"*.
+
+So the drill-down is its own service, its own router and a different role, and
+the aggregate surface stays what it claims to be. The conformance file gained a
+final section naming this as the single sanctioned per-actor path, because the
+next reader to find the absence checks and then find a per-actor route elsewhere
+would otherwise conclude the rule was dead.
+
+**Two things the entry did not anticipate.**
+
+`ROLE_AUDITOR` is not `ROLE_ADMIN`, and the router is pinned against acquiring
+the second. An admin holds this system's broadest *write* authority, and
+per-actor read detail is precisely the capability that should not travel with
+it: whoever can change what is recorded should not also be able to read it about
+individuals without a second party seeing.
+
+The record is served in both directions. `reads_of_subject` answers "who has
+been looking at me", which is what makes the table a control rather than
+bookkeeping — a log only its own author can read disciplines nobody. `read_id`
+comes back to the caller for the same reason: a surface that recorded something
+it would not show you is one people learn to distrust.
+
+**Two constraints that carry an argument.** `ck_justified_read_reason` puts the
+20-character floor in the database as well as the service, so a second writer
+cannot decide otherwise; a unit test holds the two numbers together, because a
+service floor *below* the constraint turns a refusal into a 500.
+`subject_actor_id` carries **no foreign key** — an auditor may reasonably ask
+about an actor who has since been erased, and a foreign key would make the
+record of the question impossible exactly in the period an auditor is most
+likely to be asking about.
+
+Refusals happen before the transaction opens, so a rejected request leaves no
+row: the log is of reads, not attempts, and mixing the two makes it useless for
+both questions.
+
+**One allowlist entry, on the narrowest ground.**
+`test_only_the_write_path_references_the_claim_tables` refused the module for
+reading `memory_claims`. It is on `_CLAIM_AWARE` on the same footing as
+`agent_accuracy.py` — it serves counts — and held to it by a test rather than by
+the comment: every statement in the module must begin `SELECT count(`, so an
+edit that selected a value fails before it reaches the list.
 
 ### E12-T1 — The connector framework exists; three named sources do not
 

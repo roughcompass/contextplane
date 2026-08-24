@@ -205,6 +205,83 @@
         "title": "ActivationPredicateStatus",
         "type": "object"
       },
+      "ActorDrilldownRequest": {
+        "description": "One question about one actor, and why it is being asked.\n\nA POST for a read, deliberately. This request *writes* \u2014 the justification is\nrecorded before the figure is returned \u2014 and a GET that wrote a row would be\na GET a caller could be made to issue by a link.",
+        "properties": {
+          "justification": {
+            "description": "Why this read is being made. Free text on purpose: a dropdown produces the reason nearest the top, and the point is a sentence somebody has to be willing to have read back to them.",
+            "maxLength": 2000,
+            "minLength": 20,
+            "title": "Justification",
+            "type": "string"
+          },
+          "metric": {
+            "description": "One of ['claims_authored', 'cases_disposed'].",
+            "title": "Metric",
+            "type": "string"
+          },
+          "window_end": {
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "window_start",
+          "window_end",
+          "justification"
+        ],
+        "title": "ActorDrilldownRequest",
+        "type": "object"
+      },
+      "ActorDrilldownResponse": {
+        "properties": {
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "read_id": {
+            "format": "uuid",
+            "title": "Read Id",
+            "type": "string"
+          },
+          "subject_actor_id": {
+            "format": "uuid",
+            "title": "Subject Actor Id",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "integer"
+          },
+          "window_end": {
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject_actor_id",
+          "metric",
+          "window_start",
+          "window_end",
+          "value",
+          "read_id"
+        ],
+        "title": "ActorDrilldownResponse",
+        "type": "object"
+      },
       "ActorRef": {
         "additionalProperties": false,
         "description": "Response-only. Never accepted in a request body -- see\n`arc_authoring_enums.RESERVED_ACTOR_FIELDS`.",
@@ -8409,6 +8486,23 @@
           "role"
         ],
         "title": "JudgmentAuthor",
+        "type": "object"
+      },
+      "JustifiedReadsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "JustifiedReadsResponse",
         "type": "object"
       },
       "LifecycleTransitionRequest": {
@@ -16955,6 +17049,116 @@
           }
         },
         "summary": "Query Audit Log",
+        "tags": [
+          "admin: audit"
+        ]
+      }
+    },
+    "/v1/admin/audit/actors/{subject_actor_id}/reads": {
+      "get": {
+        "description": "Who has looked at this actor, and what they said.\n\nThe direction that makes the record more than bookkeeping: a log only its\nown author can read disciplines nobody.",
+        "operationId": "reads_of_subject_v1_admin_audit_actors__subject_actor_id__reads_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subject_actor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subject Actor Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JustifiedReadsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reads Of Subject",
+        "tags": [
+          "admin: audit"
+        ]
+      }
+    },
+    "/v1/admin/audit/actors/{subject_actor_id}:drilldown": {
+      "post": {
+        "description": "One actor's figure, after the reason for asking is on the record.\n\nThe justification is written **first, in the same transaction**. If it\ncannot be written the caller gets nothing: a read that could not be recorded\nis a read that does not happen.",
+        "operationId": "read_actor_metric_v1_admin_audit_actors__subject_actor_id__drilldown_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subject_actor_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subject Actor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActorDrilldownRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActorDrilldownResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Actor Metric",
         "tags": [
           "admin: audit"
         ]

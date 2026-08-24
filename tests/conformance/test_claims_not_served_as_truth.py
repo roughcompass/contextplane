@@ -101,6 +101,23 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # read, and a count of how many claims were judged incorrect cannot
         # carry a claim.
         "service/memory/agent_accuracy.py",
+        # The auditor's per-actor drill-down. Reads `memory_claims` for one
+        # figure -- how many claims an actor authored in a window -- and reads
+        # nothing else from it.
+        #
+        # Here on the same narrow ground as `agent_accuracy.py`, and held to it
+        # by a test rather than by this comment:
+        # `test_every_statement_scopes_to_one_tenant_and_one_actor` requires
+        # every statement in that module to begin `SELECT count(`, so a later
+        # edit that selected a value, a subject or a predicate fails there
+        # before it reaches this list. A count cannot carry a claim.
+        #
+        # Worth stating what this module *is*, since a per-actor reader is
+        # exactly the shape this gate scans for: it is the surface with the
+        # most accounting on it in the tree. Every read is behind the auditor
+        # role and behind a justification recorded before the figure is
+        # returned, in the same transaction.
+        "service/memory/audit_drilldown.py",
         # Provenance-scoped quarantine. Reads both tables to decide which
         # claims a predicate reaches -- `memory_claim_provenance` is where a
         # connector run is recorded, so selecting by provenance is not possible

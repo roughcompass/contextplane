@@ -30,6 +30,7 @@ from contextplane.service.memory.agent_accuracy import AgentAccuracyService
 from contextplane.service.memory.agent_autonomy import AgentAutonomyService
 from contextplane.service.memory.agent_failure_patterns import AgentFailurePatternService
 from contextplane.service.memory.agent_instructions import AgentInstructionService
+from contextplane.service.memory.audit_drilldown import AuditDrilldownService
 from contextplane.service.memory.calibration import CalibrationService
 from contextplane.service.memory.capability_requests import CapabilityRequestService
 from contextplane.service.memory.claim_history import ClaimHistoryService
@@ -98,6 +99,7 @@ class MemoryServices:
     curation_queue: CurationQueueService
     #: The write half. Separate object, because `CurationQueueService` promises
     #: reads only and a class cannot promise that while holding `record_disposition`.
+    audit_drilldown: AuditDrilldownService
     curation_cases: CurationCaseService
     capability_requests: CapabilityRequestService
     source_governance: SourceGovernanceService
@@ -168,6 +170,7 @@ def build_memory_services(
         promotion_guardrails=GuardrailService(session_factory, clock=clock),
         sampling_policy=SamplingPolicyService(session_factory, clock=clock),
         curation_queue=CurationQueueService(session_factory),
+        audit_drilldown=AuditDrilldownService(session_factory, clock=clock),
         curation_cases=CurationCaseService(session_factory),
         # The loop's return path: what consuming teams need, routed to whoever
         # owns the capability. One place the lifecycle rules live.
