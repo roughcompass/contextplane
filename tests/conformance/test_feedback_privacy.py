@@ -17,14 +17,24 @@ enforces.** The module they guard used to make a per-actor cell unconstructible;
 it does not any more. So a failure here means somebody widened *this* surface,
 not that they breached a rule -- and nothing outside this file prevents a new
 surface from doing what these routes do not.
+
+**One surface now does, and the last section of this file names it.** E11-T3
+added a per-actor drill-down, deliberately not here: behind `ROLE_AUDITOR`, and
+behind a justification recorded before the figure is returned. It is pinned at
+the bottom because a reader who finds the absence checks above, then finds a
+per-actor route elsewhere, would otherwise conclude the rule is dead. It is not
+dead; it has exactly one sanctioned exception, and the exception carries a cost
+the aggregate surface does not.
 """
 
 from __future__ import annotations
 
 import datetime
+import inspect
 
+from contextplane.api.routers import audit_drilldown as drilldown_module
 from contextplane.api.routers import learning_reads as router_module
-from contextplane.service.memory import learning_reads
+from contextplane.service.memory import audit_drilldown, learning_reads
 from contextplane.signals import reads as feedback_reads
 
 _NOW = datetime.datetime(2026, 8, 9, 12, 0, tzinfo=datetime.UTC)
@@ -235,3 +245,89 @@ def test_age_buckets_are_coarse() -> None:
     activity. Four buckets is the resolution the question actually needs."""
     labels = [label for label, _, _ in learning_reads._AGE_BUCKETS]
     assert labels == ["0-6d", "7-29d", "30-89d", "90d+"]
+
+
+# --- The one sanctioned per-actor surface ---------------------------------------
+
+
+def test_the_per_actor_drilldown_is_not_on_this_surface() -> None:
+    """Stated as a property of the route table rather than left to the checks
+    above to imply.
+
+    The drill-down could have been a path here and was not. Putting it here
+    would have deleted the only thing keeping this surface actor-free -- the
+    structural absence checks pass over *every* route, so one per-actor path
+    turns them all into a formality.
+    """
+    drilldown_paths = {route.path for route in drilldown_module.router.routes}  # type: ignore[attr-defined]
+    assert not (drilldown_paths & set(_routes())), (
+        "the auditor drill-down now shares a route table with the aggregate surface; "
+        "the absence checks above cover every route on it and would have to be weakened"
+    )
+
+
+def test_the_drilldown_is_behind_the_auditor_role_and_not_the_admin_role() -> None:
+    """A different door, not the same door with a note on it.
+
+    An admin has this system's broadest write authority, and per-actor detail is
+    the one capability that should not travel with it: the person who can change
+    what is recorded should not be the person who reads it about individuals
+    without a second party noticing.
+    """
+    from contextplane.api.routers import _admin_common
+
+    for route in drilldown_module.router.routes:
+        guards = {getattr(dep.call, "__wrapped__", dep.call) for dep in getattr(route, "dependencies", [])}
+        guards |= {
+            getattr(dep.call, "__wrapped__", dep.call)
+            for dep in getattr(getattr(route, "dependant", None), "dependencies", [])
+        }
+        assert _admin_common._auditor_required in guards, (
+            f"{route.path} is not behind the auditor role. A per-actor read reachable "
+            "with any other credential is the surveillance surface this file exists about."
+        )
+        assert _admin_common._admin_required not in guards, (
+            f"{route.path} is reachable by an admin. Read authority over individuals "
+            "must not ride along with write authority over the record."
+        )
+
+
+def test_a_drilldown_cannot_be_requested_without_a_justification() -> None:
+    """The control is the record, so the field carrying it is required and has a
+    floor -- checked on the request model, because a caller reaches the service
+    through it and an optional field would make the service's floor unreachable
+    rather than redundant."""
+    field = drilldown_module.ActorDrilldownRequest.model_fields["justification"]
+    assert field.is_required(), (
+        "the justification is optional; a read that need not be explained is exactly "
+        "the read this table exists to make visible"
+    )
+    floors = [m for m in field.metadata if getattr(m, "min_length", None) is not None]
+    assert floors and floors[0].min_length == audit_drilldown.MIN_JUSTIFICATION, (
+        "the request model's justification floor no longer matches the service's; "
+        "a dropdown produces the reason nearest the top, and the floor is what makes "
+        "a caller write a sentence instead"
+    )
+
+
+def test_the_drilldown_records_before_it_answers() -> None:
+    """The load-bearing ordering, asserted on the source because it is an
+    ordering rather than a value.
+
+    A justification captured after the read is a field that is empty exactly when
+    it matters. The behaviour is pinned end-to-end in
+    `tests/integration/test_audit_drilldown.py`; this catches the edit that
+    reorders the two statements without a database to notice.
+    """
+    source = inspect.getsource(audit_drilldown.AuditDrilldownService.read_actor_metric)
+    insert = source.index("INSERT INTO audit_justified_reads")
+    select = source.index("_COUNTS[metric]")
+    assert insert < select, (
+        "the read now runs before its justification is written. They share one "
+        "transaction so a failed write still yields nothing, but reversing them "
+        "means a statement timeout returns data with no record of who asked."
+    )
+    assert source.count("session.begin()") == 1, (
+        "the write and the read are no longer in one transaction; a justification "
+        "committed separately can be rolled back while the answer is already sent"
+    )

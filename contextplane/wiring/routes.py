@@ -144,6 +144,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
         arc_governance_reads,
         arc_source_grants,
         artifacts,
+        audit_drilldown,
         capabilities,
         concepts,
         entities,
@@ -217,6 +218,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(admin_extraction.router)
     app.include_router(admin_memory_curation.router)
     app.include_router(admin_obligations.router)
+    app.include_router(audit_drilldown.router)
     app.include_router(arc_governance_reads.router)
     app.include_router(arc_source_grants.router)
     app.include_router(admin_quarantine.router)

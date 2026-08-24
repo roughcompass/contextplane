@@ -115,6 +115,7 @@ from contextplane.service.memory.agent_accuracy import AgentAccuracyService
 from contextplane.service.memory.agent_autonomy import AgentAutonomyService
 from contextplane.service.memory.agent_failure_patterns import AgentFailurePatternService
 from contextplane.service.memory.agent_instructions import AgentInstructionService
+from contextplane.service.memory.audit_drilldown import AuditDrilldownService
 from contextplane.service.memory.calibration import CalibrationService
 from contextplane.service.memory.capability_requests import CapabilityRequestService
 from contextplane.service.memory.claim_history import ClaimHistoryService
@@ -203,6 +204,7 @@ class Services:
     promotion_guardrails: GuardrailService
     sampling_policy: SamplingPolicyService
     curation_queue: CurationQueueService
+    audit_drilldown: AuditDrilldownService
     curation_cases: CurationCaseService
     capability_requests: CapabilityRequestService
     source_governance: SourceGovernanceService
