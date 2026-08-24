@@ -9152,7 +9152,7 @@ Acceptance:
 
 ### E22-T5 — The five ARC collections the dashboard already knows how to read
 
-**Kind:** task · **Status:** pending · **Blocked by:** E22-T4 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E22-T4 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: `source-connectors`, `source-upload-policies`, `observation-replay-corpora`, `approval-evidence` and `approval-verifiers` are listed, and the four fields that name them become pickers.
 
@@ -9165,6 +9165,16 @@ The verifier-list argument at `SourceGovernancePanel.tsx:244-248` gets stronger,
 Acceptance:
     pnpm --filter admin-dashboard test -- -t "source governance"
     pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**Shipped in contextplane-ui#40, and four things the entry could not have known.**
+
+**All five answer in one envelope, so there is one adapter rather than five.** That is the service's decision and not something the dashboard exploited: the ARC governance objects *"agree on intent and disagree on schema — three spellings of scope, three of tenant, and three notions of 'in force', one of which does not exist"*, and the shared response shape is the contract that reconciles them. `detail` is carried through unvalidated for the same reason — narrowing it would be five guards over five schemas the endpoint does not promise, and a guard refusing an unfamiliar key turns a service that added a field into a dashboard showing nothing.
+
+**Four fields was three, and one of them should not be a picker.** The verifier-revoke and evidence-revoke fields are the two the new reads can fill, and both are actions whose target a reader cannot name from memory. The corpus digest is not: it names something being approved for the first time, so there is no collection to choose from, and making it a picker would apply ADR 0018 past the case it is about. The two verifier *lists* are the third and fourth, and they needed a control the picker is not — see below.
+
+**The verifier-list argument was right, and it is stronger than the entry claimed.** `allowed_verifier_ids` is a comma-separated list of UUIDs on the widest field of its form, so a single-value picker does not fit it. What replaced it shows, per candidate, how many in-force registrations already grant that verifier approval authority — computable because `detail.allowed_verifier_ids` is on every connector and upload policy the read returns. A verifier already on six connectors is a broadly trusted credential and one on none is a first grant; nothing showed that before.
+
+**A sixth collection has the same false copy, and it is E22-T16's.** `/v1/arc/admin/exceptions` has a GET in the committed contract, and `ExceptionGrantPanel.tsx`, its test, and `arcExceptions.ts` all say there is no read path for an exception. Same shape as the `SourceGovernancePanel` notice this task deleted — copy describing a limitation the product does not have — and recorded here rather than folded in, because E22-T16's job is exactly to sweep for others of that shape.
 
 ### E22-T6 — The shell stops calling every reader Morgan Morris
 
@@ -9466,6 +9476,8 @@ Goal: the words the product uses about itself are true and consistent, once the 
 Inherited from E10-T4 with its reasoning intact — copy written before the screens describes an intention, copy written after describes what shipped — and with its standard unchanged: "semantic data mesh" and the false "usage data" attribution were removed because neither was true, and ADR-0012's rule against calling bounded-exposure tamper-evidence *non-repudiation* is the same rule in another domain.
 
 What E10-T4 could not have known: the `SourceGovernancePanel` notice is a fourth instance, and it is the most consequential of the four because it describes a limitation the product does not have. E22-T5 removes it. This task's job is to check for others of that shape — copy that navigates, copy that disclaims a naming collision, and copy that describes a missing capability the product has — now that the screens have read paths and most such sentences have become deletable rather than merely rewordable.
+
+**E22-T5 found a fifth and left it here, which is the sweep working.** The exception surface says in three places — `ExceptionGrantPanel.tsx`, its test, and `arcExceptions.ts` — that there is no read path for an exception. `GET /v1/arc/admin/exceptions` is in the committed contract. It was not folded into E22-T5 because that task's scope is the five collections it names, and because a sentence repeated in three files including a test is the shape this task exists to sweep rather than a line to delete in passing. E22-T5 also removed a second copy of its own false sentence from `arcSourceGovernance.ts`, which is the same lesson: this copy propagates into adapter docstrings, so the sweep reads those too.
 
 Acceptance:
     pnpm lint && pnpm type-check && pnpm test && pnpm build
