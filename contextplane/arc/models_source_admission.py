@@ -67,6 +67,14 @@ class ArcSourceConnector(Base):
     max_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     credential_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
     registered_at: Mapped[datetime.datetime] = mapped_column(_TIMESTAMPTZ, nullable=False)
+    #: Set together or all null -- see `ck_..._revocation_is_attributed`. A
+    #: withdrawn grant admits nothing further; what it already admitted stands,
+    #: because it was validly admitted and `revoked_at` is what dates the line.
+    revoked_at: Mapped[datetime.datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
+    revoked_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("actors.actor_id"), nullable=True
+    )
+    revocation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ArcSourceUploadPolicy(Base):
@@ -88,6 +96,14 @@ class ArcSourceUploadPolicy(Base):
     allowed_verifier_ids: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
     max_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     registered_at: Mapped[datetime.datetime] = mapped_column(_TIMESTAMPTZ, nullable=False)
+    #: Set together or all null -- see `ck_..._revocation_is_attributed`. A
+    #: withdrawn grant admits nothing further; what it already admitted stands,
+    #: because it was validly admitted and `revoked_at` is what dates the line.
+    revoked_at: Mapped[datetime.datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
+    revoked_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("actors.actor_id"), nullable=True
+    )
+    revocation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ArcSourceBody(Base):

@@ -39,6 +39,7 @@ from contextplane.arc.service.queries.source_admission import (
     StatusRow,
     UploadPolicyRow,
 )
+from contextplane.arc.service.source_grants import SourceGrantService
 from contextplane.arc.types import ArcRequestContext
 from contextplane.exceptions import ConflictError, NotFoundError
 from contextplane.types import TenantContext
@@ -263,6 +264,21 @@ class FakeQueries:
 def _build_service(fake: FakeQueries, *, clock_at: datetime.datetime = _NOW) -> sa.SourceAdmissionService:
     authorization = ArcAuthorizationService(visibility=_AllowAll(), global_write_allowlist=((_ISSUER, "operator"),))
     return sa.SourceAdmissionService(
+        lambda: _SessionCM(_NullSession()),
+        authorization=authorization,
+        clock=_FakeClock(clock_at),
+    )
+
+
+def _build_grants(fake: FakeQueries, *, clock_at: datetime.datetime = _NOW) -> SourceGrantService:
+    """The grant lifecycle moved to its own service (E14-T2).
+
+    Registering and withdrawing are operator actions on configuration;
+    `SourceAdmissionService` is the runtime path that *uses* a grant. The
+    builders are separate here for the same reason the services are.
+    """
+    authorization = ArcAuthorizationService(visibility=_AllowAll(), global_write_allowlist=((_ISSUER, "operator"),))
+    return SourceGrantService(
         lambda: _SessionCM(_NullSession()),
         authorization=authorization,
         clock=_FakeClock(clock_at),
@@ -846,7 +862,7 @@ class TestAdmitConnectorFetch:
 
 class TestRegistration:
     async def test_registering_a_connector_round_trips(self, _patch_queries: FakeQueries) -> None:
-        service = _build_service(_patch_queries)
+        service = _build_grants(_patch_queries)
         registration = sa.ConnectorRegistration(
             connector_id="c-1",
             owning_scope="global",
@@ -863,7 +879,7 @@ class TestRegistration:
 
     async def test_registering_a_duplicate_connector_is_a_conflict(self, _patch_queries: FakeQueries) -> None:
         _seed_connector(_patch_queries)
-        service = _build_service(_patch_queries)
+        service = _build_grants(_patch_queries)
         registration = sa.ConnectorRegistration(
             connector_id="connector-1",
             owning_scope="global",
@@ -878,7 +894,7 @@ class TestRegistration:
             await service.register_connector(_ctx(), registration)
 
     async def test_registering_an_upload_policy_round_trips(self, _patch_queries: FakeQueries) -> None:
-        service = _build_service(_patch_queries)
+        service = _build_grants(_patch_queries)
         registration = sa.UploadPolicyRegistration(
             policy_id="p-1",
             owning_scope="global",

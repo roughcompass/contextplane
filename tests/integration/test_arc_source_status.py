@@ -39,6 +39,7 @@ from contextplane.arc.service.source_admission import (
     UploadAdmission,
     UploadPolicyRegistration,
 )
+from contextplane.arc.service.source_grants import SourceGrantService
 from contextplane.arc.service.source_status import (
     FRESHNESS_WINDOW,
     STATUS_CURRENT,
@@ -132,8 +133,9 @@ async def _admit_source(factory: async_sessionmaker[AsyncSession], *, clock: Fak
     below depend on."""
     authorization = ArcAuthorizationService(visibility=_AllowAll(), global_write_allowlist=((_ISSUER, _OPERATOR),))
     admission = SourceAdmissionService(factory, authorization=authorization, clock=clock)
+    grants = SourceGrantService(factory, authorization=authorization, clock=clock)
     policy_id = f"policy-{uuid.uuid4().hex[:8]}"
-    await admission.register_upload_policy(
+    await grants.register_upload_policy(
         _ctx(),
         UploadPolicyRegistration(
             policy_id=policy_id,

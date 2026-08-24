@@ -82,6 +82,7 @@ from contextplane.arc import (
     SemanticTestService,
     ShadowService,
     SourceAdmissionService,
+    SourceGrantService,
     SourceStatusService,
     VerifierRegistry,
 )
@@ -320,6 +321,7 @@ class Services:
     # Sec.8). Predicate 10 (`operational_integrity`) calls `arc_integrity.
     # assess` directly -- see `activation.py`'s own module docstring.
     arc_governance_reads: GovernanceReadService
+    arc_source_grants: SourceGrantService
     arc_activation: ActivationService
     # None on every deployment today: ARC key material is not yet
     # operator-configurable, so resolution has nothing to sign a receipt

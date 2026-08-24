@@ -249,6 +249,7 @@ from contextplane.arc.service.source_admission_graph import (
     GraphPromotionAdmission,
     GraphPromotionAdmissionService,
 )
+from contextplane.arc.service.source_grants import SourceGrantService
 from contextplane.arc.service.source_status import (
     SourceStatusService,
     SourceStatusUnavailable,
@@ -308,6 +309,7 @@ from contextplane.arc.workers.source_status_refresh import (
 
 __all__ = [
     "GovernanceObject",
+    "SourceGrantService",
     "GovernanceReadService",
     "APPROVAL_VERIFIER_ENROLLMENT_PROFILE",
     "ARTIFACT_SEMANTICS_PROFILE",

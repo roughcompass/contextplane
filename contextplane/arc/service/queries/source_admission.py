@@ -37,6 +37,10 @@ class ConnectorRow:
     max_bytes: int
     credential_ref: str | None
     registered_at: datetime.datetime
+    #: Set when the grant was withdrawn. The admission path refuses on this;
+    #: material admitted before it stays admitted, because it was validly
+    #: admitted and rewriting that would describe a history that did not happen.
+    revoked_at: datetime.datetime | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -48,6 +52,8 @@ class UploadPolicyRow:
     allowed_verifier_ids: tuple[str, ...]
     max_bytes: int
     registered_at: datetime.datetime
+    #: See `ConnectorRow.revoked_at`. The same grant, pushed rather than pulled.
+    revoked_at: datetime.datetime | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -180,12 +186,64 @@ async def insert_connector(
     )
 
 
+async def revoke_connector(
+    session: AsyncSession,
+    *,
+    connector_id: str,
+    actor_id: uuid.UUID,
+    reason: str,
+    now: datetime.datetime,
+) -> bool:
+    """Withdraw a connector. Returns False when it was already withdrawn.
+
+    A compare-and-swap on `revoked_at IS NULL` rather than a blind UPDATE: two
+    operators withdrawing the same connector must leave the first decision and
+    the first reason, not the last writer's.
+    """
+    updated = (
+        await session.execute(
+            text(
+                "UPDATE arc_source_connectors "
+                "SET revoked_at = :now, revoked_by = :actor, revocation_reason = :reason "
+                "WHERE connector_id = :cid AND revoked_at IS NULL "
+                "RETURNING connector_id"
+            ),
+            {"cid": connector_id, "actor": actor_id, "reason": reason, "now": now},
+        )
+    ).one_or_none()
+    return updated is not None
+
+
+async def revoke_upload_policy(
+    session: AsyncSession,
+    *,
+    policy_id: str,
+    actor_id: uuid.UUID,
+    reason: str,
+    now: datetime.datetime,
+) -> bool:
+    """Withdraw an upload policy. Same compare-and-swap, same reason."""
+    updated = (
+        await session.execute(
+            text(
+                "UPDATE arc_source_upload_policies "
+                "SET revoked_at = :now, revoked_by = :actor, revocation_reason = :reason "
+                "WHERE policy_id = :pid AND revoked_at IS NULL "
+                "RETURNING policy_id"
+            ),
+            {"pid": policy_id, "actor": actor_id, "reason": reason, "now": now},
+        )
+    ).one_or_none()
+    return updated is not None
+
+
 async def load_connector(session: AsyncSession, connector_id: str) -> ConnectorRow | None:
     row = (
         await session.execute(
             text(
                 "SELECT connector_id, owning_scope, tenant_id, allowed_schemes, allowed_hosts,"
-                "       allowed_media_types, allowed_verifier_ids, max_bytes, credential_ref, registered_at "
+                "       allowed_media_types, allowed_verifier_ids, max_bytes, credential_ref,"
+                "       registered_at, revoked_at "
                 "FROM arc_source_connectors WHERE connector_id = :connector_id"
             ),
             {"connector_id": connector_id},
@@ -204,6 +262,7 @@ async def load_connector(session: AsyncSession, connector_id: str) -> ConnectorR
         max_bytes=row.max_bytes,
         credential_ref=row.credential_ref,
         registered_at=row.registered_at,
+        revoked_at=row.revoked_at,
     )
 
 
@@ -250,7 +309,7 @@ async def load_upload_policy(session: AsyncSession, policy_id: str) -> UploadPol
         await session.execute(
             text(
                 "SELECT policy_id, owning_scope, tenant_id, allowed_media_types, allowed_verifier_ids,"
-                "       max_bytes, registered_at "
+                "       max_bytes, registered_at, revoked_at "
                 "FROM arc_source_upload_policies WHERE policy_id = :policy_id"
             ),
             {"policy_id": policy_id},
@@ -266,6 +325,7 @@ async def load_upload_policy(session: AsyncSession, policy_id: str) -> UploadPol
         allowed_verifier_ids=tuple(row.allowed_verifier_ids),
         max_bytes=row.max_bytes,
         registered_at=row.registered_at,
+        revoked_at=row.revoked_at,
     )
 
 

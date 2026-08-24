@@ -401,31 +401,6 @@ class SourceAdmissionService:
                 raise RegistryError(f"connector {registration.connector_id!r} vanished immediately after insert")
             return row
 
-    async def register_upload_policy(
-        self, ctx: ArcRequestContext, registration: UploadPolicyRegistration
-    ) -> queries.UploadPolicyRow:
-        registered_at = self._clock.now()
-        async with self._session_factory() as session, session.begin():
-            existing = await queries.load_upload_policy(session, registration.policy_id)
-            if existing is not None:
-                raise ConflictError(f"upload policy {registration.policy_id!r} is already registered")
-            await queries.insert_upload_policy(
-                session,
-                policy_id=registration.policy_id,
-                owning_scope=registration.owning_scope,
-                tenant_id=registration.tenant_id,
-                allowed_media_types=list(registration.allowed_media_types),
-                allowed_verifier_ids=list(registration.allowed_verifier_ids),
-                max_bytes=registration.max_bytes,
-                registered_at=registered_at,
-            )
-            row = await queries.load_upload_policy(session, registration.policy_id)
-            if row is None:
-                raise RegistryError(f"upload policy {registration.policy_id!r} vanished immediately after insert")
-            return row
-
-    # -- admission ----------------------------------------------------------
-
     async def admit_upload(
         self,
         ctx: ArcRequestContext,
@@ -436,6 +411,11 @@ class SourceAdmissionService:
             policy = await queries.load_upload_policy(session, admission.policy_id)
         if policy is None:
             raise SourceAdmissionRefused(f"unknown upload policy {admission.policy_id!r}")
+        if policy.revoked_at is not None:
+            raise SourceAdmissionRefused(
+                f"upload policy {admission.policy_id!r} was withdrawn at "
+                f"{policy.revoked_at.isoformat()} and admits nothing further"
+            )
 
         self._authorization.assert_can_write_artifact(ctx, _scope(policy.owning_scope, policy.tenant_id))
 
@@ -482,6 +462,15 @@ class SourceAdmissionService:
             connector = await queries.load_connector(session, admission.connector_id)
         if connector is None:
             raise SourceAdmissionRefused(f"unknown connector {admission.connector_id!r}")
+        # Checked before the scope and verifier checks below, because a revoked
+        # connector is not a permission question: it grants nothing to anybody,
+        # and reporting it as a scope or verifier failure would send an operator
+        # to look at the wrong thing.
+        if connector.revoked_at is not None:
+            raise SourceAdmissionRefused(
+                f"connector {admission.connector_id!r} was withdrawn at "
+                f"{connector.revoked_at.isoformat()} and admits nothing further"
+            )
 
         self._authorization.assert_can_write_artifact(ctx, _scope(connector.owning_scope, connector.tenant_id))
 

@@ -13526,6 +13526,23 @@
         "title": "RevisionResponse",
         "type": "object"
       },
+      "RevokeGrantRequest": {
+        "description": "Why a standing source grant is being withdrawn.",
+        "properties": {
+          "reason": {
+            "description": "A withdrawn grant with no stated cause is unreviewable afterwards.",
+            "maxLength": 2000,
+            "minLength": 20,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RevokeGrantRequest",
+        "type": "object"
+      },
       "RevokeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -21137,6 +21154,59 @@
         ]
       }
     },
+    "/v1/arc/admin/source-connectors/{connector_id}/revoke": {
+      "post": {
+        "description": "Withdraw a connector. It admits nothing further; what it admitted stands.\n\nUntil this existed a connector could not be withdrawn at all \u2014 no column, no\nroute, no query \u2014 which made the widest control in this surface the one with\nno off switch. A connector names who may approve everything it fetches, so a\npermissive one registered during a migration was permanent.\n\n**The withdrawal reaches forward only.** Material already admitted was\nvalidly admitted, and `revoked_at` is what lets an auditor place any\nadmission on one side of it or the other.",
+        "operationId": "revoke_source_connector_v1_arc_admin_source_connectors__connector_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connector_id",
+            "required": true,
+            "schema": {
+              "title": "Connector Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeGrantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_Accepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Source Connector",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
     "/v1/arc/admin/source-upload-policies": {
       "post": {
         "description": "Admit an authorized-upload authority.\n\nOperator-gated for the same reason connector registration is \u2014 see\n`register_source_connector`. The authenticated caller uploads bytes\ndirectly under one of these; it supplies no URL, so there is no host\nor redirect to validate at fetch time \u2014 only the scope, media type,\nbyte ceiling, and verifier allowlist registered here.",
@@ -21174,6 +21244,59 @@
           }
         },
         "summary": "Register Source Upload Policy",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/source-upload-policies/{policy_id}/revoke": {
+      "post": {
+        "description": "Withdraw an upload policy. Same rule and same reach as a connector.",
+        "operationId": "revoke_source_upload_policy_v1_arc_admin_source_upload_policies__policy_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "title": "Policy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeGrantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_Accepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Source Upload Policy",
         "tags": [
           "arc: admin"
         ]
