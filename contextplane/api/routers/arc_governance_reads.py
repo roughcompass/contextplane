@@ -130,4 +130,53 @@ async def list_approved_exceptions(
     return _governance_response(found)
 
 
+@router.get("/source-connectors", response_model=GovernanceObjectListResponse)
+async def list_source_connectors(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    in_force_only: bool = False,
+) -> GovernanceObjectListResponse:
+    """What ARC may fetch, from where, and who may approve what comes back.
+
+    `in_force_until` is null even for a live connector, and that is not a gap: a
+    connector has no expiry, so withdrawal is the only thing that ends one. The
+    corpora list below is the one where that field carries a date, and comparing
+    the two tells a reader something true about how the grants differ.
+    """
+    services: Services = request.app.state.services
+    return _governance_response(
+        await services.arc_governance_reads.list_source_connectors(tenant_id=ctx.tenant_id, in_force_only=in_force_only)
+    )
+
+
+@router.get("/source-upload-policies", response_model=GovernanceObjectListResponse)
+async def list_source_upload_policies(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    in_force_only: bool = False,
+) -> GovernanceObjectListResponse:
+    """The same grant, for material pushed in rather than fetched."""
+    services: Services = request.app.state.services
+    return _governance_response(
+        await services.arc_governance_reads.list_upload_policies(tenant_id=ctx.tenant_id, in_force_only=in_force_only)
+    )
+
+
+@router.get("/observation-replay-corpora", response_model=GovernanceObjectListResponse)
+async def list_replay_corpora(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    in_force_only: bool = False,
+) -> GovernanceObjectListResponse:
+    """What observation is replayed against, and until when.
+
+    The only one of the three source grants that lapses on its own, which is why
+    this is where `in_force_until` carries a date.
+    """
+    services: Services = request.app.state.services
+    return _governance_response(
+        await services.arc_governance_reads.list_replay_corpora(tenant_id=ctx.tenant_id, in_force_only=in_force_only)
+    )
+
+
 __all__ = ["router"]

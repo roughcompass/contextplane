@@ -17,6 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from contextplane.arc.service.governance_reads import GovernanceReadService
+from contextplane.arc.service.queries import source_admission as source_queries
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 23, 12, 0, tzinfo=datetime.UTC)
@@ -150,3 +151,83 @@ async def test_an_empty_tenant_lists_nothing_rather_than_failing(
     tid = await _tenant(factory)
 
     assert await _reads(factory).list_approved_exceptions(tenant_id=tid) == []
+
+
+@pytest.mark.asyncio
+async def test_a_live_connector_is_in_force_with_no_expiry(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The entry's premise changed while it waited, and this pins the new one.
+
+    E14-T1b was written when a connector could not be revoked at all and said
+    its honest in-force answer was "permanent". E14-T2 gave it a `revoked_at`,
+    so the answer is real — but `in_force_until` is still null, because a live
+    connector has no expiry. Withdrawal is the only thing that ends one.
+    """
+    tid = await _tenant(factory)
+    cid = f"conn-{uuid.uuid4().hex[:8]}"
+    async with factory() as session, session.begin():
+        await source_queries.insert_connector(
+            session,
+            connector_id=cid,
+            owning_scope="tenant",
+            tenant_id=tid,
+            allowed_schemes=["https"],
+            allowed_hosts=["policy.example"],
+            allowed_media_types=["application/pdf"],
+            allowed_verifier_ids=["verifier-a"],
+            max_bytes=1024,
+            credential_ref=None,
+            registered_at=_NOW,
+        )
+
+    found = [i for i in await _reads(factory).list_source_connectors(tenant_id=tid) if i.object_id == cid]
+
+    assert len(found) == 1
+    assert found[0].in_force
+    assert found[0].in_force_until is None, "a live connector has no expiry, only a withdrawal"
+
+
+@pytest.mark.asyncio
+async def test_a_withdrawn_connector_reads_as_not_in_force_and_says_why(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The read side of E14-T2. A withdrawn grant is still listed — "what was
+    ever registered" is a real question — and carries the reason, because a
+    withdrawal an operator cannot explain is one they will re-make."""
+    tid = await _tenant(factory)
+    aid = uuid.uuid4()
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO actors (actor_id, tenant_id, display_name, oidc_subject, created_at) "
+                "VALUES (:a, :t, 'a', :sub, :n)"
+            ),
+            {"a": aid, "t": tid, "sub": f"gw-{aid.hex[:8]}", "n": _NOW},
+        )
+    cid = f"conn-{uuid.uuid4().hex[:8]}"
+    reason = "Registered with a wildcard host during the migration and never narrowed."
+    async with factory() as session, session.begin():
+        await source_queries.insert_connector(
+            session,
+            connector_id=cid,
+            owning_scope="tenant",
+            tenant_id=tid,
+            allowed_schemes=["https"],
+            allowed_hosts=["*"],
+            allowed_media_types=["application/pdf"],
+            allowed_verifier_ids=["verifier-a"],
+            max_bytes=1024,
+            credential_ref=None,
+            registered_at=_NOW,
+        )
+        await source_queries.revoke_connector(session, connector_id=cid, actor_id=aid, reason=reason, now=_NOW)
+
+    reads = _reads(factory)
+    everything = [i for i in await reads.list_source_connectors(tenant_id=tid) if i.object_id == cid]
+    current = [i for i in await reads.list_source_connectors(tenant_id=tid, in_force_only=True) if i.object_id == cid]
+
+    assert len(everything) == 1
+    assert not everything[0].in_force
+    assert everything[0].detail["revocation_reason"] == reason
+    assert current == [], "a withdrawn connector is not in force"
