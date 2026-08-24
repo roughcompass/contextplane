@@ -115,6 +115,7 @@ from contextplane.service.governance.actors import ActorDirectoryService
 from contextplane.service.governance.erasure import ErasureRegistry
 from contextplane.service.governance.obligation_evidence import ObligationEvidenceService
 from contextplane.service.governance.obligations import ReportingObligationService
+from contextplane.service.governance.tenants import TenantDirectoryService
 from contextplane.service.governance.visibility import VisibilityService
 from contextplane.service.memory.agent_accuracy import AgentAccuracyService
 from contextplane.service.memory.agent_autonomy import AgentAutonomyService
@@ -152,6 +153,7 @@ from contextplane.types import Clock, Embedder
 # site — is itself a declared importer.
 from contextplane.usage.writer import UsageWriter
 from contextplane.workspaces.checkpoints import IntentCheckpointService
+from contextplane.workspaces.directory import IntentDirectoryService
 from contextplane.workspaces.grants import IntentGrantService
 from contextplane.workspaces.recall import WorkspaceRecall
 
@@ -297,6 +299,12 @@ class Services:
     # per call could vary within one process, and two runs of one deployment
     # would then look incomparable.
     evaluation_runs: EvaluationRunService
+    # The three listings E23-T1 adds. Each narrows itself from something the
+    # caller already holds — participation grants, credential memberships, and
+    # what the receipt detail read would serve — so none of them takes a scope
+    # argument a transport could get wrong.
+    intent_directory: IntentDirectoryService
+    tenant_directory: TenantDirectoryService
     # The index that makes a receipt findable from the work it describes, and
     # bounded resume over both. One instance each, so a receipt written
     # through one transport is the receipt the other reads.

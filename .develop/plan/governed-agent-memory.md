@@ -9598,7 +9598,7 @@ a ratchet that counts them is a ratchet nobody can drive to zero.
 
 ### E23-T1 — The three reads that are actually missing
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: intents, tenants and receipts can be listed, so the twelve fields that name
 one can offer it.
@@ -9622,9 +9622,19 @@ deployment holds, and the difference is the whole of the authorization argument.
 Acceptance:
     make lint typecheck && make test-coverage && make test-integration
 
+**Shipped. Three reads, and two findings about the shapes they had to take.**
+
+**An intent is not a row.** There is no `intents` table — an intent exists as an id referenced from `intent_participant_grants` and `intent_checkpoints` and nowhere else — so "every intent in this tenant" is not a set that exists. What the read returns is every intent the caller has a live grant on, which is not a workaround: participation is already the rule for reading an intent's material, so a directory scoped to it cannot offer one whose checkpoints the caller could not then open. Expired grants are excluded here and included by `list_grants`, because auditing who was on an intent and picking what somebody may work on now are different questions.
+
+**A receipt is withheld by a quarantine, not by an actor.** The foreign key says so, and it is a better fact than "somebody hid this": an operator asking why can open the incident rather than the person. Found while writing the fixture, and it changed what the surface can say.
+
+**The receipt listing is the one that could route around a refusal**, because it is the first receipt read not keyed by an id the caller already holds. A row appears only if the detail reads would serve it, the filter is derived from the same two conditions `refuse_if_unservable` raises on, and `test_receipt_listing_matches_the_refusal.py` holds them equal in both directions — a condition the refusal raises on and the list does not exclude is a disclosure; one the list excludes and the refusal permits is a receipt somebody can open and cannot find.
+
+**The tenant listing does not query for its answer.** It reads the caller's own resolved entitlements and consults the table only for display names. A version that selected from `tenants` and filtered afterwards would be one refactor from returning every customer's name, and the failure would be a disclosure rather than an error.
+
 ### E23-T2 — Retrieval policy for instruction deltas
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes · **Repo:** contextplane
 
 Goal: which delta is served to which agent, decided and recorded, now that the
 channel exists.
@@ -9649,6 +9659,16 @@ forever, and the surfaces have to say so rather than reporting no corrections.
 
 Acceptance:
     make lint typecheck && make test-coverage && make test-integration
+
+**Shipped as ADR 0021, and the ADR corrects itself once on the record.**
+
+Three scopes rather than a predicate language: a delta corrects one declared set, whatever a named principal declares at any digest, or every declaring caller in the tenant. A rule engine over instruction content is the inference ADR 0020 rejected as unfalsifiable, one level up — an author who wrote a predicate could not say afterwards which agents it reached.
+
+**A tenant-scoped delta needs an approver who is not its author, and that is a CHECK.** It reaches every declaring agent including ones whose instructions nobody has read, so one person authoring it is ADR 0020's second dissent with the fleet as the blast radius. The narrow scopes need no approver: two people to correct one agent is the friction that makes a channel go unused.
+
+**The first draft put precedence in the item order, and that was wrong.** `ordered_items` sorts every block by receipt item id, deliberately, so that the order is a property of what the items are rather than of the query plan — which is what makes a receipt checkable. An ADR asserting an ordering the envelope discards would be a mechanism consulted by nothing. Precedence moved into the payload: each delta says its scope, and a reader weighs *"you were told this"* against *"everyone was told this"* from the value. The service read still orders narrowest-first, and that is load-bearing in exactly one place — the joined contradiction note reads most-specific first.
+
+**A `declared_unknown` caller now receives broader corrections.** ADR 0020's dissent is that they receive nothing forever; this is the part of it answerable without their content. Contradiction still cannot be computed for them and the record says so, which is the distinction ADR 0020's third assumption already required.
 
 ### E23-T3 — The identifier fields whose read already exists
 

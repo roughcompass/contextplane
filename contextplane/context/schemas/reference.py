@@ -187,6 +187,10 @@ class InstructionDeltaContentV1:
     body: str
     contradicts: bool
     contradiction_note: str | None = None
+    #: Which of ADR 0021's three scopes reached this caller. Optional so a
+    #: fixture from before scopes existed still parses; present on everything
+    #: the resolver serves.
+    scope: str | None = None
 
 
 BlockContent = Literal["canonical", "arc", "observed_claims", "workspace", "instructions"]
@@ -196,7 +200,7 @@ _CONTENT_FIELDS: dict[str, frozenset[str]] = {
     BLOCK_ARC: frozenset({"artifact_id", "artifact_kind", "version", "summary", "references"}),
     BLOCK_OBSERVED_CLAIMS: frozenset({"claim_id", "predicate", "value", "evidence_event_ids", "excerpt"}),
     BLOCK_WORKSPACE: frozenset({"entry_id", "entry_kind", "title", "body_md", "references"}),
-    BLOCK_INSTRUCTIONS: frozenset({"delta_id", "body", "contradicts", "contradiction_note"}),
+    BLOCK_INSTRUCTIONS: frozenset({"delta_id", "body", "contradicts", "contradiction_note", "scope"}),
 }
 
 _CONTENT_REQUIRED: dict[str, tuple[str, ...]] = {

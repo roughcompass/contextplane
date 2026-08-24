@@ -27,11 +27,29 @@ is the set that was in force at a resolution, which is a historical fact about a
 resolution rather than a current fact about an agent. Nothing here reads that
 content back to an agent to tell it what its instructions are.
 
-**Selection is deliberately absent.** A delta targets one declared digest and is
-served to the caller who declared it. Which delta reaches which agent on any
-broader basis is retrieval policy, which follows the channel existing rather than
-being fitted to it; the read below has no ranking, no scoring and no fallback,
-and adding one is a decision somebody has to make on purpose.
+**Selection is ADR 0021, and it is three scopes rather than a predicate.** A
+delta corrects one declared set, or whatever a named principal declares at any
+digest, or every declaring caller in the tenant. A rule engine over instruction
+content would be the inference ADR 0020 rejected as unfalsifiable, one level up:
+an author who wrote a predicate could not say afterwards which agents it reached.
+
+**Every applicable delta is served, and each says its own scope.** Serving only
+the narrowest was rejected — a tenant-wide correction about credential handling
+and a digest-specific one about deprecation checks are not alternatives, and
+suppressing either because the other exists would withhold a governed
+instruction on the strength of a coincidence.
+
+Precedence is in the payload rather than in the order. The envelope sorts every
+block by receipt item id so a receipt is checkable across two resolutions, so an
+ordering asserted here would be one the envelope discards. The read below still
+orders narrowest-first, and that is load-bearing in one place: the joined
+contradiction note reads most-specific first.
+
+**A tenant-scoped delta reaches callers whose content was never submitted**, and
+that is deliberate. ADR 0020's dissent is that a `declared_unknown` caller
+receives nothing forever; this is the part of that answerable without their
+content. Contradiction still cannot be computed for them, and the record says so
+rather than reporting none.
 """
 
 from __future__ import annotations
@@ -146,6 +164,11 @@ class ServedDelta:
     contradicts: bool
     contradiction_note: str | None
     authored_at: datetime.datetime
+    #: Which of ADR 0021's three scopes put this delta in front of this caller:
+    #: their declared set, them as a principal, or their whole tenant. Carried to
+    #: the agent because "everyone was told this" and "you were told this" are
+    #: different weights on the same sentence.
+    scope: str = "digest"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -203,12 +226,22 @@ _CONTENT_OF = text("SELECT content FROM declared_instruction_sets WHERE tenant_i
 #: suppression a caller has to remember is one a second caller will forget.
 _LIVE_DELTAS = text(
     """
-    SELECT delta_id, body, contradicts, contradiction_note, authored_at
+    SELECT delta_id, body, contradicts, contradiction_note, authored_at, scope
       FROM instruction_deltas
      WHERE tenant_id = :tenant_id
-       AND target_digest = :digest
        AND withdrawn_at IS NULL
-     ORDER BY authored_at, delta_id
+       AND (
+             (scope = 'digest'    AND target_digest = :digest)
+          OR (scope = 'principal' AND target_principal = :actor_id)
+          OR  scope = 'tenant'
+           )
+     -- Narrowest first. Not what the envelope serves in -- `ordered_items` sorts
+     -- every block by receipt item id -- but what `contradiction_note()` joins
+     -- in, so the record of what a resolution contradicted reads most-specific
+     -- first.
+     ORDER BY CASE scope WHEN 'digest' THEN 0 WHEN 'principal' THEN 1 ELSE 2 END,
+              authored_at,
+              delta_id
      LIMIT :limit
     """
 )
@@ -292,20 +325,37 @@ class InstructionChannel:
         checked = validated_digest(digest)
         async with self._session_factory() as session:
             known = (await session.execute(_IS_KNOWN, {"digest": checked, "tenant_id": ctx.tenant_id})).first()
-            if known is None:
-                return DeclarationOutcome(disposition=Disposition.DECLARED_UNKNOWN, digest=checked)
 
+            # The read runs whether or not the content is known, which is ADR
+            # 0021's stated consequence. A `declared_unknown` caller cannot be
+            # served a `digest`-scoped delta -- there is nothing to target -- but
+            # a `principal` or `tenant` one reaches them, and withholding it
+            # would leave exactly the callers ADR 0020's dissent is about
+            # receiving nothing forever.
             rows = (
-                await session.execute(_LIVE_DELTAS, {"digest": checked, "limit": limit, "tenant_id": ctx.tenant_id})
+                await session.execute(
+                    _LIVE_DELTAS,
+                    {
+                        "actor_id": ctx.actor_id,
+                        "digest": checked,
+                        "limit": limit,
+                        "tenant_id": ctx.tenant_id,
+                    },
+                )
             ).all()
 
         return DeclarationOutcome(
-            disposition=Disposition.DECLARED_KNOWN,
+            # Still `declared_unknown` when the content never arrived. Serving a
+            # delta does not make the set known, and a contradiction against it
+            # is still not computable -- the disposition is what tells a surface
+            # to say so rather than to report no contradictions.
+            disposition=Disposition.DECLARED_KNOWN if known is not None else Disposition.DECLARED_UNKNOWN,
             digest=checked,
             deltas=tuple(
                 ServedDelta(
                     authored_at=row.authored_at,
                     body=str(row.body),
+                    scope=str(row.scope),
                     contradiction_note=row.contradiction_note,
                     contradicts=bool(row.contradicts),
                     delta_id=row.delta_id,
@@ -394,6 +444,7 @@ def _delta_payload(delta: ServedDelta) -> dict[str, object]:
         "contradicts": delta.contradicts,
         "contradiction_note": delta.contradiction_note,
         "delta_id": str(delta.delta_id),
+        "scope": delta.scope,
     }
 
 
