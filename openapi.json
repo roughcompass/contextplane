@@ -302,6 +302,34 @@
         "title": "ActorRef",
         "type": "object"
       },
+      "AddPromptRequest": {
+        "description": "One context request appended to a set.",
+        "properties": {
+          "intent_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What this prompt is checking. The question a later reader arrives with.",
+            "title": "Intent Note"
+          },
+          "request": {
+            "additionalProperties": true,
+            "description": "A context-resolve request: the same fields `POST /v1/context/resolve` takes. Validated on write, so a prompt that could never resolve is refused here rather than failing on every run afterwards.",
+            "title": "Request",
+            "type": "object"
+          }
+        },
+        "required": [
+          "request"
+        ],
+        "title": "AddPromptRequest",
+        "type": "object"
+      },
       "AdjudicateClaimRequest": {
         "additionalProperties": false,
         "properties": {
@@ -5218,6 +5246,34 @@
           "definition"
         ],
         "title": "CreatePredicateRequest",
+        "type": "object"
+      },
+      "CreatePromptSetRequest": {
+        "description": "A named set, created empty.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What this set is for. Read by somebody who did not write it.",
+            "title": "Description"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreatePromptSetRequest",
         "type": "object"
       },
       "CurationCaseListResponse": {
@@ -11002,6 +11058,117 @@
         "title": "PromotionPolicyResponse",
         "type": "object"
       },
+      "PromptResponse": {
+        "description": "One prompt, as stored.",
+        "properties": {
+          "intent_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent Note"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "prompt_id": {
+            "format": "uuid",
+            "title": "Prompt Id",
+            "type": "string"
+          },
+          "request": {
+            "additionalProperties": true,
+            "title": "Request",
+            "type": "object"
+          }
+        },
+        "required": [
+          "prompt_id",
+          "position",
+          "request",
+          "intent_note"
+        ],
+        "title": "PromptResponse",
+        "type": "object"
+      },
+      "PromptSetListResponse": {
+        "description": "A page of sets.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PromptSetResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PromptSetListResponse",
+        "type": "object"
+      },
+      "PromptSetResponse": {
+        "description": "A set, and how many prompts it holds.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prompt_count": {
+            "title": "Prompt Count",
+            "type": "integer"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
+          },
+          "set_id": {
+            "format": "uuid",
+            "title": "Set Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "set_id",
+          "name",
+          "description",
+          "created_at",
+          "retired_at",
+          "prompt_count"
+        ],
+        "title": "PromptSetResponse",
+        "type": "object"
+      },
       "ProposalDecisionResponse": {
         "additionalProperties": false,
         "properties": {
@@ -12693,6 +12860,33 @@
         "title": "RecordEventRequest",
         "type": "object"
       },
+      "RecordVerdictRequest": {
+        "description": "One reviewer's judgement of one prompt's resolution.",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why. Required for anything other than `right`: a judgement with no reason is one the next reader has to reach again from scratch.",
+            "title": "Note"
+          },
+          "verdict": {
+            "description": "One of ['right', 'wrong', 'unusable'].",
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict"
+        ],
+        "title": "RecordVerdictRequest",
+        "type": "object"
+      },
       "RecordedJudgementResponse": {
         "description": "One judgement as it was recorded.\n\n`note` is present on the caller's own judgements and absent on a receipt's,\nwhich is the whole of this surface's disclosure rule expressed as a nullable\nfield \u2014 see `feedback_reads`'s module docstring.",
         "properties": {
@@ -14380,6 +14574,157 @@
           "owner_id"
         ],
         "title": "RouteCurationCaseRequest",
+        "type": "object"
+      },
+      "RunItemResponse": {
+        "description": "One prompt's resolution within a run.",
+        "properties": {
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "envelope_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`complete`, `degraded` or `blocked`, or absent alongside `failure`.",
+            "title": "Envelope State"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure"
+          },
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "prompt_id": {
+            "format": "uuid",
+            "title": "Prompt Id",
+            "type": "string"
+          },
+          "receipt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The resolution's receipt, or absent alongside `failure`. An errored prompt stays in the run: dropping it is how a number improves without anything improving.",
+            "title": "Receipt Id"
+          },
+          "verdicts": {
+            "items": {
+              "$ref": "#/components/schemas/VerdictResponse"
+            },
+            "title": "Verdicts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "item_id",
+          "prompt_id",
+          "position",
+          "duration_ms",
+          "verdicts"
+        ],
+        "title": "RunItemResponse",
+        "type": "object"
+      },
+      "RunListResponse": {
+        "description": "A page of run headers.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RunResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "RunListResponse",
+        "type": "object"
+      },
+      "RunResponse": {
+        "description": "One run, with its items when they were asked for.",
+        "properties": {
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Absent while the run is in flight.",
+            "title": "Finished At"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RunItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "prompt_count": {
+            "title": "Prompt Count",
+            "type": "integer"
+          },
+          "resolver_fingerprint": {
+            "description": "The deployment that produced this run, as a digest of the facts a resolution depends on that no request can express. Two runs with different fingerprints are not comparable \u2014 a difference between them is evidence the configuration changed, not evidence about retrieval.",
+            "title": "Resolver Fingerprint",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "set_id": {
+            "format": "uuid",
+            "title": "Set Id",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "set_id",
+          "resolver_fingerprint",
+          "prompt_count",
+          "started_at",
+          "items"
+        ],
+        "title": "RunResponse",
         "type": "object"
       },
       "SearchResponse": {
@@ -17068,6 +17413,44 @@
           "errors"
         ],
         "title": "ValidationResponse",
+        "type": "object"
+      },
+      "VerdictResponse": {
+        "description": "One recorded judgement.",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "recorded_by": {
+            "format": "uuid",
+            "title": "Recorded By",
+            "type": "string"
+          },
+          "verdict": {
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "note",
+          "recorded_by",
+          "recorded_at"
+        ],
+        "title": "VerdictResponse",
         "type": "object"
       },
       "VerificationMethod": {
@@ -27557,6 +27940,338 @@
         "summary": "Resolve a handle to one entity, refusing an ambiguous match.",
         "tags": [
           "entities"
+        ]
+      }
+    },
+    "/v1/evaluation/prompt-sets": {
+      "get": {
+        "description": "This tenant's sets, newest first.",
+        "operationId": "list_prompt_sets_v1_evaluation_prompt_sets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptSetListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Prompt Sets",
+        "tags": [
+          "evaluation"
+        ]
+      },
+      "post": {
+        "description": "Create an empty named set. Prompts are added one at a time.",
+        "operationId": "create_prompt_set_v1_evaluation_prompt_sets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePromptSetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptSetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Prompt Set",
+        "tags": [
+          "evaluation"
+        ]
+      }
+    },
+    "/v1/evaluation/prompt-sets/{set_id}/prompts": {
+      "post": {
+        "description": "Append one context request to a set.\n\nThe request is validated against the same shape the resolver takes, so a\nprompt that could never resolve is refused here rather than failing on every\nrun afterwards.",
+        "operationId": "add_prompt_v1_evaluation_prompt_sets__set_id__prompts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Set Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddPromptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Prompt",
+        "tags": [
+          "evaluation"
+        ]
+      }
+    },
+    "/v1/evaluation/prompt-sets/{set_id}/runs": {
+      "get": {
+        "description": "This set's runs, newest first, without their items.\n\nHeaders only, because a comparison starts by choosing two runs and loading\nevery item of every run to render that choice would read the whole history\nto answer a question about two rows of it.",
+        "operationId": "list_runs_v1_evaluation_prompt_sets__set_id__runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Set Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Runs",
+        "tags": [
+          "evaluation"
+        ]
+      },
+      "post": {
+        "description": "Resolve every prompt in the set, once, and keep what came back.\n\nEvery prompt is attempted. One that raises produces an item saying so and the\nrun continues \u2014 stopping would leave the rest unmeasured and report on a\nsubset chosen by whichever prompt happened to fail first.",
+        "operationId": "start_run_v1_evaluation_prompt_sets__set_id__runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Set Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Run",
+        "tags": [
+          "evaluation"
+        ]
+      }
+    },
+    "/v1/evaluation/runs/items/{item_id}/verdict": {
+      "post": {
+        "description": "Record what this reviewer thought of one prompt's resolution.\n\nAttributed to the caller and not to an actor the caller names: a verdict\nsomebody could file under another person's name is not evidence about\nanything. A second verdict from the same reviewer replaces the first, because\nsomebody who changed their mind has one opinion.",
+        "operationId": "record_verdict_v1_evaluation_runs_items__item_id__verdict_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordVerdictRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerdictResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Verdict",
+        "tags": [
+          "evaluation"
+        ]
+      }
+    },
+    "/v1/evaluation/runs/{run_id}": {
+      "get": {
+        "description": "One run, its items in the set's order, and every verdict on them.",
+        "operationId": "get_run_v1_evaluation_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run",
+        "tags": [
+          "evaluation"
         ]
       }
     },

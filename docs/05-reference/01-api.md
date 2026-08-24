@@ -461,12 +461,26 @@ reads a checkpoint it can name.
 
 | Method | Path | Notes |
 |---|---|---|
-| `POST` | `/v1/context/resolve` | Assemble the four-block envelope for one query. |
+| `POST` | `/v1/context/resolve` | Assemble the five-block envelope for one query. |
+| `POST` | `/v1/context/instruction-sets` | Submit an instruction set once; get its digest back. |
 
-The response is always four blocks, in a fixed order: `canonical`, `arc`,
-`observed_claims`, `workspace`. Nothing merges them or re-ranks across them --
-a single ranked list would be easier to consume and would destroy the only
-signal saying which claims the registry stands behind.
+The response is always five blocks, in a fixed order: `canonical`, `arc`,
+`observed_claims`, `workspace`, `instructions`. Nothing merges them or re-ranks
+across them -- a single ranked list would be easier to consume and would destroy
+the only signal saying which claims the registry stands behind.
+
+**The fifth block is what the product says back about the caller's own
+instructions.** Declare the set you are operating under by sending
+`instruction_digest`, and governed corrections to it come back in `instructions`.
+An item whose payload has `contradicts: true` contradicts what you were told, and
+`contradiction_note` says what.
+
+Declaring is optional, and three states are distinguished rather than two:
+`instruction_disposition` is `not_declared`, `declared_unknown` (a digest whose
+content was never submitted, so no delta is computable) or `declared_known`.
+Collapsing the first two would make partial adoption of the channel invisible.
+Submit the content once per distinct set through `POST
+/v1/context/instruction-sets`; every later resolve carries the digest alone.
 
 Every block reports `success`, `empty`, `degraded` or `failed`, and `empty` is
 not a failure. A degraded or failed block carries a `reason`. **A canonical
@@ -482,6 +496,40 @@ returned with gaps.
 **Current limits.** Each arm is capped at 50 items and 2 seconds, both applied
 by the assembler rather than trusted to the arm. Hitting either is reported --
 a truncated or timed-out arm says so rather than looking complete.
+
+### Evaluation runs
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/v1/evaluation/prompt-sets` | Create a named set, empty. |
+| `GET` | `/v1/evaluation/prompt-sets` | This tenant's sets, newest first. |
+| `POST` | `/v1/evaluation/prompt-sets/{set_id}/prompts` | Append one context request. |
+| `POST` | `/v1/evaluation/prompt-sets/{set_id}/runs` | Resolve every prompt in the set, once. |
+| `GET` | `/v1/evaluation/prompt-sets/{set_id}/runs` | Run headers, newest first, without items. |
+| `GET` | `/v1/evaluation/runs/{run_id}` | One run, its items, and every verdict on them. |
+| `POST` | `/v1/evaluation/runs/items/{item_id}/verdict` | What a reviewer thought of one resolution. |
+
+**Nothing here scores anything.** A run resolves context and records what came
+back; a verdict is a person saying `right`, `wrong` or `unusable`. The resolver
+does not call a language model, generate an answer, or invent a number, and this
+surface does not add one.
+
+**An errored prompt stays in the run.** Its item carries a `failure` and no
+`receipt_id`, and the run continues. Dropping it would be how a number improves
+without anything improving, and stopping at it would report on a subset chosen by
+whichever prompt happened to fail first.
+
+**A run pins the deployment that produced it.** `resolver_fingerprint` digests
+the facts a resolution depends on that no request can express -- the recall
+branch, whether semantic is approved and available, the arm bounds and timeout.
+**Two runs with different fingerprints are not comparable**: a difference between
+them is evidence the configuration changed, not evidence about retrieval.
+
+**Current limits.** A set holds at most 100 prompts, and a run resolves them
+sequentially so that each item's `duration_ms` is a fact about the prompt rather
+than about how many others were in flight. A run is a synchronous `POST`; a set
+large enough to need a job queue has outgrown this surface, and the bound is
+where that shows up.
 
 ### Receipts and resume
 

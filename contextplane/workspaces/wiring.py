@@ -26,7 +26,10 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.arc import ReceiptReader
-from contextplane.context.arms import ContextArms
+from contextplane.context.arms import DEFAULT_ARM_LIMIT, ContextArms
+from contextplane.context.assembler import DEFAULT_ARM_TIMEOUT_S, DEFAULT_ITEM_CAP
+from contextplane.context.evaluation.fingerprint import resolver_fingerprint
+from contextplane.context.evaluation.runs import EvaluationRunService
 from contextplane.context.instructions import InstructionChannel
 from contextplane.context.receipts import ContextReceiptService
 from contextplane.context.references import ReceiptReferenceIndex
@@ -52,6 +55,7 @@ class LayeredContextServices:
     context_receipts: ContextReceiptService
     context_resolver: ContextResolver
     instruction_channel: InstructionChannel
+    evaluation_runs: EvaluationRunService
     context_reference_index: ReceiptReferenceIndex
     context_resume: ContextResumeService
 
@@ -91,18 +95,35 @@ def build_layered_context_services(
         embedder=embedder,
     )
     context_receipts = ContextReceiptService(session_factory=session_factory, clock=clock)
+    context_resolver = ContextResolver(
+        arms=context_arms,
+        receipts=context_receipts,
+        instruction_channel=instruction_channel,
+    )
     return LayeredContextServices(
         intent_checkpoints=IntentCheckpointService(session_factory=session_factory, clock=clock),
         intent_grants=IntentGrantService(session_factory=session_factory, clock=clock),
         workspace_recall=workspace_recall,
         context_arms=context_arms,
         context_receipts=context_receipts,
-        context_resolver=ContextResolver(
-            arms=context_arms,
-            receipts=context_receipts,
-            instruction_channel=instruction_channel,
-        ),
+        context_resolver=context_resolver,
         instruction_channel=instruction_channel,
+        evaluation_runs=EvaluationRunService(
+            session_factory=session_factory,
+            resolver=context_resolver,
+            clock=clock,
+            # Computed once, here, because it describes the deployment and not
+            # the request. A value recomputed per run could vary within one
+            # process, which would make two runs of the same deployment look
+            # incomparable.
+            fingerprint=resolver_fingerprint(
+                decision=context_arms.recall_decision(),
+                embedder_available=embedder is not None,
+                arm_limit=DEFAULT_ARM_LIMIT,
+                item_cap=DEFAULT_ITEM_CAP,
+                arm_timeout_s=DEFAULT_ARM_TIMEOUT_S,
+            ),
+        ),
         context_reference_index=ReceiptReferenceIndex(session_factory=session_factory),
         context_resume=ContextResumeService(session_factory=session_factory, clock=clock),
     )
