@@ -29,7 +29,7 @@ from __future__ import annotations
 import base64
 import datetime
 import uuid
-from typing import Annotated, Any, cast
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 from pydantic import BaseModel, Field
@@ -38,7 +38,12 @@ from contextplane.api.container import Services
 from contextplane.api.errors import build_error
 from contextplane.api.middleware.tenant import get_tenant_context
 from contextplane.api.routers.arc_admin import _Accepted, _arc_context, _translate
-from contextplane.arc import AutonomyEnvelopeService, EnvelopeGrant, WorkloadIdentity
+from contextplane.arc import (
+    AutonomyEnvelopeService,
+    BoundEnvelope,
+    EnvelopeGrant,
+    WorkloadIdentity,
+)
 from contextplane.types import TenantContext
 
 router = APIRouter(tags=["arc: admin"], prefix="/v1/arc/admin")
@@ -235,14 +240,13 @@ def _decode_cursor(cursor: str) -> tuple[datetime.datetime, uuid.UUID]:
         ) from exc
 
 
-def _binding_response(found: object) -> EnvelopeBindingResponse:
+def _binding_response(binding: BoundEnvelope) -> EnvelopeBindingResponse:
     """One mapper, so the directory and the resolve read cannot disagree.
 
     Two copies would be two chances for a field to appear on one and not the
     other, and `revision_lifecycle_state` is the one that matters: a list that
     dropped it would show a row as governed while the document behind it is not.
     """
-    binding = cast(Any, found)
     return EnvelopeBindingResponse(
         artifact_id=binding.artifact_id,
         binding_id=binding.binding_id,
