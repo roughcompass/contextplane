@@ -90,6 +90,7 @@ from contextplane.arc import (
 from contextplane.auth.entitlements.resolver import EntitlementResolver
 from contextplane.config import Settings
 from contextplane.context.arms import ContextArms
+from contextplane.context.evaluation.runs import EvaluationRunService
 from contextplane.context.instructions import InstructionChannel
 from contextplane.context.receipts import ContextReceiptService
 from contextplane.context.references import ReceiptReferenceIndex
@@ -291,6 +292,11 @@ class Services:
     # instance would mean a set submitted through one and declared through the
     # other resolving as `declared_unknown`.
     instruction_channel: InstructionChannel
+    # Prompt sets, runs and verdicts. Here rather than constructed per request
+    # because its resolver fingerprint describes the deployment: a value rebuilt
+    # per call could vary within one process, and two runs of one deployment
+    # would then look incomparable.
+    evaluation_runs: EvaluationRunService
     # The index that makes a receipt findable from the work it describes, and
     # bounded resume over both. One instance each, so a receipt written
     # through one transport is the receipt the other reads.

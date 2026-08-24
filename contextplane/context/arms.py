@@ -537,6 +537,16 @@ class ContextArms:
                 "this arm does not serve content whose erasure has not reached it"
             )
 
+    def recall_decision(self) -> semantic_workspace.RecallDecision:
+        """The branch this deployment serves under.
+
+        Exposed rather than reached for, because the evaluation fingerprint needs
+        it and a second `load_decision()` at the composition root would be a
+        second read of a committed artifact that could disagree with the one this
+        object enforces.
+        """
+        return self._decision
+
     def _semantic_available(self) -> bool:
         """Whether this deployment both may and can run the semantic scan.
 

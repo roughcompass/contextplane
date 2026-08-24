@@ -9367,7 +9367,7 @@ list.
 
 ### E22-T10 — The five surfaces, and the routes that reach them
 
-**Kind:** task · **Status:** pending · **Blocked by:** E22-T5 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E22-T5 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: `App.tsx`'s 22 destinations are regrouped into Served / Sources / Judgement / Agents / Governance, with E21's naming table and address redirects applied in the same change.
 
@@ -9380,6 +9380,18 @@ The `eyebrow` slot is settled here because a regrouping is when it becomes answe
 Acceptance:
     pnpm --filter admin-dashboard test -- -t "navigation"
     pnpm lint && pnpm type-check && pnpm test && pnpm build
+
+**Shipped in contextplane-ui#41. Four corrections to what the entry assumed.**
+
+**The count is 24, not 23, and the table's 22 was right when it was written.** E22's surface table gave Judgement two existing destinations and totalled 22. `/curation` did not exist then; E5-T6 has since shipped the reviewer cockpit, so there are 23 existing destinations and `Needs review` makes 24. The 23rd is in Judgement by that surface's own question. The arithmetic is now a test rather than a paragraph, which is what the entry's own warning — *a grouping that quietly loses three is how a regrouping becomes a deletion nobody voted for* — asks for.
+
+**21 eyebrow strings, not 20, and `UserRole` went with them.** Every route carried a `role` and nothing read it: E22-T6 removed the header that relabelled the reader on every navigation and left the field on 22 entries, where it survived as a per-page persona nobody was being shown. The slot is now the surface, sourced from `routeDefinitions` so the navigation and the eyebrow cannot disagree.
+
+**E21's naming table had to reach the page titles, not only the nav labels.** A reader clicking "Policies" and landing on a page headed "Governed policies" sees two names for one thing, which is the problem the table exists to fix. E21's rule is unchanged and is what made this safe: the UI labels the job, the page body keeps the contract's word for the object.
+
+**The docs grep E21 required came back clean.** No dashboard address appears in the service repo's operator docs — every `/proposals`, `/workspaces` and `/memory/...` hit under `docs/` is a `/v1/` API path.
+
+Two defects the regrouping surfaced, neither predictable from the entry. `AppSidebar` rendered every section as a labelled `region`, so an ungrouped Overview would have been an unnamed landmark — announced by a screen reader and unnameable. And `routeForPathname`'s ordering hazard, which its own docstring already names for `/memory/assert`, reappeared the instant a second address moved under `/memory/`: `/memory/promotions/x` silently resolved to the claims page. Both are the same lesson, that a rule stated in a docstring is not a rule the next change obeys.
 
 ### E22-T11 — `/revisions` becomes a revision, and the two endings become actions on it
 
@@ -9454,7 +9466,7 @@ Acceptance:
 
 ### E22-T15 — Evaluation runs: a prompt, a set of them, and a verdict that persists
 
-**Kind:** task · **Status:** pending · **Blocked by:** E22-T9, E22-T14 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E22-T9, E22-T14 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a saved prompt set can be resolved repeatedly, its results compared across runs, and a verdict recorded against a run rather than lost with the page.
 
@@ -9466,6 +9478,20 @@ Decomposition decides whether a run pins the resolver configuration it ran under
 
 Acceptance:
     make lint typecheck && make test-coverage && make test-integration
+
+**Shipped. The deferred decision, and four the entry did not name.**
+
+**A run pins both halves, and only one of them was missing.** The request half is already in each resolution's receipt, so what a run needed was the *deployment* half: `resolver_fingerprint`, a digest over the facts a resolution depends on that no request can express — the recall branch, whether semantic is approved and whether an embedder exists, the arm bounds and the timeout. Two runs with different fingerprints are reported as not comparable rather than diffed.
+
+The shape was chosen against a specific failure the entry did not anticipate. A digest over the whole `Settings` object would change on a log-level edit and declare every prior run incomparable, which is the same as having no fingerprint: a comparison surface that always says "these are not comparable" is one nobody consults. So the test suite asserts both directions — every fact that can change a resolution changes the digest, and three facts that cannot (`reviewed_on`, open obligations, void dimensions) do not.
+
+**A verdict is on a run item, not on a run.** The entry says "a verdict recorded against a run"; a run of twenty prompts where three were wrong is not *bad*, it is right seventeen times and wrong three, and the three are what somebody has to look at. A run-level verdict flattens exactly the signal the loop produces. One verdict per person per item, replacing rather than accumulating — somebody who changed their mind has one opinion — while two reviewers disagreeing stays two rows, because disagreement is a fact worth keeping.
+
+**A prompt is a whole request, and it could not reuse the wire model.** A set that could only vary the query could not test a lifecycle placement, a subject, or an instruction digest, which is most of what there is to get wrong. But `api` sits above `context` in the layering, so the service that stores a prompt cannot import `ContextResolveRequest`. `PromptRequestV1` is the context-layer shape and the wire model is its projection, held equal in both directions by a conformance test — which is the only reason the duplication is safe, and which would have caught `instruction_digest` being lost had E22-T14 landed a wave later.
+
+**The harness's rule was transferable verbatim.** `context/evaluation/harness.py` already states, for the research campaign, that *a system error is a failure, never an exclusion*. It is the same rule here for the same reason: an errored prompt keeps its row with a failure and no receipt, and the run continues past it. Both halves are tested, because dropping the item and stopping at it are the same defect in opposite directions.
+
+**Not built, and named rather than left implicit.** No MCP tool. The evaluation surface's reader is a human deciding whether what was served was right, and E22's own reframe is that humans evaluate while machines consume — a tool letting an agent file verdicts on its own resolutions is a governance question this task did not ask. Adding one later costs a registry entry and a tier decision.
 
 ### E22-T16 — Canon copy, last, and with one more false sentence than E10 knew about
 

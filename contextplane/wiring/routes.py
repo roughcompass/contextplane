@@ -71,6 +71,7 @@ from contextplane.api.routers import arc_observation as arc_observation_router
 from contextplane.api.routers import arc_sources_graph as arc_sources_graph_router
 from contextplane.api.routers import context as context_router
 from contextplane.api.routers import context_feedback as context_feedback_router
+from contextplane.api.routers import evaluation as evaluation_router
 from contextplane.api.routers import intent_memory as task_memory_router
 from contextplane.api.routers import learning_reads as learning_reads_router
 from contextplane.api.routers import (
@@ -186,6 +187,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # Receipt lookup and bounded resume.
     app.include_router(receipts_router.router)
     app.include_router(context_router.router)
+    app.include_router(evaluation_router.router)
     app.include_router(memory_router.router)
     # DELETE /v1/memory/sessions/{session_id}/events/{event_id} — registered via
     # HttpMethodRouter so CONTEXTPLANE_HTTP_METHODS_MODE is honoured.
