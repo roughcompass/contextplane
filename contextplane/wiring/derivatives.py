@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 from contextplane.context.derivative_handlers import ReceiptLinkHandler
 from contextplane.retention import derivatives, holds, policies
 from contextplane.service.memory.derivative_handlers import ClaimDerivativeHandler
+from contextplane.service.memory.session_event_expiry import SessionEventExpiry
 from contextplane.service.operations.derivative_handlers import CARRIER_HANDLERS
 from contextplane.service.retrieval.derivative_handlers import retrieval_derivative_handlers
 from contextplane.signals.erasure import SignalExpiry
@@ -102,6 +103,15 @@ _HELD_RECORD_SOURCES: dict[str, holds.HeldRecordSource] = {
         id_column="derivative_id",
         due_at_sql="t.expires_at",
     ),
+    # Dated from the row rather than from a class deadline: a session event's
+    # period is the tenant's choice within the class, already resolved into
+    # `expires_at` at write time. Every other entry here recomputes; this one
+    # must not, or a hold would be dated against a policy the row never used.
+    policies.RECORD_SESSION_EVENT: holds.HeldRecordSource(
+        table="memory_session_events",
+        id_column="event_id",
+        due_at_sql="t.expires_at",
+    ),
     policies.RECORD_EXTERNAL_SIGNAL: holds.HeldRecordSource(
         table="external_signals",
         id_column="signal_id",
@@ -153,10 +163,19 @@ def build_retention_expiry_worker(
     """
     hold_store = holds.PostgresHoldStore(session_factory, _HELD_RECORD_SOURCES)
     signal_expiry = SignalExpiry(session_factory, hold_store)
+    session_event_expiry = SessionEventExpiry(session_factory, hold_store)
     return RetentionExpiryWorker(
         session_factory,
         hold_store,
         minimizers=(
+            # The last class to join the framework, and the one that most needed
+            # to: it advertised a period, carried the column and the index to
+            # enforce it, and nothing swept. Reads the row's own `expires_at`
+            # rather than a class deadline -- see `SessionEventExpiry`.
+            ExpiryMinimizer(
+                record_class=policies.RECORD_SESSION_EVENT,
+                reduce=lambda ctx, now: session_event_expiry.delete_expired_events(ctx, now=now),
+            ),
             # The payload clock: a signal's content goes long before its envelope.
             ExpiryMinimizer(
                 record_class=policies.RECORD_EXTERNAL_SIGNAL,

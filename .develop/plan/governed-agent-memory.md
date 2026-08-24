@@ -4155,7 +4155,7 @@ Acceptance:
 
 ### E6-T2 — Session events are the record class retention does not govern
 
-**Kind:** task · **Status:** pending — rescoped · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — storage/migrations/ · **Repo:** contextplane
 
 Goal: a retention class is a named policy -- how long, and what disposal means --
 that a stream or a claim category is assigned to, instead of the single
@@ -4239,6 +4239,45 @@ Acceptance:
     .venv/bin/python -m alembic upgrade head
     .venv/bin/python -m pytest tests/integration -q -k "retention"
     make all
+
+**`session_event` is the thirteenth governed record class, and the sweep exists.**
+
+**The per-tenant reconciliation, which the entry said the framework "does not
+currently model and may need to".** It already models it, just not where the
+entry looked. The disposition's `retention_days` is **180 — the class ceiling,
+and the same bound `tenants.memory_retention_days` is already CHECK-constrained
+to.** The tenant's integer is its choice *within* the class, and every row
+already carries the resulting `expires_at`. So the sweep honours the tenant's
+number by reading the row, and the framework never has to learn about tenants.
+
+That also answers what happens to the 1–180 CHECK, which the entry asked for
+explicitly: it stops being an unexplained bound and becomes **the class ceiling
+enforced at write**. The write path cannot produce an `expires_at` the policy
+would disallow, which is why the sweep can trust the column.
+
+**Reading the row rather than recomputing is the load-bearing choice**, and a
+test pins it with a row expiring beyond the ceiling. Recomputing from
+`memory_retention_days` would use *today's* setting to expire a row written
+under a different one — silently re-dating history every time an operator
+changes the number.
+
+**Mode: `delete`, no tombstone.** Unlike a receipt or a signal there is no
+envelope worth keeping once the body is gone. And the disposal is already
+evidenced: claims extracted from a session survive its erasure and carry an
+`independence_key` digest of the session they came from, so a tombstone per
+event would add the system's largest table again to record what the derivatives
+already show.
+
+**Holds now reach it**, which is most of the argument for folding it in rather
+than giving it a sweeper of its own. Before this, no legal hold could protect a
+session event, because nothing consulted holds on the way to deleting one — and
+nothing deleted one at all.
+
+One small thing removed on the way: the sweep's first draft guarded
+`expires_at IS NOT NULL`. The column is `NOT NULL`, so that predicate can never
+be false, and a predicate that cannot fail invites the next reader to wonder
+what a null would mean. Replaced by a test asserting the invariant the sweep
+depends on.
 
 ### E6-T3 — Crypto-shredding, which a shipped decision already assumes exists
 
