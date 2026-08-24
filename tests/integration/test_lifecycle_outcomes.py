@@ -92,8 +92,11 @@ def seat(sync_engine: Engine) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
         )
         conn.execute(
             text(
+                # `agent` rather than the `service` this said before `0084`
+                # closed the vocabulary; see the note in
+                # `test_context_arm_composition.py` for why that word existed.
                 "INSERT INTO actors (actor_id, tenant_id, oidc_subject, display_name, actor_kind)"
-                " VALUES (:a, :t, :sub, 'CI seat', 'service')"
+                " VALUES (:a, :t, :sub, 'CI seat', 'agent')"
             ),
             {"a": actor_id, "t": tenant_id, "sub": f"s-{actor_id.hex[:8]}"},
         )

@@ -26,6 +26,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from contextplane.auth.entitlements.actor_store import upsert_entitlement_actor
 from contextplane.exceptions import NotFoundError, ValidationError
 from contextplane.service.governance.actors import (
     KIND_UNKNOWN,
@@ -341,3 +342,47 @@ async def test_a_page_larger_than_the_ceiling_is_refused(
     ctx = await _tenant(factory)
     with pytest.raises(ValidationError, match="page_size"):
         await _directory(factory).list_principals(ctx, page_size=MAX_PAGE_SIZE + 1)
+
+
+@pytest.mark.asyncio
+async def test_a_person_signing_in_is_declared_human_rather_than_left_unknown(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The regression `0084` shipped, and the reason the default is not the whole
+    story.
+
+    Flipping the column default to `unknown` is right for a principal nobody
+    declared. It is wrong for one the identity provider just asserted: the
+    entitlement service materialises an actor row for an authenticated OIDC
+    end-user, and that row *is* the declaration landing in the database.
+
+    Left to the default, every person who signs in became `unknown`, and every
+    guard that asks whether the caller is human refused them -- claim
+    confirmation most visibly, which failed with a 403 telling a person that
+    "only a human principal may confirm a claim". Three integration files caught
+    it; none of them was about actors, and the one gate that would have named the
+    cause did not exist. It does now.
+    """
+    ctx = await _tenant(factory)
+    async with factory() as session, session.begin():
+        actor_id = await upsert_entitlement_actor(
+            session,
+            tenant_id=ctx.tenant_id,
+            oidc_subject=f"oidc-{uuid.uuid4().hex[:8]}",
+            display_name="A Person",
+        )
+
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text("SELECT actor_kind, declared_at, declared_by FROM actors WHERE actor_id = :a"),
+                {"a": actor_id},
+            )
+        ).one()
+
+    assert row.actor_kind == "human"
+    assert row.declared_at is not None, "a kind with no declaration is one the schema calls undeclared"
+    assert row.declared_by == actor_id, (
+        "attributed to the row itself: the entitlement service has no actor row to point at, "
+        "and the schema requires an attribution alongside the timestamp"
+    )

@@ -145,7 +145,19 @@ async def _ensure_tenant(session: object, slug: str, display_name: str) -> uuid.
 
 
 async def _ensure_actor(session: object, tenant_id: uuid.UUID, oidc_subject: str, display_name: str) -> uuid.UUID:
-    """Upsert an actor row for (tenant, oidc_subject). Returns actor_id."""
+    """Upsert an actor row for (tenant, oidc_subject). Returns actor_id.
+
+    **The kind is declared, not defaulted.** `0084` flipped the column's default
+    from `'human'` to `'unknown'` precisely so a kind nobody chose is legible as
+    a kind nobody chose. This bootstrap does know: it is creating a person's
+    account, so it says `human` and attributes the declaration to the row itself
+    -- there is no earlier principal in a fresh database to attribute it to, and
+    the schema requires an attribution alongside a declaration timestamp.
+
+    Left to the default, the row lands as `unknown`, and `seed.py`'s dev-tenant
+    lookup filters on `actor_kind = 'human'` and finds nothing. That is how this
+    broke: a default changed and one reader of the old default was missed.
+    """
     now = datetime.datetime.now(tz=datetime.UTC)
     pre = await session.execute(  # type: ignore[attr-defined]
         text("SELECT actor_id FROM actors " "WHERE tenant_id = :tid AND oidc_subject = :sub"),
@@ -158,8 +170,9 @@ async def _ensure_actor(session: object, tenant_id: uuid.UUID, oidc_subject: str
     actor_id = uuid.uuid4()
     await session.execute(  # type: ignore[attr-defined]
         text(
-            "INSERT INTO actors (actor_id, tenant_id, oidc_subject, display_name, created_at) "
-            "VALUES (:aid, :tid, :sub, :name, :now)"
+            "INSERT INTO actors "
+            "(actor_id, tenant_id, oidc_subject, display_name, actor_kind, declared_at, declared_by, created_at) "
+            "VALUES (:aid, :tid, :sub, :name, 'human', :now, :aid, :now)"
         ),
         {"aid": actor_id, "tid": tenant_id, "sub": oidc_subject, "name": display_name, "now": now},
     )

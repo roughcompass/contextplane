@@ -811,6 +811,7 @@ def _arms(world: dict[str, Any], *, claims: Any = None) -> Any:
     from unittest.mock import AsyncMock, MagicMock
 
     from contextplane.context.arms import ContextArms
+    from contextplane.context.instructions import InstructionChannel
     from contextplane.workspaces.recall import WorkspaceRecall
 
     return ContextArms(
@@ -819,6 +820,7 @@ def _arms(world: dict[str, Any], *, claims: Any = None) -> Any:
         claims=claims if claims is not None else MagicMock(query=AsyncMock(return_value=[])),
         arc_receipts=MagicMock(),
         recall=WorkspaceRecall(session_factory=world["factory"]),
+        instructions=InstructionChannel(world["factory"]),
     )
 
 

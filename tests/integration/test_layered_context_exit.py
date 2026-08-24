@@ -274,10 +274,16 @@ async def test_an_outsider_resumes_empty_rather_than_discovering_the_task(world:
 
 
 @pytest.mark.asyncio
-async def test_one_request_returns_the_fixed_four_blocks_with_trust_and_a_receipt(world: _World) -> None:
-    """The envelope contract, through the wired app rather than a fixture: four
-    blocks in a fixed order, every non-canonical item labelled, quality that
-    agrees with the blocks, and a receipt that names a row that exists."""
+async def test_one_request_returns_the_fixed_blocks_with_trust_and_a_receipt(world: _World) -> None:
+    """The envelope contract, through the wired app rather than a fixture: every
+    block in a fixed order, every non-canonical item labelled, quality that
+    agrees with the blocks, and a receipt that names a row that exists.
+
+    The names are spelled out rather than compared against `BLOCK_NAMES`. This is
+    an exit-criteria test over the wire: importing the tuple the response is
+    built from would make it agree with itself, and a block added to the contract
+    without anybody deciding it should reach callers would pass.
+    """
     with _as(world, world["owner"]):
         resolved = await world["client"].post(
             "/v1/context/resolve", headers=_headers(world), json={"query": "deployment"}
@@ -287,7 +293,13 @@ async def test_one_request_returns_the_fixed_four_blocks_with_trust_and_a_receip
     body = resolved.json()
     blocks = body["blocks"]
 
-    assert [block["name"] for block in blocks] == ["canonical", "arc", "observed_claims", "workspace"]
+    assert [block["name"] for block in blocks] == [
+        "canonical",
+        "arc",
+        "observed_claims",
+        "workspace",
+        "instructions",
+    ]
     for block in blocks:
         assert block["state"] in {"success", "empty", "degraded", "failed"}
         # `empty` is not a failure and carries no reason -- an arm with nothing

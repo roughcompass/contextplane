@@ -156,6 +156,23 @@ async def upsert_entitlement_actor(
     The first-sight vs. re-sight discriminator is the comparison of the
     UUID we generated (``new_actor_id``) against the RETURNING value:
     if they match, the row is new and the audit row should be emitted.
+
+    **The kind is declared `human`, and the identity provider is what declares
+    it.** `0084` flipped the column default to `unknown` so that a kind nobody
+    chose is legible as a kind nobody chose, and that rule is about *machine*
+    principals: an agent is registered, and one nobody registered should not
+    silently wear the same label as a person. A principal arriving through this
+    path is not undeclared -- an OIDC end-user identity was asserted by the
+    entitlement service, which is the authority on that question, and this row
+    is that assertion landing in the database.
+
+    Left to the default, every person who signs in materialises as `unknown`,
+    and every guard that asks whether the caller is human -- claim confirmation,
+    most visibly -- refuses them. That is not the decision `0084` made; it is
+    what happens when a default changes and one writer of the old default is
+    missed. The declaration is attributed to the row itself: the entitlement
+    service has no actor row of its own to point at, and the schema requires an
+    attribution alongside the timestamp.
     """
     new_actor_id = uuid.uuid4()
     now = datetime.datetime.now(tz=datetime.UTC)
@@ -163,8 +180,9 @@ async def upsert_entitlement_actor(
 
     result = await session.execute(
         text(
-            "INSERT INTO actors (actor_id, tenant_id, oidc_subject, display_name, created_at) "
-            "VALUES (:actor_id, :tenant_id, :oidc_subject, :display_name, :now) "
+            "INSERT INTO actors "
+            "(actor_id, tenant_id, oidc_subject, display_name, actor_kind, declared_at, declared_by, created_at) "
+            "VALUES (:actor_id, :tenant_id, :oidc_subject, :display_name, 'human', :now, :actor_id, :now) "
             "ON CONFLICT (tenant_id, oidc_subject) "
             "DO UPDATE SET display_name = EXCLUDED.display_name "
             "RETURNING actor_id"

@@ -9134,6 +9134,38 @@ has declared. `is_declared` is on every row, because `actor_kind` alone cannot
 tell a declared human from a principal nobody has spoken about — and under the
 old default both read as `human`.
 
+**Amended after the fact: the "nothing reads `'human'`" claim above was wrong,
+and so was "two values in use".** Both were checked, and both checks missed. Two
+consumers branch on `'human'` — `scripts/seed.py`'s dev-tenant lookup filters
+`WHERE actor_kind = 'human'`, and the claim-confirmation guard refuses a
+principal that is not one. A third value, `'service'`, was in use in three
+integration files; the column had no CHECK, so a word a test invented stored
+cleanly and looked like a vocabulary.
+
+The consequence was not subtle. Every principal materialised by the entitlement
+service landed as `unknown`, so `make dev-token` produced a tenant `seed.py`
+could not find, and every person who signed in was refused claim confirmation
+with *"only a human principal may confirm a claim"*. Forty-five integration
+setup errors and seven failures, across five files, none of them about actors.
+
+**The entry said what to do if this happened — "the ADR is what was wrong, not
+that consumer" — and on inspection the ADR is not what was wrong.** ADR 0019 is
+about *machine* principals: an agent is registered, and one nobody registered
+must not silently wear the same label as a person. A human arriving through OIDC
+is not an undeclared principal; the identity provider asserted an end-user
+identity, and that assertion is the declaration. So the three writers now declare
+rather than default — `upsert_entitlement_actor` and `bootstrap_dev_tenant`
+declare `human` attributed to the row itself, and the three test seats that said
+`'service'` say `agent`. `unknown` keeps meaning what ADR 0019 wants it to mean,
+and stops meaning "signed in".
+
+**It was invisible for a reason worth recording.** This surfaced only when the
+whole integration tier ran locally: the PR's own `integration` job hung rather
+than failing, reporting `pending` for 74 minutes and, on an earlier attempt, for
+six hours. A job with no `timeout-minutes` makes a hang indistinguishable from a
+queue. E22-T14 gives every job in every workflow one, sized at roughly 3x its
+measured green duration.
+
 **Three CHECKs, each closing a way of half-declaring.** The vocabulary closes at
 five values, because a column whose values were a convention is how `human` came
 to mean "not a sync worker". A declaration carries its declarer or neither. And
