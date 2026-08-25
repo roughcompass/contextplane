@@ -5702,6 +5702,15 @@ expressible and `service/governance/obligation_evidence.py` is the bundle: the
 obligation, the incidents it cites, and the claims whose provenance names those
 incidents.
 
+**And it was reachable by nothing, which this entry recorded as delivered.** The
+service was wired into the container and read by no route and no tool, so an
+*export* nobody could call was marked done. That is the seventh instance of this
+plan's most-repeated defect, and the first one this file authored about its own
+deliverable rather than inheriting. `GET
+/v1/admin/reporting-obligations/{id}:evidence` closes it, and a test asserts the
+path is mounted rather than calling it — a call also exercises authorization,
+and a 403 would look like a pass.
+
 **The scope is a join and nothing is inferred.**
 
     obligation -> context_reference_bindings   (subject_type = 'reporting_obligation')

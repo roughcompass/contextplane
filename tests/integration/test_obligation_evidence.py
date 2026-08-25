@@ -335,3 +335,38 @@ async def test_the_bundle_names_claims_and_does_not_serve_what_they_assert(
     for row in bundle.citing_claims:
         assert set(row) == {"claim_id", "incident"}
         assert "platform" not in str(row), "the bundle is carrying what a claim asserts"
+
+
+def test_the_bundle_is_reachable_over_a_transport() -> None:
+    """The gap this route closed: the service was the deliverable and nothing
+    could call it.
+
+    `ObligationEvidenceService` shipped wired into the container and reached by
+    no route and no tool, so an export nobody could call was recorded as
+    delivered. Asserted against the mounted route table rather than by calling,
+    because a call also exercises authorization and a 403 would look like a pass
+    — what is being checked is that the path exists at all.
+    """
+    from contextplane.api.routers import admin_obligations
+
+    mounted = {
+        (list(route.methods or {})[0], route.path)
+        for route in admin_obligations.router.routes  # type: ignore[attr-defined]
+    }
+
+    assert (
+        "GET",
+        "/v1/admin/reporting-obligations/{obligation_id}:evidence",
+    ) in mounted, f"the evidence export is not mounted; {sorted(mounted)}"
+
+
+def test_the_export_serves_claim_ids_and_never_claim_content() -> None:
+    """An export that inlined values would be a second serving path with none of
+    the servability rules the real one applies — the same shape as the
+    agent-performance read that was disclosing withheld content."""
+    from contextplane.api.routers import admin_obligations
+
+    fields = admin_obligations.ObligationEvidenceResponse.model_fields
+
+    assert "citing_claims" in fields
+    assert not any("value" in name for name in fields), "no field on the export may carry a claim value"

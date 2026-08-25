@@ -12,6 +12,29 @@ proof: it fails the moment any of the eight goes back to having no reachable
 caller, the same way a docstring claim without a gate behind it eventually
 does.
 
+**This gate is a named list, not a general audit, and the target name
+`reachability-audit` oversells it.** It proves the modules below have callers.
+It proves nothing about any service added afterwards, and that gap is not
+hypothetical — `service/governance/obligation_evidence.py` shipped as a plan
+task's deliverable, wired into the container, reached by no route and no tool,
+and passed this gate every time, because it was never in the list.
+
+**It also cannot be widened to cover them, and that is worth knowing before
+somebody tries.** Reachability here means *a transport file imports the module*.
+The services this repo has added since are reached through the container
+(`_services(request).obligation_evidence`) or through a package front door
+(`from contextplane.arc import AutonomyEnvelopeService`), and neither leaves an
+import in a router file. Adding such a module to the list below makes this gate
+fail on a service that is genuinely reachable.
+
+**So the proof for those is a different test, and the convention is:** a service
+reached through the container gets a test asserting its route is *mounted* —
+against the router's own route table, not by calling it, because a call
+exercises authorization too and a 403 would read as a pass. See
+`test_obligation_evidence.py` and `test_arc_envelope_surface.py`. When you add a
+service a plan entry calls a deliverable, write that test; this gate will not
+catch it for you.
+
 A module counts as reachable when at least one of these imports it, outside
 `tests/` and outside the module's own file:
 

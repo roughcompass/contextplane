@@ -288,6 +288,86 @@ async def get_deadline_policy(
     )
 
 
+class CitedIncidentResponse(BaseModel):
+    """One external incident record this obligation is about."""
+
+    reference_id: uuid.UUID
+    source_system: str
+    source_namespace: str
+    external_id: str
+    authorized_uri: str | None
+    observed_at: datetime.datetime | None
+    bound_at: datetime.datetime
+
+
+class ObligationEvidenceResponse(BaseModel):
+    """One obligation, the incidents it cites, and the claims citing those."""
+
+    obligation: ObligationResponse
+    incidents: list[CitedIncidentResponse]
+    #: Claim **ids** paired with the incident each cites, never claim content.
+    #: An export that inlined values would be a second serving path with none of
+    #: the servability rules the real one applies.
+    citing_claims: list[dict[str, object]]
+    provenance: str
+    is_matched: bool = Field(
+        description=(
+            "Whether anybody has yet said which record this obligation concerns. False is a "
+            "nomination in progress rather than a defect, and a reader of an empty bundle "
+            "needs to be able to tell those apart."
+        )
+    )
+
+
+@router.get(
+    "/reporting-obligations/{obligation_id}:evidence",
+    response_model=ObligationEvidenceResponse,
+)
+async def obligation_evidence(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(_admin_required)],
+    obligation_id: Annotated[uuid.UUID, Path()],
+) -> ObligationEvidenceResponse:
+    """Everything recorded about one obligation, in one read.
+
+    **This route is why the service exists, and it was missing.**
+    `ObligationEvidenceService` shipped as E4-T7's deliverable, wired into the
+    container and reached by no transport -- so the export nobody could call was
+    recorded as delivered. An export surface with no caller is not an export,
+    and this is the seventh instance of that defect the plan has caught.
+
+    The scope is a join and nothing is inferred: an obligation, the incidents it
+    cites, and the claims whose provenance names those incidents. A claim reaches
+    this bundle only by citing an incident this obligation cites.
+
+    Ids, never claim content. Somebody assembling a regulatory submission needs
+    to know *which* records bear on it; serving the values here would be a second
+    serving path with none of the servability rules the real one applies.
+    """
+    try:
+        bundle = await _services(request).obligation_evidence.bundle_for(ctx, obligation_id=obligation_id)
+    except NotFoundError as exc:
+        raise map_catalog_error(exc) from exc
+    return ObligationEvidenceResponse(
+        citing_claims=[dict(row) for row in bundle.citing_claims],
+        incidents=[
+            CitedIncidentResponse(
+                authorized_uri=incident.authorized_uri,
+                bound_at=incident.bound_at,
+                external_id=incident.external_id,
+                observed_at=incident.observed_at,
+                reference_id=incident.reference_id,
+                source_namespace=incident.source_namespace,
+                source_system=incident.source_system,
+            )
+            for incident in bundle.incidents
+        ],
+        is_matched=bundle.is_matched,
+        obligation=_response(bundle.obligation),
+        provenance=bundle.provenance,
+    )
+
+
 @router.get("/reporting-obligations/{obligation_id}", response_model=ObligationResponse)
 async def get_obligation(
     request: Request,
