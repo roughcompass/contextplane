@@ -21,7 +21,8 @@ import uuid
 import httpx
 import pytest
 
-from contextplane.config import Settings, _resolve_extraction_provider
+from contextplane.config import Settings
+from contextplane.config_llm_roles import _resolve_extraction_provider
 from contextplane.extraction.anthropic_provider import (
     AnthropicExtractionProvider,
     build_from_env,

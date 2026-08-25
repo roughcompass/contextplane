@@ -7,9 +7,15 @@
     GET  /v1/evaluation/prompt-sets/{set_id}/runs     → RunListResponse
     GET  /v1/evaluation/runs/{run_id}                 → RunResponse
     POST /v1/evaluation/runs/items/{item_id}/verdict  → VerdictResponse
+    GET  /v1/evaluation/expectation-presets           → PresetListResponse
     GET  /v1/evaluation/simulations/availability      → SimulationAvailabilityResponse
     POST /v1/evaluation/simulations                   → SimulationResponse
     GET  /v1/evaluation/simulations/{simulation_id}   → SimulationResponse
+    POST /v1/evaluation/simulations/{simulation_id}/judgements     → JudgementListResponse
+    GET  /v1/evaluation/simulations/{simulation_id}/judgements     → JudgementListResponse
+    POST /v1/evaluation/judgements/{judgement_id}/review           → ReviewResponse
+    POST /v1/evaluation/simulations/{simulation_id}/judgements/panel → PanelResponse
+    GET  /v1/evaluation/judge-calibration                          → CalibrationStateListResponse
 
 This router adapts and does not decide. Which prompts a run resolves, what a
 verdict may say, whether two runs are comparable and what happens to a prompt
@@ -53,6 +59,7 @@ from contextplane.api.errors import map_catalog_error
 from contextplane.api.schemas.evaluation import (
     AddPromptRequest,
     CreatePromptSetRequest,
+    PresetListResponse,
     PromptResponse,
     PromptSetListResponse,
     PromptSetResponse,
@@ -60,6 +67,17 @@ from contextplane.api.schemas.evaluation import (
     RunListResponse,
     RunResponse,
     VerdictResponse,
+)
+from contextplane.api.schemas.judgement import (
+    CalibrationStateListResponse,
+    CalibrationStateResponse,
+    JudgementListResponse,
+    JudgementResponse,
+    PanelOutcomeResponse,
+    PanelResponse,
+    RecordJudgementReviewRequest,
+    ReviewResponse,
+    RunJudgementRequest,
 )
 from contextplane.api.schemas.simulation import (
     RunSimulationRequest,
@@ -129,6 +147,7 @@ async def add_prompt(
             set_id=set_id,
             request=body.request,
             intent_note=body.intent_note,
+            expectations=body.expectations,
         )
     except CatalogError as exc:
         raise map_catalog_error(exc) from exc
@@ -323,3 +342,169 @@ def _resolver_arguments(request: dict[str, object]) -> dict[str, object]:
     arguments = validated.resolver_arguments()
     arguments.pop("query")
     return arguments
+
+
+# ---------------------------------------------------------------------------
+# Judged criteria, and the human who may overrule the judge
+# ---------------------------------------------------------------------------
+
+
+@router.post("/simulations/{simulation_id}/judgements", response_model=JudgementListResponse)
+async def judge_simulation(
+    simulation_id: uuid.UUID,
+    body: RunJudgementRequest,
+    ctx: Annotated[TenantContext, Depends(_write_required)],
+    container: Annotated[Services, Depends(services)],
+) -> JudgementListResponse:
+    """Grade one simulated answer on groundedness and answer relevance.
+
+    Both criteria in one call, because they are read from the same material and
+    two calls would double the cost to produce two verdicts that could disagree
+    about what the answer said.
+
+    Refused with `409` when the judge shares a provider family with the candidate
+    — a judge from the candidate's own family scores it 10–25 % higher than a
+    third party does, and that is a constraint rather than advice.
+    """
+    try:
+        judged = await container.judgement.judge(ctx, simulation_id=simulation_id, panel_position=body.panel_position)
+    except JudgeFamilyRefused as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.reason) from exc
+    except SimulationUnavailable as exc:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=exc.reason) from exc
+    except ProviderError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=exc.reason) from exc
+    except CatalogError as exc:
+        raise map_catalog_error(exc) from exc
+    return JudgementListResponse(items=[JudgementResponse.of(entry) for entry in judged])
+
+
+@router.get("/simulations/{simulation_id}/judgements", response_model=JudgementListResponse)
+async def list_judgements(
+    simulation_id: uuid.UUID,
+    ctx: Annotated[TenantContext, Depends(_read_required)],
+    container: Annotated[Services, Depends(services)],
+) -> JudgementListResponse:
+    """Every judged criterion of one simulation, with every review on each.
+
+    `confidence_is_calibrated` is false on every row until E24-T6 fits bins for
+    the pinned tuple. It is sent rather than left for each client to work out,
+    because a client that got it wrong would render an unexamined number with an
+    authoritative look — on the screen whose job is calibrating trust.
+    """
+    try:
+        judged = await container.judgement.judgements_of(ctx, simulation_id)
+        calibrated = await container.judgement.calibrated_tuples()
+    except CatalogError as exc:
+        raise map_catalog_error(exc) from exc
+    return JudgementListResponse(
+        items=[JudgementResponse.of(entry, is_calibrated=entry.pinned_tuple in calibrated) for entry in judged]
+    )
+
+
+@router.post("/judgements/{judgement_id}/review", response_model=ReviewResponse)
+async def record_judgement_review(
+    judgement_id: uuid.UUID,
+    body: RecordJudgementReviewRequest,
+    ctx: Annotated[TenantContext, Depends(_write_required)],
+    container: Annotated[Services, Depends(services)],
+) -> ReviewResponse:
+    """Confirm or overrule one judged criterion.
+
+    A second fact beside the judge's, never a correction to it: the pair (what
+    the judge said, what the person said) is the only thing calibration can be
+    fitted from, and overwriting would destroy it.
+
+    Attributed to the caller and not to an actor the caller names. A second
+    review from the same reviewer replaces the first, because somebody who
+    changed their mind has one opinion; two reviewers disagreeing stays two rows.
+    """
+    try:
+        recorded = await container.judgement.record_review(
+            ctx,
+            judgement_id=judgement_id,
+            note=body.note,
+            observed_confidence=body.observed_confidence,
+            verdict=body.verdict,
+        )
+    except CatalogError as exc:
+        raise map_catalog_error(exc) from exc
+    return ReviewResponse.of(recorded)
+
+
+@router.get("/expectation-presets", response_model=PresetListResponse)
+async def list_expectation_presets(
+    ctx: Annotated[TenantContext, Depends(_read_required)],
+) -> PresetListResponse:
+    """The seeded personas a prompt's expectations can be started from.
+
+    *"Here is a best practice, but you may amend for a given persona."* Each is a
+    parameterization of the same five criteria, never an extension: a persona
+    that could add a criterion would be a rubric, and two rubrics produce two
+    numbers nobody can put side by side.
+
+    Each carries the rubric versions its thresholds were written against, because
+    a threshold on a criterion that has since been redefined is a number
+    describing something else.
+
+    No tenant scoping: these are the shapes this deployment ships, not this
+    tenant's data. The read gate is still applied, because a caller with no role
+    on this deployment has no business enumerating its evaluation vocabulary.
+    """
+    return PresetListResponse.seeded()
+
+
+@router.post("/simulations/{simulation_id}/judgements/panel", response_model=PanelResponse)
+async def judge_with_panel(
+    simulation_id: uuid.UUID,
+    ctx: Annotated[TenantContext, Depends(_write_required)],
+    container: Annotated[Services, Depends(services)],
+) -> PanelResponse:
+    """Run every configured judge over one answer, and leave the split visible.
+
+    Opt-in, and 3× the cost of a single judge — right for a run that is gating a
+    launch decision, wrong for the interactive loop where nobody is making one.
+    A separate operation rather than a default, for exactly that reason.
+
+    A 2–1 panel is reported as 2–1. Nothing is averaged: a criterion three judges
+    disagree about is the one most worth a human's time, and a blended figure
+    would destroy the signal the panel costs 3× to produce.
+
+    Refused with `409` when two members share a provider family — three judges
+    from one family cancel nothing.
+    """
+    try:
+        outcomes = await container.judgement.judge_panel(ctx, simulation_id=simulation_id)
+        calibrated = await container.judgement.calibrated_tuples()
+    except JudgeFamilyRefused as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.reason) from exc
+    except SimulationUnavailable as exc:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=exc.reason) from exc
+    except ProviderError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=exc.reason) from exc
+    except CatalogError as exc:
+        raise map_catalog_error(exc) from exc
+    return PanelResponse(items=[PanelOutcomeResponse.of(entry, calibrated=calibrated) for entry in outcomes])
+
+
+@router.get("/judge-calibration", response_model=CalibrationStateListResponse)
+async def list_judge_calibration(
+    ctx: Annotated[TenantContext, Depends(_read_required)],
+    container: Annotated[Services, Depends(services)],
+) -> CalibrationStateListResponse:
+    """Every judge tuple that has ever been fitted, at its most recent attempt.
+
+    A tuple that has been tried and always missed its bound stays visible rather
+    than disappearing the moment nothing about it is active. That row is the
+    answer to *"why is this judge still unproven"*, and its absence would send an
+    evaluator looking in the wrong place.
+
+    Deployment-wide, matching how the fit is computed: what is being calibrated
+    is a model's self-report, which is a property of the model rather than of a
+    tenant.
+    """
+    try:
+        states = await container.judge_calibration.states(ctx)
+    except CatalogError as exc:
+        raise map_catalog_error(exc) from exc
+    return CalibrationStateListResponse(items=[CalibrationStateResponse.of(entry) for entry in states])

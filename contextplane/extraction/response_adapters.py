@@ -23,6 +23,7 @@ from.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import time
@@ -44,6 +45,15 @@ from contextplane.extraction.adapter_kit import (
     read_json_capped,
     record_call,
     record_tokens,
+)
+from contextplane.extraction.judge_prompt import (
+    JUDGE_SCHEMA,
+    JUDGE_TOOL_NAME,
+    TOOL_DESCRIPTIONS,
+    JudgementCall,
+    JudgementRequest,
+    assemble_judge_prompt,
+    read_judge_output,
 )
 from contextplane.extraction.provider import ProviderError, ProviderMalformedError, TokenUsage
 from contextplane.extraction.response_provider import (
@@ -72,6 +82,25 @@ _OPENAI_AUTH_TEMPLATE: Final = "Bearer {key}"
 #: mean "whatever the one adapter used".
 ANTHROPIC_DEFAULT_MODEL: Final = "claude-sonnet-5"
 OPENAI_DEFAULT_MODEL: Final = "gpt-4o"
+
+#: What each forced tool is described as, by tool name. One table so both
+#: families send the same words: a description is part of what the model was
+#: asked, and two adapters wording it differently would be two populations under
+#: one prompt-template hash.
+_TOOL_DESCRIPTIONS: Final[dict[str, str]] = {
+    RESPONSE_TOOL_NAME: "Answer the prompt, citing the served items each assertion rests on.",
+    **TOOL_DESCRIPTIONS,
+}
+
+
+@dataclasses.dataclass(frozen=True)
+class _ToolCall:
+    """One forced tool call's result, before either role interprets it."""
+
+    arguments: object
+    model_id: str
+    usage: TokenUsage
+    duration_ms: int | None
 
 
 class _HttpResponseProvider:
@@ -191,13 +220,91 @@ class _HttpResponseProvider:
             raise ProviderError(f"provider error (HTTP {response.status_code})", is_retriable=retriable)
         raise ProviderError(f"request rejected (HTTP {response.status_code})", is_retriable=retriable)
 
-    async def _call(self, request: ResponseRequest, payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    # -- the one call both roles make ----------------------------------------
+
+    def _payload(
+        self, *, system: str, data: str, tool_name: str, schema: dict[str, Any], model_id: str, max_tokens: int
+    ) -> dict[str, Any]:
+        """The request envelope this family speaks. Overridden per family."""
+        raise NotImplementedError
+
+    def _tool_input(self, body: dict[str, Any]) -> object:
+        """The forced tool call's arguments. Overridden per family."""
+        raise NotImplementedError
+
+    def _usage(self, body: dict[str, Any]) -> TokenUsage:
+        """This family's usage block, mapped onto the shared builder."""
+        raise NotImplementedError
+
+    async def _invoke_tool(
+        self, *, system: str, data: str, tool_name: str, schema: dict[str, Any], model_id: str, max_tokens: int
+    ) -> _ToolCall:
+        """One forced tool call, whatever the caller wanted it for.
+
+        Shared between generating an answer and judging one, because the two are
+        the same operation over different schemas -- a model is handed
+        instructions, data, and one tool it must call. Duplicating the transport
+        per role is how a fix to one of them stops applying to the other, and the
+        containment argument in particular has to hold for both.
+        """
+        payload = self._payload(
+            data=data, max_tokens=max_tokens, model_id=model_id, schema=schema, system=system, tool_name=tool_name
+        )
         started = time.monotonic()
         try:
             body = await self._post(payload)
         finally:
             PROVIDER_DURATION.observe(time.monotonic() - started)
-        return body, int((time.monotonic() - started) * 1000)
+        duration_ms = int((time.monotonic() - started) * 1000)
+
+        usage = self._usage(body)
+        record_tokens(usage)
+        arguments = self._tool_input(body)
+        record_call(OUTCOME_OK, self.provider_id)
+        return _ToolCall(
+            arguments=arguments,
+            duration_ms=duration_ms,
+            model_id=str(body.get("model") or model_id),
+            usage=usage,
+        )
+
+    async def respond(self, request: ResponseRequest) -> ResponseResult:
+        """Answer the prompt from the resolved envelope, with citations."""
+        system, data = assemble_response_prompt(request)
+        call = await self._invoke_tool(
+            data=data,
+            max_tokens=request.max_output_tokens,
+            model_id=request.model_id,
+            schema=RESPONSE_SCHEMA,
+            system=system,
+            tool_name=RESPONSE_TOOL_NAME,
+        )
+        answer, assertions = _read_tool_input(call.arguments)
+        return ResponseResult(
+            answer=answer,
+            assertions=assertions,
+            duration_ms=call.duration_ms,
+            model_id=call.model_id,
+            usage=call.usage,
+        )
+
+    async def judge(self, request: JudgementRequest) -> JudgementCall:
+        """Grade one answer against the frozen rubric, reasoning before verdict."""
+        system, data = assemble_judge_prompt(request)
+        call = await self._invoke_tool(
+            data=data,
+            max_tokens=request.max_output_tokens,
+            model_id=request.model_id,
+            schema=JUDGE_SCHEMA,
+            system=system,
+            tool_name=JUDGE_TOOL_NAME,
+        )
+        return JudgementCall(
+            criteria=read_judge_output(call.arguments),
+            duration_ms=call.duration_ms,
+            model_id=call.model_id,
+            usage=call.usage,
+        )
 
 
 class AnthropicResponseProvider(_HttpResponseProvider):
@@ -224,38 +331,25 @@ class AnthropicResponseProvider(_HttpResponseProvider):
             client=client,
         )
 
-    async def respond(self, request: ResponseRequest) -> ResponseResult:
-        system, data = assemble_response_prompt(request)
-        payload: dict[str, Any] = {
-            "model": request.model_id,
-            "max_tokens": request.max_output_tokens,
+    def _payload(
+        self, *, system: str, data: str, tool_name: str, schema: dict[str, Any], model_id: str, max_tokens: int
+    ) -> dict[str, Any]:
+        return {
+            "model": model_id,
+            "max_tokens": max_tokens,
             "system": system,
-            "tools": [
-                {
-                    "name": RESPONSE_TOOL_NAME,
-                    "description": "Answer the prompt, citing the served items each assertion rests on.",
-                    "input_schema": RESPONSE_SCHEMA,
-                }
-            ],
+            "tools": [{"name": tool_name, "description": _TOOL_DESCRIPTIONS[tool_name], "input_schema": schema}],
             # Forcing the tool is what makes prose output impossible rather than
             # merely discouraged.
-            "tool_choice": {"type": "tool", "name": RESPONSE_TOOL_NAME},
+            "tool_choice": {"type": "tool", "name": tool_name},
             "messages": [{"role": "user", "content": data}],
         }
-        body, duration_ms = await self._call(request, payload)
 
-        usage = _anthropic_usage(body)
-        record_tokens(usage)
-        answer = _read_tool_input(_anthropic_tool_input(body))
+    def _tool_input(self, body: dict[str, Any]) -> object:
+        return _anthropic_tool_input(body)
 
-        record_call(OUTCOME_OK, self.provider_id)
-        return ResponseResult(
-            answer=answer[0],
-            assertions=answer[1],
-            duration_ms=duration_ms,
-            model_id=str(body.get("model") or request.model_id),
-            usage=usage,
-        )
+    def _usage(self, body: dict[str, Any]) -> TokenUsage:
+        return _anthropic_usage(body)
 
 
 class OpenAICompatibleResponseProvider(_HttpResponseProvider):
@@ -288,11 +382,12 @@ class OpenAICompatibleResponseProvider(_HttpResponseProvider):
             client=client,
         )
 
-    async def respond(self, request: ResponseRequest) -> ResponseResult:
-        system, data = assemble_response_prompt(request)
-        payload: dict[str, Any] = {
-            "model": request.model_id,
-            "max_tokens": request.max_output_tokens,
+    def _payload(
+        self, *, system: str, data: str, tool_name: str, schema: dict[str, Any], model_id: str, max_tokens: int
+    ) -> dict[str, Any]:
+        return {
+            "model": model_id,
+            "max_tokens": max_tokens,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": data},
@@ -301,30 +396,22 @@ class OpenAICompatibleResponseProvider(_HttpResponseProvider):
                 {
                     "type": "function",
                     "function": {
-                        "name": RESPONSE_TOOL_NAME,
-                        "description": "Answer the prompt, citing the served items each assertion rests on.",
-                        "parameters": RESPONSE_SCHEMA,
+                        "name": tool_name,
+                        "description": _TOOL_DESCRIPTIONS[tool_name],
+                        "parameters": schema,
                     },
                 }
             ],
             # Naming the tool, rather than "auto", is what makes prose output
             # impossible instead of merely unlikely.
-            "tool_choice": {"type": "function", "function": {"name": RESPONSE_TOOL_NAME}},
+            "tool_choice": {"type": "function", "function": {"name": tool_name}},
         }
-        body, duration_ms = await self._call(request, payload)
 
-        usage = _openai_usage(body)
-        record_tokens(usage)
-        answer = _read_tool_input(_openai_tool_input(body))
+    def _tool_input(self, body: dict[str, Any]) -> object:
+        return _openai_tool_input(body)
 
-        record_call(OUTCOME_OK, self.provider_id)
-        return ResponseResult(
-            answer=answer[0],
-            assertions=answer[1],
-            duration_ms=duration_ms,
-            model_id=str(body.get("model") or request.model_id),
-            usage=usage,
-        )
+    def _usage(self, body: dict[str, Any]) -> TokenUsage:
+        return _openai_usage(body)
 
 
 # ---------------------------------------------------------------------------
@@ -364,19 +451,19 @@ def _openai_usage(body: dict[str, Any]) -> TokenUsage:
 
 
 def _anthropic_tool_input(body: dict[str, Any]) -> object:
-    """Read the forced tool call. Prose is refused rather than parsed."""
+    """Read the forced tool call. Prose is refused rather than parsed.
+
+    Any tool-use block is accepted rather than one matched by name, because the
+    call forced exactly one tool and a model that returned a differently-named
+    one has failed in a way the name check would report as "no tool call" -- a
+    less informative reading of the same failure.
+    """
     content = body.get("content")
     if not isinstance(content, list):
         raise ProviderMalformedError("response had no content array")
-    inputs = [
-        block.get("input")
-        for block in content
-        if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") == RESPONSE_TOOL_NAME
-    ]
+    inputs = [block.get("input") for block in content if isinstance(block, dict) and block.get("type") == "tool_use"]
     if not inputs:
-        raise ProviderMalformedError(
-            f"model did not call {RESPONSE_TOOL_NAME}; free-form output is refused rather than parsed"
-        )
+        raise ProviderMalformedError("model returned prose instead of calling the forced tool; this is refused")
     return inputs[0]
 
 
@@ -395,13 +482,13 @@ def _openai_tool_input(body: dict[str, Any]) -> object:
     if not isinstance(calls, list) or not calls:
         finish = first.get("finish_reason")
         raise ProviderMalformedError(
-            f"model did not call {RESPONSE_TOOL_NAME} (finish_reason={finish!r}); free-form output "
-            "is refused rather than parsed"
+            f"model returned prose instead of calling the forced tool (finish_reason={finish!r}); "
+            "this is refused rather than parsed"
         )
-    named = [c for c in calls if isinstance(c, dict) and _function_name(c) == RESPONSE_TOOL_NAME]
-    if not named:
-        raise ProviderMalformedError(f"model called a tool other than {RESPONSE_TOOL_NAME}")
-    function = named[0].get("function")
+    first_call = calls[0]
+    if not isinstance(first_call, dict):
+        raise ProviderMalformedError("first tool call was not an object")
+    function = first_call.get("function")
     arguments = function.get("arguments") if isinstance(function, dict) else None
     if not isinstance(arguments, str):
         raise ProviderMalformedError("tool call carried no arguments string")

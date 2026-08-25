@@ -623,7 +623,7 @@ which is the fires-on-everything defect again in a different place.
 
 ### E24-T5 — The LLM judge: groundedness and relevance, with evidence and a pinned tuple
 
-**Kind:** task · **Status:** pending · **Blocked by:** E24-T2, E24-T3 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E24-T2, E24-T3 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: two criteria a program cannot compute, scored by one model that is never the
 candidate, returning its reasoning and the span it relied on — never a bare score.
@@ -640,9 +640,46 @@ recorded and contributes nothing until E24-T6 fits it, per ADR 0026 part 3.
 Acceptance:
     make lint format-check typecheck && make test-coverage && make test-integration
 
+**Shipped. Four things the entry did not name.**
+
+**The judge grades what the candidate was shown, and nothing held it.**
+`context_receipt_items` records *which* items a resolution served and
+deliberately not their content, so a judge asked whether an answer is grounded in
+what was served had nothing to check against — and re-resolving would grade a
+different envelope than the answer came from. The simulation now records the
+material, serialized exactly once through one function so the model and the
+record get byte-identical bytes; two serializations would let a judge grade
+content that differed from what the candidate saw, in a way nothing would report.
+This is a correction to E24-T3 rather than a judge feature, and it landed there.
+
+**`reasoning` is declared before `verdict` in the schema, and the order is
+load-bearing.** A model filling structured fields does so in declaration order,
+so a verdict declared first is a verdict reached first and rationalised
+afterwards. The requirement that reasoning precede the verdict is enforced by
+where it sits, not by asking politely, and a unit test asserts the ordering
+because it is the kind of thing a tidy-up would silently reverse.
+
+**The prompt-template hash is computed from the template, the rubric, the tool
+name and the output schema** — every input to the model this repository controls
+— so editing a word mints a new calibration population without anybody
+remembering to bump a constant. The per-request boundary is deliberately excluded:
+including it would give every single call its own hash and make calibration bins
+of size one.
+
+**A partial judgement is refused rather than stored.** One criterion recorded as
+though only one had been asked for would report a clean run over a criterion
+nobody graded — the same defect as an errored prompt dropped from a run, in a
+different place.
+
+**The transport was shared rather than copied.** Generating an answer and judging
+one are the same operation over different schemas: a model handed instructions,
+data, and one tool it must call. `_invoke_tool` is that operation, and both roles
+go through it, so the containment argument and the usage contract cannot come to
+hold for one and not the other.
+
 ### E24-T6 — Judge calibration: bins per pinned tuple, fitted from human confirmations
 
-**Kind:** task · **Status:** pending · **Blocked by:** E24-T5, E24-T7 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E24-T5, E24-T7 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a judge's self-reported confidence becomes a number that predicts, or is
 honestly reported as not yet predicting.
@@ -660,9 +697,36 @@ why this is blocked on it rather than only on T5.
 Acceptance:
     make lint format-check typecheck && make test-coverage && make test-integration
 
+**Shipped. Two findings, one of them a defect in an existing read.**
+
+**The arithmetic was imported, not copied.** `service/memory/calibration.py`'s
+`fit`, `calibration_error` and thresholds are reused verbatim; only the
+separation key changes, from `(provider, model, strategy, scorer, tenant)` to the
+pinned tuple. A second implementation of a calibration curve would be a second
+answer to *"is this number trustworthy"*, which is the question the module exists
+to give one answer to.
+
+**A `DISTINCT ON ... ORDER BY fitted_at DESC` picks arbitrarily on a tie.** Two
+fits written in the same instant tie on the timestamp, and the read then reports
+whichever row Postgres happened to return — which is how a *superseded* fit comes
+to be presented as a tuple's current state. `states()` orders by `status =
+'active'` first, so the answer is a property of the rows rather than of clock
+resolution. **`calibration.active_mappings` has the same shape and the same
+latent tie**; it is named here rather than changed, because it is E8's read and a
+drive-by fix to somebody else's query is how two lanes disagree about what a row
+means.
+
+**What the bound actually catches, measured rather than assumed.** With
+`MIN_ADJUDICATED_FOR_MAPPING = 200` and `PRIOR_STRENGTH = 20`, a two-bin
+disagreement *cannot* miss the bound: the error is weighted by how many
+observations landed in each bin, so one deviant bin among two large ones is a
+small effect. What misses it is confidence spread across many bins with
+correctness uncorrelated to it — which is the right thing for the bound to catch,
+and is now what the test asserts rather than a case that would have passed.
+
 ### E24-T7 — Expectations on a prompt, and a human verdict over a judged one
 
-**Kind:** task · **Status:** pending · **Blocked by:** E24-T4 · **Hotspot:** yes — openapi.json + generated client · **Repo:** contextplane
+**Kind:** task · **Status:** done — override half with E24-T5, expectations half beside it · **Blocked by:** E24-T4 · **Hotspot:** yes — openapi.json + generated client · **Repo:** contextplane
 
 Goal: a prompt in a set carries its declared expectations; a reviewer confirms or
 overrides each judged criterion; the override is what calibration learns from.
@@ -688,9 +752,33 @@ first.
 Acceptance:
     make lint format-check typecheck && make test-coverage && make test-integration
 
+**The override half shipped with E24-T5, and the split is recorded rather than
+absorbed.** The two halves of this entry turned out to have different blockers:
+the per-criterion override is meaningless without a judged criterion to override,
+so it landed in the same change as the judge; declared expectations extend
+`AddPromptRequest` and need neither. Landing them together would have made one
+PR that half of the reviewers could not evaluate.
+
+**What shipped with the judge:** `evaluation_judgement_reviews`, a row per
+reviewer per judged criterion, following the claim-adjudication contract rather
+than minting a parallel vocabulary — a closed verdict literal
+(`confirmed | overruled | unsure`) and a range-bound observed confidence.
+
+**An override is a second row, never an update to the judge's.** The pair *(what
+the judge said, what the person said)* is the only thing calibration can be
+fitted from, so overwriting would destroy the input E24-T6 needs — and it would
+erase the disagreement E24-T12 renders as a visible state. `is_disputed` is
+derived from the reviews rather than stored, so the two cannot disagree.
+
+**`unsure` is information about the reviewer, not a third verdict on the answer.**
+Calibration excludes it, for the reason `calibration.py` excludes an undecidable
+adjudication: counting it either way would bias the fit. It still requires a
+reason, because a reviewer who cannot tell has told the next reader something
+worth reading.
+
 ### E24-T8 — A panel of judges, for a run that is gating a decision
 
-**Kind:** task · **Status:** pending · **Blocked by:** E24-T5 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E24-T5 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: an opt-in three-family panel with majority vote on a prompt-set run, and a
 disagreement that is visible rather than averaged away.
@@ -707,6 +795,31 @@ and it lands on E5-T6's shipped cockpit rather than a new queue.
 
 Acceptance:
     make lint format-check typecheck && make test-coverage && make test-integration
+
+**Shipped, and one decision the entry did not name.**
+
+**An evenly split panel reports no majority at all.** `majority` is `None` on a
+tie rather than tie-broken, and that is the decision rather than an omission: a
+panel that split evenly has not decided, and inventing a winner would report
+agreement nobody reached. An even panel is a configuration mistake this makes
+visible instead of papering over.
+
+**Family diversity is required across the panel, not merely against the
+candidate.** Three judges from one family cancel nothing — the whole reason a
+panel is worth 3× is that its members are biased in different directions, and a
+panel that agrees because its members share a lineage is one expensive judge
+reported as three. The refusal names both colliding positions.
+
+**A panel extends the single judge rather than replacing it.** Position zero *is*
+the interactive judge, so a deployment that configured one already has a panel of
+one and adds members rather than reconfiguring. That is also why `panel_position`
+is `NOT NULL DEFAULT 0` — a nullable column would let two "the single judge" rows
+coexist under Postgres's distinct-NULL rule and silently turn a re-judge into a
+second opinion.
+
+**The panel outcome is computed, never stored.** It is a view over rows that
+already exist, and a stored copy would be a second answer that could not be
+corrected when a member was re-judged.
 
 ### E24-T9 — The contract pin catches up, seventeen paths and five schemas
 

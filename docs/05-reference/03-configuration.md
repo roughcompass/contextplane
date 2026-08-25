@@ -121,6 +121,49 @@ is in a hurry and has one key.
 | `JUDGE_MODEL` | — | Model the judge grades with. Empty means the selected adapter's own default. |
 | `JUDGE_BASE_URL` | — | Endpoint the judge calls. Same egress consideration as `SIMULATION_BASE_URL`. |
 | `JUDGE_API_KEY` | — | Credential for the judge provider. Held as a secret. |
+| `JUDGE_2_PROVIDER` | `noop` | The second panel member. Off by default: a panel costs 3× and is asked for rather than defaulted to. |
+| `JUDGE_2_MODEL` | — | Model the second panel member grades with. |
+| `JUDGE_2_BASE_URL` | — | Endpoint the second panel member calls. |
+| `JUDGE_2_API_KEY` | — | Credential for the second panel member. Held as a secret. |
+| `JUDGE_3_PROVIDER` | `noop` | The third panel member. |
+| `JUDGE_3_MODEL` | — | Model the third panel member grades with. |
+| `JUDGE_3_BASE_URL` | — | Endpoint the third panel member calls. |
+| `JUDGE_3_API_KEY` | — | Credential for the third panel member. Held as a secret. |
+
+### The panel, and why it is opt-in
+
+Three frontier judges from three families with majority vote is the defensible
+default for a **launch decision** and costs 3×. Forcing it on interactive
+iteration would tax the fast loop to insure a decision nobody is making at that
+moment — so an interactive simulation gets one differently-familied judge, and a
+panel is a separate operation somebody asks for.
+
+**Family diversity is required across the panel, not merely against the
+candidate.** Three judges from one family cancel nothing: the whole reason a
+panel is worth 3× is that its members are biased in different directions, and a
+panel that agrees because its members share a lineage is one expensive judge
+reported as three. The service refuses a colliding panel and names the two
+positions.
+
+**A split is the interesting output and is never averaged.** A 2–1 panel is
+recorded as 2–1, because a criterion three judges disagree about is the one most
+worth a human's time. An evenly split panel reports no majority at all rather
+than being tie-broken — it has not decided, and inventing a winner would report
+agreement nobody reached.
+
+### Judge calibration
+
+A judge's self-reported confidence is recorded from its very first run and
+**contributes nothing** until bins have been fitted for its pinned tuple
+`(judge_model_id, rubric_version, prompt_template_hash)` from human
+confirmations. Until then every surface renders the verdict as unproven.
+
+There is no setting for this. Recording the raw number is unconditional, because
+a mapping can only ever be fitted from raw scores paired with judged outcomes —
+a deployment that discarded them could never stop being uncalibrated. Read
+`GET /v1/evaluation/judge-calibration` for the state of every tuple, including
+the ones that have been tried and missed their bound; that row is the answer to
+*"why is this judge still unproven"*.
 
 ### What a single-provider deployment gets
 

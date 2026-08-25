@@ -21,6 +21,7 @@ name of the setting that is unset.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from typing import TYPE_CHECKING, Final
 
@@ -34,6 +35,7 @@ from contextplane.extraction.response_provider import SimulationUnavailable
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from contextplane.config import Settings
+    from contextplane.extraction.judge_prompt import JudgeProvider
     from contextplane.extraction.response_provider import ResponseProvider
 
 _log = logging.getLogger(__name__)
@@ -137,7 +139,92 @@ def build_response_provider(settings: Settings, *, env: dict[str, str] | None = 
     )
 
 
-def build_judge_provider(settings: Settings, *, env: dict[str, str] | None = None) -> ResponseProvider | None:
+#: Which numbered judge role each panel position reads. Position zero is the
+#: single judge an interactive simulation gets; a panel extends it rather than
+#: replacing it, so a deployment that configured one judge already has a panel of
+#: one and adds members rather than reconfiguring.
+_PANEL_ROLES: Final[tuple[tuple[str, str, str, str, str], ...]] = (
+    ("judge_provider", "judge_model", "judge_base_url", "judge_api_key", "JUDGE_API_KEY"),
+    ("judge_2_provider", "judge_2_model", "judge_2_base_url", "judge_2_api_key", "JUDGE_2_API_KEY"),
+    ("judge_3_provider", "judge_3_model", "judge_3_base_url", "judge_3_api_key", "JUDGE_3_API_KEY"),
+)
+
+
+@dataclasses.dataclass(frozen=True)
+class PanelMember:
+    """One configured judge, and which family it belongs to."""
+
+    position: int
+    provider: JudgeProvider
+    selector: str
+    model_pin: str
+
+
+def build_judge_panel(settings: Settings, *, env: dict[str, str] | None = None) -> tuple[PanelMember, ...]:
+    """Every configured judge, in position order, skipping the unconfigured ones.
+
+    A panel is opt-in and extends the single judge rather than replacing it: a
+    deployment that configured one already has a panel of one, and adding a
+    second member is a configuration change rather than a migration.
+
+    Family diversity is *not* checked here, because a panel's members are
+    checked against the candidate and against each other at the moment a
+    judgement runs -- and that check belongs in the service both transports
+    reach rather than at construction, where it would raise at boot on a
+    deployment that never asks for a panel.
+    """
+    members: list[PanelMember] = []
+    for position, (selector_field, model_field, url_field, key_field, key_name) in enumerate(_PANEL_ROLES):
+        selector = str(getattr(settings, selector_field))
+        if selector == DISABLED:
+            continue
+        provider = _build(
+            base_url=str(getattr(settings, url_field)),
+            key=_secret(getattr(settings, key_field), env, key_name),
+            key_setting=key_name,
+            model=str(getattr(settings, model_field)),
+            role=f"judge[{position}]",
+            selector=selector,
+            setting=selector_field.upper(),
+            timeout_s=settings.simulation_timeout_s,
+        )
+        if provider is not None:
+            members.append(
+                PanelMember(
+                    model_pin=str(getattr(settings, model_field)),
+                    position=position,
+                    provider=provider,
+                    selector=selector,
+                )
+            )
+    return tuple(members)
+
+
+def assert_panel_families_differ(members: tuple[PanelMember, ...]) -> None:
+    """Refuse a panel whose members share a provider family.
+
+    Three judges from one family cancel nothing -- the whole reason a panel is
+    worth 3x is that its members are biased in different directions, and a panel
+    that agrees because its members share a lineage is one expensive judge
+    reported as three.
+
+    Named in the message: an operator has to know which two positions collided.
+    """
+    seen: dict[str, int] = {}
+    for member in members:
+        clash = seen.get(member.selector)
+        if clash is not None:
+            msg = (
+                f"panel positions {clash} and {member.position} are both {member.selector!r}. Three "
+                "judges from one family cancel nothing — a panel that agrees because its members "
+                "share a lineage is one expensive judge reported as three. Configure each position "
+                "with a different provider family, or leave it unset to run a smaller panel."
+            )
+            raise JudgeFamilyRefused(msg)
+        seen[member.selector] = member.position
+
+
+def build_judge_provider(settings: Settings, *, env: dict[str, str] | None = None) -> JudgeProvider | None:
     """The judging provider named by configuration, or `None` when switched off.
 
     The same construction as the candidate's, because a judge is a model answering
@@ -179,7 +266,14 @@ def _build(
     role: str,
     setting: str,
     key_setting: str,
-) -> ResponseProvider | None:
+) -> AnthropicResponseProvider | OpenAICompatibleResponseProvider | None:
+    """The concrete adapter, so both public builders can narrow to their own protocol.
+
+    Returning the union rather than either protocol is what lets one construction
+    path serve two roles: the shipped adapters answer prompts *and* grade
+    answers, and a builder typed to one protocol could not hand its result to the
+    other without a cast that would stop checking anything.
+    """
     if selector == DISABLED:
         _log.info(
             "%s.provider_disabled: no %s provider configured. Prompt sets, runs, verdicts and the "
@@ -216,7 +310,10 @@ __all__ = [
     "DISABLED",
     "GENERATION_PROVIDERS",
     "JudgeFamilyRefused",
+    "PanelMember",
     "assert_families_differ",
+    "assert_panel_families_differ",
+    "build_judge_panel",
     "build_judge_provider",
     "build_response_provider",
     "default_model_for",

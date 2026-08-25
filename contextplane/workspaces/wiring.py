@@ -30,6 +30,8 @@ from contextplane.config import Settings
 from contextplane.context.arms import DEFAULT_ARM_LIMIT, ContextArms
 from contextplane.context.assembler import DEFAULT_ARM_TIMEOUT_S, DEFAULT_ITEM_CAP
 from contextplane.context.evaluation.fingerprint import resolver_fingerprint
+from contextplane.context.evaluation.judge_calibration import JudgeCalibrationService
+from contextplane.context.evaluation.judgement import JudgementService
 from contextplane.context.evaluation.runs import EvaluationRunService
 from contextplane.context.evaluation.simulation import SimulationService
 from contextplane.context.instructions import InstructionChannel
@@ -38,7 +40,11 @@ from contextplane.context.references import ReceiptReferenceIndex
 from contextplane.context.resolve import ContextResolver
 from contextplane.context.resume import ContextResumeService
 from contextplane.context.semantic_workspace import Embedder
-from contextplane.extraction.response_factory import build_response_provider
+from contextplane.extraction.response_factory import (
+    build_judge_panel,
+    build_judge_provider,
+    build_response_provider,
+)
 from contextplane.service.governance.tenants import TenantDirectoryService
 from contextplane.service.memory.claim_serving import ClaimServingService
 from contextplane.service.retrieval import RetrievalService
@@ -62,6 +68,8 @@ class LayeredContextServices:
     instruction_channel: InstructionChannel
     evaluation_runs: EvaluationRunService
     simulation: SimulationService
+    judgement: JudgementService
+    judge_calibration: JudgeCalibrationService
     intent_directory: IntentDirectoryService
     tenant_directory: TenantDirectoryService
     context_reference_index: ReceiptReferenceIndex
@@ -109,6 +117,22 @@ def build_layered_context_services(
         receipts=context_receipts,
         instruction_channel=instruction_channel,
     )
+    # Built once, with the provider resolved at startup rather than per request.
+    # A credential read on a request path is a raise while serving, and a
+    # deployment with no provider should learn that at boot rather than the first
+    # time somebody clicks simulate.
+    simulation = SimulationService(
+        session_factory=session_factory,
+        resolver=context_resolver,
+        clock=clock,
+        provider=build_response_provider(settings),
+        provider_selector=settings.simulation_provider,
+        model_pin=settings.simulation_model,
+        max_output_tokens=settings.simulation_max_output_tokens,
+        judge_selector=settings.judge_provider,
+        judge_model_pin=settings.judge_model,
+    )
+    judge_calibration = JudgeCalibrationService(session_factory, clock=clock)
     return LayeredContextServices(
         intent_checkpoints=IntentCheckpointService(session_factory=session_factory, clock=clock),
         intent_grants=IntentGrantService(session_factory=session_factory, clock=clock),
@@ -135,21 +159,23 @@ def build_layered_context_services(
                 arm_timeout_s=DEFAULT_ARM_TIMEOUT_S,
             ),
         ),
-        # Built once, with the provider resolved at startup rather than per
-        # request. A credential read on a request path is a raise while serving,
-        # and a deployment with no provider should learn that at boot rather
-        # than the first time somebody clicks simulate.
-        simulation=SimulationService(
+        simulation=simulation,
+        # The judge is built beside the simulator rather than lazily, so a
+        # deployment whose two roles share a provider family learns it at boot
+        # from the log line rather than from the first refused simulation.
+        judgement=JudgementService(
             session_factory=session_factory,
-            resolver=context_resolver,
+            simulations=simulation,
             clock=clock,
-            provider=build_response_provider(settings),
-            provider_selector=settings.simulation_provider,
-            model_pin=settings.simulation_model,
-            max_output_tokens=settings.simulation_max_output_tokens,
-            judge_selector=settings.judge_provider,
-            judge_model_pin=settings.judge_model,
+            provider=build_judge_provider(settings),
+            provider_selector=settings.judge_provider,
+            model_pin=settings.judge_model,
+            candidate_selector=settings.simulation_provider,
+            candidate_model_pin=settings.simulation_model,
+            panel=build_judge_panel(settings),
+            calibration=judge_calibration,
         ),
+        judge_calibration=judge_calibration,
         context_reference_index=ReceiptReferenceIndex(session_factory=session_factory),
         context_resume=ContextResumeService(session_factory=session_factory, clock=clock),
     )
