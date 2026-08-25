@@ -10098,3 +10098,49 @@ had not made.
 The lesson is one line and it is the same every time: **ground the claim in the
 committed contract before building around an absence, waiting for one, or
 recording that you fixed one.**
+
+---
+
+## Closing this file: what it delivered, and what it did not
+
+Written because six epic status lines and four scattered prose paragraphs are not
+a place a reader can see the whole answer, and because a task-count audit reads
+100% while commitments are outstanding — a trap this file has already caught one
+reader in.
+
+### Delivered
+
+Twenty-two epics and every decomposed task inside them, except the four named
+below. The identifier ratchet went 66 → 28 across E23 and the remainder is
+annotated or genuinely blocked. Every surface the plan named has a transport, and
+the wave that closed it removed six mechanisms that were built, wired and reached
+by nothing.
+
+### Not delivered, and why each is not a task somebody forgot
+
+**Blocked on a precondition nobody can manufacture.** These are the honest
+terminal state for work whose input does not exist. Each carries its reopen
+trigger; none should be filed as a task, because a task implies it can be
+started.
+
+| | Waiting on | Reopens when |
+| --- | --- | --- |
+| `eval_score` (E8) | Nothing mines procedures, so a held-out replay suite is held out from nothing. E8-T3 built the Wilson bound and recorded that it had no consumer, which was the right order. | Procedural memory exists. Not before: a pass rate over an empty suite is a number with no referent. |
+| The deprecation clause (E13) | No usage corpus. Nothing has been released, and retiring a tool on absence of evidence is refused on the record. | A released surface has usage to read. |
+| The retention threshold (E15) | No observed volume. A wrong operating point fails open in the destructive direction — it discards memories. | There is volume to fit against. |
+
+**Blocked on a mechanism, and buildable the day somebody starts.** E12-T3, T4 and
+T5 need the lot-scoped acceptance flow ADR 0023 §3 describes. This is the only
+remaining item that is work rather than a wait, and it is the one to pick up
+first.
+
+### What this file should be read as teaching
+
+Two decisions in its last wave were reached by careful reasoning from real
+mechanisms, and both were wrong. One shipped before anybody noticed; one was
+caught before implementation because somebody was asked to attack it.
+
+The gates did not catch either. They cannot: they check that code does what it
+says, and both failures were in what the code said. For anything making a
+governance or safety claim, an adversarial review before merge is the cheapest
+control available here, and it is the one this file learned last.

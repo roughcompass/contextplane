@@ -67,21 +67,62 @@ The disposition, the service, the migration and the tests are removed. E12-T3,
 E12-T4 and E12-T5 return to blocked — on a correctly identified blocker this
 time, which is the only thing 0022 bought.
 
-### 3. What the real design needs, sketched so it is not re-derived
+### 3. What the real design needs — attacked before anything was built on it
 
-A governed migration is a **staged flow**, not a synchronous call:
+This section first carried a four-step sketch: stage the lot, draw a sample from
+it into the curation queue, have a person disposition the sample, complete
+acceptance on their decisions. **It was reviewed adversarially before
+implementation, and two of its four steps name things that conflict with
+mechanisms already in the tree.** What follows is what the review established.
 
-1. The import stages its claims as a named lot, uninspected. Nothing is accepted.
-2. A sample of the required size is drawn **from that lot** and placed in the
-   curation queue, marked as belonging to it.
-3. A person dispositions the sampled items. Their decisions are the evidence.
-4. Acceptance completes — or the lot is rejected — on those decisions, and only
-   then does anything record an outcome for the remainder.
+**Step 1 was false about the word it used.** `status = 'staged'` is not a holding
+state — it is the *live, servable* one. `claim_serving`'s `_SERVABLE_AS_OF`
+serves `status IN ('staged','superseded')` once consolidated, and the promotion
+sweep selects staged rows and can promote them to canonical facts with no case,
+no sample and no acceptance. "Stage the lot; nothing is accepted" describes the
+opposite of what staging does.
 
-Every step is a mechanism that does not exist: there is no lot record, no
-sampling frame, no way to mark a case as a lot's sample, and no resumable
-acceptance. That is what E12-T3 is blocked on, and it is considerably more than
-"a rule".
+**Step 2 was a category error.** The curation *queue* is a projection over
+`memory_claims` via `backlog_predicate`; curation *cases* are axis-keyed rows read
+through `cases_for`, which is plain FIFO with no ranking and no lot filter.
+Sampled items cannot be "placed in the curation queue" without either marking
+them contested — a lie that blocks promotion of the whole axis — or adding a
+fifth backlog reason. And a several-hundred-case sample read FIFO buries every
+contradiction raised after it.
+
+**The arithmetic does not do what the sketch assumed.** `minimum_sample` is
+derived for a **zero-acceptance plan**, so a lot is acceptable only with zero
+defects in the sample — but `AcceptanceState` carries `inspected` alone and `met`
+is `inspected >= min_sample`. A sample with many rejections still passes. The
+existing halt is a counter, not an acceptance number. There is also no defect
+mapping: of six dispositions, `confirm` is presumably conforming and `reject` a
+defect, and the three `propose_*` targets are not verdicts on the row at all.
+
+**And the unit is wrong.** The sample unit is a claim; the case unit is an axis;
+`open_case` is idempotent per axis, so two lots touching one axis share a case
+and one human decision counts toward both floors — this ADR's own error at n=1.
+`minimum_sample` has no finite-population correction, so where the connector path
+produces a handful of claims per artifact, `n > N` is the normal case rather than
+the edge, and the honest answer there is 100% inspection.
+
+**What the review proposes instead, and it is a better shape:** make the **lot**
+the unit of state rather than the claim. A `claim_lots` row carrying status,
+source run, category and sample seed; a `lot_id` on `memory_claims`; claim
+visibility gated on lot status in the four readers that matter, with a
+conformance test that the reader set is closed. The lot closes when its run
+reaches a terminal state; only then is a seeded sample drawn and recorded in an
+explicit `lot_sample` table, so the frame is auditable and re-drawing is
+detectable. **Acceptance is a transition on the lot row, not a disposition per
+claim** — which removes the need to resurrect `migrated_canonical` at all, and
+makes rejection a single `t_invalidated_at` sweep over `lot_id`.
+
+Two governance questions remain, and they are decisions rather than
+implementation: **who may be routed a sample case** — with a check that the owner
+is a human actor kind, since `actor_kind` is a stored parameter defaulting to
+`human` and an import routing to its own sync-worker would manufacture its own
+acceptance evidence — and **what happens to a rejected lot on resubmission**,
+since re-running a connector reproduces the same rows and a fresh draw against
+unchanged material clears eventually.
 
 ### 4. Two defects the attempt exposed are kept fixed
 
@@ -146,8 +187,13 @@ unrelated prior curation is still not a sample of the lot, and tightening the
 inputs to an invalid inference makes it look more rigorous without making it
 valid.
 
-**The staged flow in §3 is a sketch and may be wrong too.** It is written from
-the same chair, by the same reasoning that produced 0022, and has not been
-implemented or attacked. Whoever builds it should treat §3 as a starting point
-rather than a specification — and should have it reviewed adversarially before it
-merges rather than after.
+**The staged flow in §3 was a sketch and it was wrong too.** Attacking it before
+implementation found two of four steps in conflict with shipped mechanisms. That
+is the second time in one wave that careful reasoning from real code produced a
+design that did not survive an adversarial reader — and the second time the
+review cost minutes where the mistake would have cost a release.
+
+**The replacement in §3 has exactly the status the sketch did.** It comes from
+the review rather than from me, which makes it differently-sourced, not verified.
+Nobody has attacked *it*. Whoever implements it should assume it is wrong
+somewhere and find out where first.
