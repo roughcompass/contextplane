@@ -283,7 +283,7 @@ async def test_an_openai_model_that_answers_in_prose_is_refused() -> None:
         return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": "hello"}}]})
 
     async with _client(handler) as client:
-        with pytest.raises(ProviderMalformedError, match=RESPONSE_TOOL_NAME):
+        with pytest.raises(ProviderMalformedError, match="prose instead of calling the forced tool"):
             await OpenAICompatibleResponseProvider("k", client=client).respond(_request())
 
 

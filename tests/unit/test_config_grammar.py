@@ -38,7 +38,6 @@ from pydantic import ValidationError
 
 from contextplane.config import (
     Settings,
-    _resolve_extraction_provider,
     get_settings,
 )
 from contextplane.config_grammar import (
@@ -50,6 +49,7 @@ from contextplane.config_grammar import (
     _resolve_extraction_auth_template,
     _resolve_extraction_base_url,
 )
+from contextplane.config_llm_roles import _resolve_extraction_provider
 
 # ---------------------------------------------------------------------------
 # Every env var name `contextplane/config.py` reads today, plus a few

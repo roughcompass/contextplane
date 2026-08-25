@@ -389,7 +389,7 @@ convention = "pep257"
 "contextplane/{arc,audit,auth,embedding,extraction,ingest,security,storage,usage,wiring,workers}/**" = [
     "D100", "D101", "D102", "D103",
 ]
-"contextplane/{__init__,config,exceptions,logging_config,main,metrics,sync_worker,types}.py" = [
+"contextplane/{__init__,config,config_llm_roles,exceptions,logging_config,main,metrics,sync_worker,types}.py" = [
     "D100", "D101", "D102", "D103",
 ]
 "scripts/**" = ["D100", "D101", "D102", "D103"]
@@ -551,7 +551,7 @@ layers = [
     "storage",
     "auth | embedding | logging_config",
     "config | pagination | usage",
-    "config_grammar | exceptions | metrics | types",
+    "config_grammar | config_llm_roles | exceptions | metrics | types",
     # Governed magnitudes are read from `service` (fusion weights) and from
     # `service/governance` (authority ladder). Only the bottom layer is
     # reachable from every consumer, so `ranking` imports nothing from
@@ -595,6 +595,7 @@ ignore_imports = [
     # provider registry to validate a setting, and extraction's provider
     # registry reads config.
     "contextplane.config -> contextplane.extraction.provider_registry",
+    "contextplane.config_llm_roles -> contextplane.extraction.provider_registry",
 
     # context <-> security, measured both ways: 2 imports context -> security
     # (admission runs the PII patterns and scanner) against 1 the other way.
@@ -711,6 +712,7 @@ source_modules = [
     "contextplane.auth",
     "contextplane.config",
     "contextplane.config_grammar",
+    "contextplane.config_llm_roles",
     "contextplane.context",
     "contextplane.embedding",
     "contextplane.entities",

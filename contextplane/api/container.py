@@ -90,6 +90,8 @@ from contextplane.arc import (
 from contextplane.auth.entitlements.resolver import EntitlementResolver
 from contextplane.config import Settings
 from contextplane.context.arms import ContextArms
+from contextplane.context.evaluation.judge_calibration import JudgeCalibrationService
+from contextplane.context.evaluation.judgement import JudgementService
 from contextplane.context.evaluation.runs import EvaluationRunService
 from contextplane.context.evaluation.simulation import SimulationService
 from contextplane.context.instructions import InstructionChannel
@@ -304,6 +306,8 @@ class Services:
     # would then look incomparable.
     evaluation_runs: EvaluationRunService
     simulation: SimulationService
+    judgement: JudgementService
+    judge_calibration: JudgeCalibrationService
     # The three listings E23-T1 adds. Each narrows itself from something the
     # caller already holds — participation grants, credential memberships, and
     # what the receipt detail read would serve — so none of them takes a scope

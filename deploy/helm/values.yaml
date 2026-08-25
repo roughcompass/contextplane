@@ -182,6 +182,12 @@ env:
   # JUDGE_PROVIDER: "noop"
   # JUDGE_MODEL: ""
   # JUDGE_BASE_URL: ""
+  # JUDGE_2_PROVIDER: "noop"
+  # JUDGE_2_MODEL: ""
+  # JUDGE_2_BASE_URL: ""
+  # JUDGE_3_PROVIDER: "noop"
+  # JUDGE_3_MODEL: ""
+  # JUDGE_3_BASE_URL: ""
 
   # --- Embedding.
   EMBEDDING_PROVIDER: "onnx"
@@ -263,6 +269,10 @@ secrets: {}
   # simulationApiKey: ""         # optional — SIMULATION_API_KEY, the credential the simulated agent
   #                                answers under. Required only when env.SIMULATION_PROVIDER names a
   #                                provider ("anthropic" or "openai"); the feature is off by default.
+  # judge2ApiKey: ""             # optional — JUDGE_2_API_KEY, the second panel member's credential.
+  # judge3ApiKey: ""             # optional — JUDGE_3_API_KEY, the third panel member's credential.
+  #                                Both only needed for the opt-in three-family panel, which is for
+  #                                a run gating a launch decision rather than for iteration.
   # judgeApiKey: ""              # optional — JUDGE_API_KEY, the credential the judge grades under.
   #                                Deliberately a second credential rather than a reuse of
   #                                simulationApiKey: the judge must be a different provider family

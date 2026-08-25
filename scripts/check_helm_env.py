@@ -101,6 +101,8 @@ _CANONICAL_SECRET_NAMES: frozenset[str] = frozenset(
         # deployment sends a resolved envelope under.
         "SIMULATION_API_KEY",
         "JUDGE_API_KEY",
+        "JUDGE_2_API_KEY",
+        "JUDGE_3_API_KEY",
         "METRICS_BEARER_TOKEN",
     }
 )
