@@ -129,8 +129,21 @@ class ReceiptSummaryResponse(BaseModel):
         )
 
 
-class ReceiptListResponse(BaseModel):
-    """Recent resolutions this caller may open."""
+class ReceiptDirectoryResponse(BaseModel):
+    """Recent resolutions this caller may open.
+
+    **Not `ReceiptListResponse`, and the rename is a correction rather than a
+    preference.** `api/schemas/receipts.py` already publishes that name for a
+    different shape — `{receipts: [...]}` from `GET /v1/receipts/by-reference`,
+    against this one's `{items, next_before}`. Two classes under one name make
+    FastAPI qualify *both* by module path, so both appeared in the contract as
+    `contextplane__api__schemas__…__ReceiptListResponse` and neither had the
+    plain name a client would reference. The newer of the two takes the longer
+    name, because a collision renames whichever was published first.
+
+    `scripts/check_contract_schema_names.py` is the gate that found this; it was
+    written for a collision E24 introduced and caught this one on its first run.
+    """
 
     items: list[ReceiptSummaryResponse]
     next_before: datetime.datetime | None = Field(
@@ -146,7 +159,7 @@ class ReceiptListResponse(BaseModel):
 __all__ = [
     "IntentListResponse",
     "IntentSummaryResponse",
-    "ReceiptListResponse",
+    "ReceiptDirectoryResponse",
     "ReceiptSummaryResponse",
     "TenantListResponse",
     "TenantSummaryResponse",

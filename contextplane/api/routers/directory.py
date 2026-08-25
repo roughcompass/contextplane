@@ -2,7 +2,7 @@
 
     GET /v1/intents            → IntentListResponse
     GET /v1/tenants            → TenantListResponse
-    GET /v1/receipts           → ReceiptListResponse
+    GET /v1/receipts           → ReceiptDirectoryResponse
 
 E23-T1. Twelve dashboard fields asked for an intent, a tenant or a receipt by
 UUID and none of the three could be listed, so every one of them was a text box
@@ -33,7 +33,7 @@ from contextplane.api.errors import map_catalog_error
 from contextplane.api.schemas.directory import (
     IntentListResponse,
     IntentSummaryResponse,
-    ReceiptListResponse,
+    ReceiptDirectoryResponse,
     ReceiptSummaryResponse,
     TenantListResponse,
     TenantSummaryResponse,
@@ -87,13 +87,13 @@ async def list_tenants(
     return TenantListResponse(items=[TenantSummaryResponse.of(entry) for entry in found])
 
 
-@router.get("/receipts", response_model=ReceiptListResponse)
+@router.get("/receipts", response_model=ReceiptDirectoryResponse)
 async def list_receipts(
     ctx: Annotated[TenantContext, Depends(_read_required)],
     container: Annotated[Services, Depends(services)],
     limit: int = 50,
     before: datetime.datetime | None = None,
-) -> ReceiptListResponse:
+) -> ReceiptDirectoryResponse:
     """Recent resolutions this caller may open, newest first.
 
     **A withheld or unhydrated receipt is absent, not empty.** The detail reads
@@ -110,7 +110,7 @@ async def list_receipts(
         found = await container.context_receipts.recent(ctx, limit=limit, before=before)
     except CatalogError as exc:
         raise map_catalog_error(exc) from exc
-    return ReceiptListResponse(
+    return ReceiptDirectoryResponse(
         items=[ReceiptSummaryResponse.of(receipt) for receipt in found],
         next_before=found[-1].resolved_at if len(found) == limit else None,
     )

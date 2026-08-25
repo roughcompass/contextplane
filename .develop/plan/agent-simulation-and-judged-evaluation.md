@@ -821,6 +821,46 @@ second opinion.
 already exist, and a stored copy would be a second answer that could not be
 corrected when a member was re-judged.
 
+### E24-T9a — A duplicate response-model name renames the published one
+
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — openapi.json + generated client · **Repo:** contextplane
+
+Not in the original decomposition. Cut and closed while claiming E24-T9, because
+that task cannot pass its own acceptance until this is fixed.
+
+**What happened.** E24-T3 added `CitationResponse` in
+`api/schemas/simulation.py`. `api/routers/memory.py` already had one. FastAPI
+cannot publish two schemas under one name, so it qualifies **both** by module
+path — and the consequence lands on the *incumbent*: the published
+`CitationResponse` silently became
+`contextplane__api__routers__memory__CitationResponse`. Every generated client
+referencing the old name stops compiling, and nothing in the adding change looks
+wrong. It was found by `contextplane-ui`'s build breaking on a schema E24 never
+touched.
+
+**Why no existing gate caught it.** `reserved-vocabulary` governs governed nouns
+on the wire; `contract-tags` governs grouping. Neither looks at schema *names*,
+and the collision is invisible in review — the two classes are in different
+subsystems and neither is wrong on its own. The only place it shows is the
+exported document.
+
+**The gate found a second one on its first run.**
+`scripts/check_contract_schema_names.py` refuses any schema name containing `__`,
+which is the marker FastAPI leaves when it had to disambiguate. It immediately
+reported `ReceiptListResponse`, declared in both `api/schemas/directory.py`
+(`{items, next_before}`) and `api/schemas/receipts.py` (`{receipts}`) — two
+different shapes, both qualified, neither holding the plain name a client would
+reference. That predates E24 entirely.
+
+**The rule for resolving one, recorded because it is not symmetric:** the *newer*
+model takes the longer name. A collision renames whichever was published first,
+so giving the new one the awkward name is what leaves the existing contract
+alone.
+
+Acceptance:
+    make contract-schema-names
+    make lint format-check typecheck && make test-coverage
+
 ### E24-T9 — The contract pin catches up, seventeen paths and five schemas
 
 **Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — openapi.json + generated client · **Repo:** contextplane-ui
