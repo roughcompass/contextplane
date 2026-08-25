@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import importlib
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 _MODULE_NAME = "contextplane.storage.migrations.versions.0001_baseline_schema"
@@ -107,3 +108,29 @@ def test_upgrade_runs_without_a_real_database() -> None:
     assert any("CREATE TABLE memory_claims" in s for s in executed)
     assert any("CREATE TABLE arc_receipts" in s for s in executed)
     assert not any("CREATE TABLE arc_content_deletion_verifications" in s for s in executed)
+
+
+def test_the_revision_chain_is_unbroken_and_has_one_head() -> None:
+    """A deleted migration that something still points at.
+
+    Caught once by `make test-airgap`, which runs `alembic upgrade head` inside a
+    container — a true signal, arriving after a Docker build, on the slowest job
+    in CI. Two branches developed in parallel are enough to cause it: one adds a
+    migration on top of another, the second removes the one underneath, and
+    neither branch is broken until they meet.
+
+    `walk_revisions` raises on a dangling `down_revision`, so building the map is
+    the assertion. The head count is the other half: two heads is a fork alembic
+    will refuse to upgrade past, and it is the same merge that produces it.
+    """
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    repo_root = Path(__file__).resolve().parents[2]
+    script = ScriptDirectory.from_config(Config(str(repo_root / "alembic.ini")))
+
+    revisions = list(script.walk_revisions())
+    heads = script.get_heads()
+
+    assert len(heads) == 1, f"the migration chain has forked: {heads}"
+    assert len(revisions) == len({r.revision for r in revisions})

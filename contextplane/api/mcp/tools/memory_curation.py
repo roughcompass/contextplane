@@ -54,7 +54,11 @@ from contextplane.service.memory.claim_history import ClaimHistoryService, Claim
 from contextplane.service.memory.claim_writer import ClaimService
 from contextplane.service.memory.confirmation import ConfirmationService
 from contextplane.service.memory.contest import ContradictionGroup, groups_for
-from contextplane.service.memory.curation_cases import CurationCase, CurationCaseService
+from contextplane.service.memory.curation_cases import (
+    OPERATOR_DISPOSITIONS,
+    CurationCase,
+    CurationCaseService,
+)
 from contextplane.service.memory.curation_queue import CurationQueueService, QueueItem
 from contextplane.service.memory.curation_ranking import QueueCursor
 from contextplane.service.memory.promotion import PromotionService, Proposal
@@ -1177,6 +1181,14 @@ async def record_case_disposition(
         threshold its disposition commits to.
     """
     ctx = await context._resolve_tenant(session_factory, clock)
+    # Refused here rather than left to `record_disposition`, which validates
+    # against the *whole* vocabulary. A disposition a service writes is not one
+    # an agent may record, and this tool takes a bare string -- so without this
+    # check the agent-facing surface accepts every value the service knows,
+    # including any that is meant to be service-only. The HTTP route states the
+    # same set as a `Literal`; both now come from one name.
+    if disposition not in OPERATOR_DISPOSITIONS:
+        raise ToolError(f"disposition must be one of {list(OPERATOR_DISPOSITIONS)}; got {disposition!r}")
     try:
         case = await _curation_cases().record_disposition(
             ctx,
