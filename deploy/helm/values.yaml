@@ -168,6 +168,21 @@ env:
   # EXTRACTION_AUTH_HEADER: ""
   # EXTRACTION_AUTH_TEMPLATE: ""
 
+  # Agent simulation and its judge. Both off by default: a deployment that sets
+  # neither has prompt sets, runs, verdicts and the three deterministic criteria,
+  # and is told which setting is unset when somebody asks for the agent half.
+  #
+  # SIMULATION_BASE_URL and JUDGE_BASE_URL carry the same egress consideration as
+  # EXTRACTION_BASE_URL: they decide where a resolved envelope is sent.
+  # SIMULATION_PROVIDER: "noop"
+  # SIMULATION_MODEL: ""
+  # SIMULATION_BASE_URL: ""
+  # SIMULATION_TIMEOUT_S: "120"
+  # SIMULATION_MAX_OUTPUT_TOKENS: "2048"
+  # JUDGE_PROVIDER: "noop"
+  # JUDGE_MODEL: ""
+  # JUDGE_BASE_URL: ""
+
   # --- Embedding.
   EMBEDDING_PROVIDER: "onnx"
   EMBEDDING_MODEL: "all-MiniLM-L6-v2"
@@ -245,6 +260,13 @@ secrets: {}
   # claudeApiKey: ""             # optional — CLAUDE_API_KEY, a deprecated alias for extractionApiKey.
   #                                Still rendered so existing releases keep working; set extractionApiKey
   #                                on anything new. When both reach the app the canonical name wins.
+  # simulationApiKey: ""         # optional — SIMULATION_API_KEY, the credential the simulated agent
+  #                                answers under. Required only when env.SIMULATION_PROVIDER names a
+  #                                provider ("anthropic" or "openai"); the feature is off by default.
+  # judgeApiKey: ""              # optional — JUDGE_API_KEY, the credential the judge grades under.
+  #                                Deliberately a second credential rather than a reuse of
+  #                                simulationApiKey: the judge must be a different provider family
+  #                                from the candidate, and the service refuses the pair when it is not.
 
 # Runs as a sidecar in the same pod as the API (deployment-api.yaml), always
 # reachable on loopback -- but the app only actually talks to it when

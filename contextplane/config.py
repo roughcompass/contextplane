@@ -210,6 +210,47 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("EXTRACTION_API_KEY", "CLAUDE_API_KEY", "ANTHROPIC_API_KEY"),
     )
 
+    # --- Agent simulation and its judge (E24, ADR 0025 and ADR 0026) ---
+    #
+    # Two roles, configured symmetrically, because ADR 0026 requires them to be
+    # different provider families and a deployment cannot satisfy that rule with
+    # one set of settings. They are separate from the extraction settings above
+    # for the same reason: three roles that happened to share a credential today
+    # would be three roles nobody could point at three endpoints tomorrow.
+    #
+    # Both default to "noop", which switches the feature off. A deployment that
+    # configures neither has a complete evaluation loop over retrieval — prompt
+    # sets, runs, verdicts and the deterministic three criteria all work — and is
+    # told which setting is missing when somebody asks for the agent half. That
+    # is `extraction/provider.py`'s rule applied to a request path: "a working
+    # deployment with one feature switched off, not a broken one".
+    #
+    # Which model answers as the simulated agent.
+    simulation_provider: str = "noop"
+    # Empty means the selected adapter's own default. A model id belongs to
+    # whichever provider has to serve it, so naming one here would pick a single
+    # vendor's model for every selector.
+    simulation_model: str = ""
+    simulation_base_url: str = ""
+    # Longer than the extraction default: a simulation reads a whole envelope and
+    # writes an argued answer, and a timeout tuned for a claim-extraction call
+    # would fail the long ones systematically rather than at random.
+    simulation_timeout_s: float = 120.0
+    # The answer's ceiling. A budget, not a target — ARC's rule that a budget
+    # changes presentation and never obligations is why this bounds the response
+    # and nothing in the envelope.
+    simulation_max_output_tokens: int = 2048
+    simulation_api_key: SecretStr | None = Field(default=None, validation_alias=AliasChoices("SIMULATION_API_KEY"))
+
+    # Which model grades groundedness and answer relevance. Never the same
+    # provider family as `simulation_provider` — the service refuses the pair
+    # rather than warning about it, per ADR 0026, because an advisory constraint
+    # is the shape of guidance followed until the day it matters.
+    judge_provider: str = "noop"
+    judge_model: str = ""
+    judge_base_url: str = ""
+    judge_api_key: SecretStr | None = Field(default=None, validation_alias=AliasChoices("JUDGE_API_KEY"))
+
     # --- Embedding ---
     # Which implementation produces vectors. See contextplane/embedding/ for the
     # accepted values; "onnx" runs a locally-staged artifact and needs no network.
@@ -524,9 +565,20 @@ class Settings(BaseSettings):
             return value.lower() not in ("0", "false", "no")
         return value
 
-    @field_validator("extraction_provider", mode="before")
+    @field_validator("extraction_provider", "simulation_provider", "judge_provider", mode="before")
     @classmethod
     def _validate_extraction_provider(cls, value: object) -> object:
+        """One resolver for all three provider selectors.
+
+        The same names are legal in all three roles, including a provider a
+        deployment supplied itself: a registry that accepted a third-party name
+        for extraction and refused it for judging would make the discovery
+        mechanism half-reachable, which is worse than not having it.
+
+        An unknown value fails at startup rather than silently falling back. A
+        typo'd judge selector that quietly became "noop" would look exactly like
+        a deployment that had decided not to judge.
+        """
         if value is None or isinstance(value, str):
             return _resolve_extraction_provider(value)
         return value
