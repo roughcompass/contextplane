@@ -47,6 +47,28 @@ PROTOCOL_VERSION: Final = "workspace-value-evaluation-1.0.0"
 #: judge is the one component whose change can move every number at once.
 JUDGE_VERSION: Final = "workspace-eval-judge v1.0.0"
 
+#: The five-block scorer E24-T4 added. Selectable rather than default: the
+#: workspace-value evaluation this protocol was written for holds four blocks
+#: fixed and varies one, and scoring it with a scorer that reads all five would
+#: measure arms the ablation deliberately does not move.
+#:
+#: It is registered here rather than left to each caller to digest for itself,
+#: because the freeze's whole value is that one function answers "what was this
+#: collected under" -- and a second scorer digested by a second mechanism is two
+#: answers to that question.
+ENVELOPE_JUDGE_VERSION: Final = "context-envelope-judge v2.0.0"
+
+#: Which source file each scorer version is. Enumerated rather than derived from
+#: the version string: a naming convention is a rule nobody checks, and a freeze
+#: that digested the wrong file would be a freeze over a program that was not
+#: running.
+JUDGE_SOURCES: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        JUDGE_VERSION: "judge.py",
+        ENVELOPE_JUDGE_VERSION: "envelope_judge.py",
+    }
+)
+
 # -- the three configurations ------------------------------------------------
 
 #: The no-memory baseline: the workspace arm disabled entirely, answering
@@ -252,16 +274,21 @@ def _digest(value: object) -> str:
     return hashlib.sha256(_canonical(value).encode("utf-8")).hexdigest()
 
 
-def frozen_values() -> dict[str, object]:
+def frozen_values(*, judge_version: str = JUDGE_VERSION) -> dict[str, object]:
     """Exactly what the freeze commits to.
 
     Enumerated rather than swept from module globals: a sweep would silently
     absorb a new constant into the freeze, and silently drop one that was
     renamed, which is the opposite of what a freeze is for.
+
+    `judge_version` defaults to the workspace-arm scorer, so the digest this
+    returns for the closed decision is byte-identical to the one it always
+    returned. Naming another scorer changes the digest, which is correct: which
+    program produced the numbers is part of what a freeze commits to.
     """
     return {
         "protocol_version": PROTOCOL_VERSION,
-        "judge_version": JUDGE_VERSION,
+        "judge_version": judge_version,
         "configurations": list(CONFIGURATIONS),
         "scenario_counts": dict(sorted(SCENARIO_COUNTS.items())),
         "treatment_a_margin": TREATMENT_A_MARGIN,
@@ -277,40 +304,60 @@ def frozen_values() -> dict[str, object]:
     }
 
 
-def judge_source_digest(source: Path | None = None) -> str:
+def judge_source_digest(source: Path | None = None, *, judge_version: str = JUDGE_VERSION) -> str:
     """The content digest of the committed scorer.
 
     Over the file's bytes rather than over its exported names: a rubric change
     that leaves the function signatures alone is exactly the change that must
     invalidate a run, and a signature-level digest would not see it.
+
+    An unregistered `judge_version` raises rather than falling back to the
+    default. A freeze that silently digested the wrong program is worse than no
+    freeze, because it names a scorer and swears to another.
     """
-    path = source if source is not None else Path(__file__).with_name("judge.py")
+    if judge_version not in JUDGE_SOURCES:
+        raise ProtocolInvalidated(
+            f"no scorer is registered under {judge_version!r}; the registered versions are " f"{sorted(JUDGE_SOURCES)}"
+        )
+    path = source if source is not None else Path(__file__).with_name(JUDGE_SOURCES[judge_version])
     if not path.is_file():
         raise ProtocolInvalidated(
-            f"the scorer {JUDGE_VERSION} is not committed at {path}; "
+            f"the scorer {judge_version} is not committed at {path}; "
             "a freeze cannot digest a program that does not exist"
         )
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def freeze(*, judge_source: Path | None = None) -> FrozenProtocol:
-    """Compute the freeze the current tree would collect data under."""
+def freeze(*, judge_source: Path | None = None, judge_version: str = JUDGE_VERSION) -> FrozenProtocol:
+    """Compute the freeze the current tree would collect data under.
+
+    The default is the workspace-arm scorer, so this reproduces the closed
+    decision's identity exactly. E24-T4's five-block scorer is asked for by name.
+    """
     return FrozenProtocol(
         protocol_version=PROTOCOL_VERSION,
-        judge_version=JUDGE_VERSION,
-        protocol_digest=_digest(frozen_values()),
-        judge_digest=judge_source_digest(judge_source),
+        judge_version=judge_version,
+        protocol_digest=_digest(frozen_values(judge_version=judge_version)),
+        judge_digest=judge_source_digest(judge_source, judge_version=judge_version),
     )
 
 
-def assert_unchanged(collected_under: FrozenProtocol, *, judge_source: Path | None = None) -> None:
+def assert_unchanged(
+    collected_under: FrozenProtocol, *, judge_source: Path | None = None, judge_version: str | None = None
+) -> None:
     """Refuse to report results produced under a protocol that has since moved.
 
     Called when results are turned into evidence rather than when they are
     collected: the change that matters is the one made *between* those two
     moments, and a check at collection time would miss it by construction.
+
+    The scorer to re-digest is read off the collected freeze when the caller does
+    not name one. Defaulting to the workspace-arm scorer instead would compare a
+    five-block run against a four-block digest and report the scorer as changed
+    on every call, which is a check that fails on everything -- the same defect
+    as one that fails on nothing.
     """
-    current = freeze(judge_source=judge_source)
+    current = freeze(judge_source=judge_source, judge_version=judge_version or collected_under.judge_version)
     if current.freeze_digest() == collected_under.freeze_digest():
         return
     changed = "the protocol values" if current.protocol_digest != collected_under.protocol_digest else "the scorer"
@@ -327,7 +374,9 @@ __all__ = [
     "CONFIG_BASELINE",
     "CONFIG_TREATMENT_A",
     "CONFIG_TREATMENT_B",
+    "ENVELOPE_JUDGE_VERSION",
     "HUMAN_RISK_SAMPLE_SIZE",
+    "JUDGE_SOURCES",
     "JUDGE_VERSION",
     "KIND_CROSS_TASK_RECALL",
     "KIND_TASK_RESUME",
