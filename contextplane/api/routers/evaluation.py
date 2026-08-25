@@ -16,6 +16,7 @@
     POST /v1/evaluation/judgements/{judgement_id}/review           → ReviewResponse
     POST /v1/evaluation/simulations/{simulation_id}/judgements/panel → PanelResponse
     GET  /v1/evaluation/judge-calibration                          → CalibrationStateListResponse
+    GET  /v1/evaluation/simulations/{simulation_id}/score           → DeterministicScoreResponse
 
 This router adapts and does not decide. Which prompts a run resolves, what a
 verdict may say, whether two runs are comparable and what happens to a prompt
@@ -79,6 +80,7 @@ from contextplane.api.schemas.judgement import (
     ReviewResponse,
     RunJudgementRequest,
 )
+from contextplane.api.schemas.scoring import DeterministicScoreResponse
 from contextplane.api.schemas.simulation import (
     RunSimulationRequest,
     SimulationAvailabilityResponse,
@@ -508,3 +510,29 @@ async def list_judge_calibration(
     except CatalogError as exc:
         raise map_catalog_error(exc) from exc
     return CalibrationStateListResponse(items=[CalibrationStateResponse.of(entry) for entry in states])
+
+
+@router.get("/simulations/{simulation_id}/score", response_model=DeterministicScoreResponse)
+async def score_simulation(
+    simulation_id: uuid.UUID,
+    ctx: Annotated[TenantContext, Depends(_read_required)],
+    container: Annotated[Services, Depends(services)],
+) -> DeterministicScoreResponse:
+    """Required-fact recall, boundary violations and precision, with no model in the loop.
+
+    That absence is the property, not a limitation: it is what keeps a failure of
+    these three attributable to what was *served* rather than to what graded it,
+    which is the whole reason ADR 0024 could keep memory evaluation and agent
+    evaluation in one journey.
+
+    **It can refuse, and the refusal is the honest answer.** The scorer asks the
+    scenario, never the system under test, so it needs expectations declared
+    before the run. An interactive simulation has none, and scoring it against
+    expectations typed afterwards would measure whatever the system returned.
+    `unassertable` carries the reason instead of a zero-filled score.
+    """
+    try:
+        result = await container.simulation_scoring.score_simulation(ctx, simulation_id)
+    except CatalogError as exc:
+        raise map_catalog_error(exc) from exc
+    return DeterministicScoreResponse.of(result)

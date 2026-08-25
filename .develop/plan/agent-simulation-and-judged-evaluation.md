@@ -621,6 +621,56 @@ scorer so the closed decision's `protocol_digest` is reproduced byte-identically
 collected freeze — defaulting to v1 there would report drift on every v2 run,
 which is the fires-on-everything defect again in a different place.
 
+### E24-T4a — The five-block scorer gets a caller
+
+**Kind:** task · **Status:** done · **Blocked by:** E24-T3, E24-T4 · **Hotspot:** yes — openapi.json + generated client · **Repo:** contextplane
+
+Not in the original decomposition. Cut while claiming E24-T12, because the score
+pane needs five criteria and only two of them were reachable.
+
+**`envelope_judge.py` was complete, tested, wired into `protocol.freeze()`, and
+called by nothing.** No route, no MCP tool, no job. That is the third instance of
+one failure this workspace has recorded — E9's `requires_validated` had no caller
+outside its tests, E17's `resolve_weights` had no production caller — and
+`governed-agent-memory.md` already wrote after the second that *"twice in one
+audit is enough to make it a thing to check for rather than a thing to notice"*.
+So this is the caller, and the pattern is now three.
+
+`GET /v1/evaluation/simulations/{simulation_id}/score` computes required-fact
+recall, boundary violations and precision over the material the simulation
+recorded, with no model in the loop. That absence is the property rather than a
+limitation: it is what keeps a failure of these three attributable to what was
+*served* rather than to what graded it, which is the whole reason ADR 0024 could
+keep memory evaluation and agent evaluation in one journey.
+
+**It can refuse, and there are two refusals rather than one.** The scorer asks the
+scenario, never the system under test, so it needs expectations declared before
+the run. An interactive simulation belongs to no prompt and has none; a prompt may
+exist and declare nothing. Both return `unassertable` with the reason, and the
+reasons are distinct because the remedies are: the second is fixable by declaring
+expectations, the first is not fixable for that simulation at all. Neither returns
+zeros, which a surface would render as three failed criteria, nor ones, which it
+would render as three passes nobody checked.
+
+**A correction to E24-T4 fell out of this.** The shipped scorer treated *any*
+item with no trust record as carrying the most restrictive classification, which
+is right for an unreadable label and wrong for a missing record — and recorded
+material has no trust record, because the trust metadata lives on the receipt.
+Under the old rule every replayed item would have been a classification
+violation: the fires-on-everything defect again, one level down from where E24-T4
+found it. A missing record is now `unchecked` with a reason distinguishing
+canonical's structural absence from an input that lost one; an unreadable *label*
+still ranks most restrictive, because guessing downward is what publishes it.
+
+**Two types are deliberately not the validated ones.** `ContextBlockV1` refuses a
+non-canonical item with no trust record — correctly, because a *served* envelope
+must never carry one. Recorded material does. Constructing the validated type
+would mean inventing a trust record or failing on every replay, so the scorer is
+handed the read surface it actually uses.
+
+Acceptance:
+    make lint format-check typecheck && make test-coverage && make test-integration
+
 ### E24-T5 — The LLM judge: groundedness and relevance, with evidence and a pinned tuple
 
 **Kind:** task · **Status:** done · **Blocked by:** E24-T2, E24-T3 · **Hotspot:** no · **Repo:** contextplane

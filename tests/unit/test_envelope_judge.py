@@ -203,6 +203,39 @@ def test_canonical_classification_is_recorded_as_unchecked_not_as_a_violation() 
     assert (BLOCK_CANONICAL, envelope_judge.VIOLATION_AUDIENCE) in kinds
 
 
+def test_an_item_with_no_trust_record_is_unchecked_rather_than_most_restrictive() -> None:
+    """The fires-on-everything defect, one level down.
+
+    An item outside canonical with no trust record has lost one — replayed
+    material, most often — and reading that absence as "most restrictive" would
+    flag every such item. It is recorded as unchecked, and under a *different*
+    reason from canonical's structural absence, because a reader needs to know
+    which of the two they are looking at.
+    """
+    item = contextual_item(
+        block=BLOCK_OBSERVED_CLAIMS,
+        source="claims",
+        item_key="c1",
+        payload={"claim_id": "c1", "predicate": "p", "value": 1, "evidence_event_ids": []},
+        trust=_trust(classification="internal"),
+    )
+    stripped = ContextItemV1(receipt_item_id=item.receipt_item_id, payload=item.payload, trust=None)
+    envelope = _Unvalidated(blocks=(ContextBlockV1.__new__(ContextBlockV1),))
+    object.__setattr__(envelope.blocks[0], "name", BLOCK_OBSERVED_CLAIMS)
+    object.__setattr__(envelope.blocks[0], "state", "success")
+    object.__setattr__(envelope.blocks[0], "items", (stripped,))
+    object.__setattr__(envelope.blocks[0], "reason", None)
+    facts = _facts(max_classification="internal")
+    violations, unchecked = envelope_judge.boundary_violations(
+        envelope,  # type: ignore[arg-type]
+        facts,
+        served_tenant_id=_TENANT,
+    )
+    assert violations == ()
+    reasons = {u.reason for u in unchecked if u.dimension == envelope_judge.VIOLATION_CLASSIFICATION}
+    assert reasons == {envelope_judge.UNCHECKED_NO_TRUST_RECORD}
+
+
 def test_an_unreadable_label_on_a_non_canonical_item_still_ranks_most_restrictive() -> None:
     """The rule that survives: guessing downward is what publishes it."""
     item = contextual_item(
@@ -212,12 +245,16 @@ def test_an_unreadable_label_on_a_non_canonical_item_still_ranks_most_restrictiv
         payload={"claim_id": "c1", "predicate": "p", "value": 1, "evidence_event_ids": []},
         trust=_trust(classification="internal"),
     )
-    broken = ContextItemV1(receipt_item_id=item.receipt_item_id, payload=item.payload, trust=None)
-    # Assembled past the block contract deliberately. `ContextBlockV1` refuses a
-    # non-canonical item with no trust, and `TrustMetadataV1` refuses a
+    # Assembled past both contracts deliberately: `TrustMetadataV1` refuses a
     # classification outside the vocabulary, so an unreadable label cannot exist
-    # in a validated envelope at all. The scorer's own defence still has to hold
-    # for the input it is handed, which is what this asserts.
+    # in a validated record at all. The scorer's own defence still has to hold
+    # for the input it is handed, which is what this asserts — and it is a
+    # *different* case from a missing record, which is unchecked.
+    broken_trust = object.__new__(TrustMetadataV1)
+    for field, value in dataclasses.asdict(item.trust).items():  # type: ignore[arg-type]
+        object.__setattr__(broken_trust, field, value)
+    object.__setattr__(broken_trust, "classification", "cosmic")
+    broken = ContextItemV1(receipt_item_id=item.receipt_item_id, payload=item.payload, trust=broken_trust)
     envelope = _Unvalidated(blocks=(ContextBlockV1.__new__(ContextBlockV1),))
     object.__setattr__(envelope.blocks[0], "name", BLOCK_OBSERVED_CLAIMS)
     object.__setattr__(envelope.blocks[0], "state", "success")
