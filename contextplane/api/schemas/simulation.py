@@ -67,8 +67,17 @@ class RunSimulationRequest(BaseModel):
     )
 
 
-class CitationResponse(BaseModel):
-    """One receipt item id an assertion rested on."""
+class AssertionCitationResponse(BaseModel):
+    """One receipt item id an assertion rested on.
+
+    **Named for what it cites, not just `CitationResponse`, and the reason is a
+    collision that renamed somebody else's schema.** `api/routers/memory.py`
+    already publishes a `CitationResponse`; a second class under that name makes
+    FastAPI qualify *both* by module path, so the pre-existing schema silently
+    became `contextplane__api__routers__memory__CitationResponse` in the
+    contract — a breaking rename of a published name, caused by an unrelated
+    addition. The generated-client build in `contextplane-ui` is what caught it.
+    """
 
     receipt_item_id: str
     was_served: bool = Field(
@@ -80,7 +89,7 @@ class CitationResponse(BaseModel):
     )
 
     @classmethod
-    def of(cls, citation: CitedItem) -> CitationResponse:
+    def of(cls, citation: CitedItem) -> AssertionCitationResponse:
         """Project one citation onto the wire."""
         return cls(receipt_item_id=citation.receipt_item_id, was_served=citation.was_served)
 
@@ -90,7 +99,7 @@ class AssertionResponse(BaseModel):
 
     position: int
     text: str
-    citations: list[CitationResponse] = Field(
+    citations: list[AssertionCitationResponse] = Field(
         description=(
             "Empty when the assertion rested on nothing served. That is a real state, not a "
             "missing one: it is either a fact the graph does not hold or a groundedness failure, "
@@ -102,7 +111,7 @@ class AssertionResponse(BaseModel):
     def of(cls, assertion: SimulatedAssertion) -> AssertionResponse:
         """Project one assertion onto the wire."""
         return cls(
-            citations=[CitationResponse.of(citation) for citation in assertion.citations],
+            citations=[AssertionCitationResponse.of(citation) for citation in assertion.citations],
             position=assertion.position,
             text=assertion.text,
         )
@@ -219,8 +228,8 @@ class SimulationAvailabilityResponse(BaseModel):
 
 
 __all__ = [
+    "AssertionCitationResponse",
     "AssertionResponse",
-    "CitationResponse",
     "RunSimulationRequest",
     "SimulationAvailabilityResponse",
     "SimulationResponse",

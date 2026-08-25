@@ -160,6 +160,9 @@ mcp-tool-registry: ## Verify the MCP tool registry and the registered tools agre
 contract-tags: ## Verify openapi.json tags still group it: tagged, one delimiter, no split path.
 	$(PYTHON) scripts/check_contract_tags.py
 
+contract-schema-names: ## Verify no two response models share a class name (FastAPI would qualify both).
+	$(PYTHON) scripts/check_contract_schema_names.py
+
 format: ## Apply ruff format to the whole tree (writes).
 	$(RUFF) format .
 
@@ -441,7 +444,7 @@ test-airgap: ## Prove the image embeds and searches with no network egress.
 
 test: test-coverage ## Run the fast test gates (unit + conformance, under the ratchet).
 
-all: lint format-check typecheck doc-refs doc-links test-hygiene privileged-writes usage-boundary reachability-audit env-documented helm-env contract-tags seeds-validate coverage-exemptions test ## Run every gate a PR must pass.
+all: lint format-check typecheck doc-refs doc-links test-hygiene privileged-writes usage-boundary reachability-audit env-documented helm-env contract-tags contract-schema-names seeds-validate coverage-exemptions test ## Run every gate a PR must pass.
 
 # The whole integration tier, end to end on the integrated tree, plus every gate
 # `all` runs. Separate from `all` because the tier needs Docker and takes

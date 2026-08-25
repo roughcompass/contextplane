@@ -75,7 +75,7 @@ class ContextReceipt(Base):
 
 
 class ContextReceiptArm(Base):
-    """What one of the four arms did in one resolution.
+    """What one of the five arms did in one resolution.
 
     A row rather than four columns on the receipt: a column layout has nowhere
     to put the reason a single arm degraded, and adding an arm would be a schema

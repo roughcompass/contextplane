@@ -2361,6 +2361,26 @@
         "title": "AssertClaimResponse",
         "type": "object"
       },
+      "AssertionCitationResponse": {
+        "description": "One receipt item id an assertion rested on.\n\n**Named for what it cites, not just `CitationResponse`, and the reason is a\ncollision that renamed somebody else's schema.** `api/routers/memory.py`\nalready publishes a `CitationResponse`; a second class under that name makes\nFastAPI qualify *both* by module path, so the pre-existing schema silently\nbecame `contextplane__api__routers__memory__CitationResponse` in the\ncontract \u2014 a breaking rename of a published name, caused by an unrelated\naddition. The generated-client build in `contextplane-ui` is what caught it.",
+        "properties": {
+          "receipt_item_id": {
+            "title": "Receipt Item Id",
+            "type": "string"
+          },
+          "was_served": {
+            "description": "Whether the cited id was actually in the envelope. False is a finding rather than a bug: a model citing something that was not served is exactly what a groundedness check is for, so the citation is stored as declared.",
+            "title": "Was Served",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "receipt_item_id",
+          "was_served"
+        ],
+        "title": "AssertionCitationResponse",
+        "type": "object"
+      },
       "AssertionProvenanceInputV1": {
         "additionalProperties": false,
         "description": "Where the assertion came from, as the caller can attest it.\n\nThe caller's half of the provenance record: the source it read, the times\nit observed, and how it derived the value if it derived one. The platform's\nhalf -- trust class, validating revision, ingest time, approver -- is added\non the server, and is refused here by name. Provenance changing must never\nsilently change trust, and it cannot if the trust half never arrives in a\nrequest at all.\n\nMissing provenance blocks the write, which is why every field that\nidentifies the source is required rather than defaulted to an empty string:\na blank source system passes an \"is it set\" check and tells a later reader\nnothing about where the value came from.",
@@ -2474,7 +2494,7 @@
           "citations": {
             "description": "Empty when the assertion rested on nothing served. That is a real state, not a missing one: it is either a fact the graph does not hold or a groundedness failure, and the improvement surface offers both readings rather than choosing.",
             "items": {
-              "$ref": "#/components/schemas/contextplane__api__schemas__simulation__CitationResponse"
+              "$ref": "#/components/schemas/AssertionCitationResponse"
             },
             "title": "Citations",
             "type": "array"
@@ -4331,6 +4351,37 @@
         "title": "CitationItem",
         "type": "object"
       },
+      "CitationResponse": {
+        "additionalProperties": false,
+        "description": "A resolvable handle to the evidence behind a claim.",
+        "properties": {
+          "excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "ref"
+        ],
+        "title": "CitationResponse",
+        "type": "object"
+      },
       "CitedIncidentResponse": {
         "description": "One external incident record this obligation is about.",
         "properties": {
@@ -4424,7 +4475,7 @@
           },
           "citations": {
             "items": {
-              "$ref": "#/components/schemas/contextplane__api__routers__memory__CitationResponse"
+              "$ref": "#/components/schemas/CitationResponse"
             },
             "title": "Citations",
             "type": "array"
@@ -4715,7 +4766,7 @@
         "type": "object"
       },
       "ContextEnvelopeResponse": {
-        "description": "Exactly four blocks, quality, state, and the receipt that records them.\n\n`receipt_id` is not decorative and is not optional. It names the stored\nrecord of this resolution, which is what makes the answer auditable later --\nand it is the id `GET /v1/receipts/{receipt_id}` takes.",
+        "description": "Exactly five blocks, quality, state, and the receipt that records them.\n\n`receipt_id` is not decorative and is not optional. It names the stored\nrecord of this resolution, which is what makes the answer auditable later --\nand it is the id `GET /v1/receipts/{receipt_id}` takes.",
         "properties": {
           "arc_block_note": {
             "anyOf": [
@@ -13521,6 +13572,36 @@
         "title": "ReasonRequest",
         "type": "object"
       },
+      "ReceiptDirectoryResponse": {
+        "description": "Recent resolutions this caller may open.\n\n**Not `ReceiptListResponse`, and the rename is a correction rather than a\npreference.** `api/schemas/receipts.py` already publishes that name for a\ndifferent shape \u2014 `{receipts: [...]}` from `GET /v1/receipts/by-reference`,\nagainst this one's `{items, next_before}`. Two classes under one name make\nFastAPI qualify *both* by module path, so both appeared in the contract as\n`contextplane__api__schemas__\u2026__ReceiptListResponse` and neither had the\nplain name a client would reference. The newer of the two takes the longer\nname, because a collision renames whichever was published first.\n\n`scripts/check_contract_schema_names.py` is the gate that found this; it was\nwritten for a collision E24 introduced and caught this one on its first run.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptSummaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_before": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Send as `before` for the next page. Keyset rather than an offset, so a receipt written between two pages cannot shift the window and hide one. Absent when the page was short, which is how a caller knows it reached the end.",
+            "title": "Next Before"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ReceiptDirectoryResponse",
+        "type": "object"
+      },
       "ReceiptItemIdResponse": {
         "description": "A receipt line's stable name, with the parts it was derived from.\n\nBoth, deliberately. The digest is what a receipt quotes; the parts are what\nmake it checkable. A response carrying only the digest asks the caller to\ntrust an opaque string, which is the opposite of what a receipt is for.",
         "properties": {
@@ -13549,6 +13630,23 @@
           "item_key"
         ],
         "title": "ReceiptItemIdResponse",
+        "type": "object"
+      },
+      "ReceiptListResponse": {
+        "description": "Receipts citing one piece of external work, newest first.",
+        "properties": {
+          "receipts": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptResponse"
+            },
+            "title": "Receipts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "receipts"
+        ],
+        "title": "ReceiptListResponse",
         "type": "object"
       },
       "ReceiptResponse": {
@@ -19153,104 +19251,6 @@
           "status"
         ],
         "title": "_Accepted",
-        "type": "object"
-      },
-      "contextplane__api__routers__memory__CitationResponse": {
-        "additionalProperties": false,
-        "description": "A resolvable handle to the evidence behind a claim.",
-        "properties": {
-          "excerpt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Excerpt"
-          },
-          "kind": {
-            "title": "Kind",
-            "type": "string"
-          },
-          "ref": {
-            "title": "Ref",
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind",
-          "ref"
-        ],
-        "title": "CitationResponse",
-        "type": "object"
-      },
-      "contextplane__api__schemas__directory__ReceiptListResponse": {
-        "description": "Recent resolutions this caller may open.",
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ReceiptSummaryResponse"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "next_before": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Send as `before` for the next page. Keyset rather than an offset, so a receipt written between two pages cannot shift the window and hide one. Absent when the page was short, which is how a caller knows it reached the end.",
-            "title": "Next Before"
-          }
-        },
-        "required": [
-          "items"
-        ],
-        "title": "ReceiptListResponse",
-        "type": "object"
-      },
-      "contextplane__api__schemas__receipts__ReceiptListResponse": {
-        "description": "Receipts citing one piece of external work, newest first.",
-        "properties": {
-          "receipts": {
-            "items": {
-              "$ref": "#/components/schemas/ReceiptResponse"
-            },
-            "title": "Receipts",
-            "type": "array"
-          }
-        },
-        "required": [
-          "receipts"
-        ],
-        "title": "ReceiptListResponse",
-        "type": "object"
-      },
-      "contextplane__api__schemas__simulation__CitationResponse": {
-        "description": "One receipt item id an assertion rested on.",
-        "properties": {
-          "receipt_item_id": {
-            "title": "Receipt Item Id",
-            "type": "string"
-          },
-          "was_served": {
-            "description": "Whether the cited id was actually in the envelope. False is a finding rather than a bug: a model citing something that was not served is exactly what a groundedness check is for, so the citation is stored as declared.",
-            "title": "Was Served",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "receipt_item_id",
-          "was_served"
-        ],
-        "title": "CitationResponse",
         "type": "object"
       }
     },
@@ -34348,7 +34348,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/contextplane__api__schemas__directory__ReceiptListResponse"
+                  "$ref": "#/components/schemas/ReceiptDirectoryResponse"
                 }
               }
             },
@@ -34430,7 +34430,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/contextplane__api__schemas__receipts__ReceiptListResponse"
+                  "$ref": "#/components/schemas/ReceiptListResponse"
                 }
               }
             },
