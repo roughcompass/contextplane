@@ -457,7 +457,7 @@ without asking.
 
 ### E8 — Memory-quality eval harness
 
-**Kind:** epic · **Status:** done — except `eval_score`, blocked on procedural memory · **Blocked by:** none · **Repo:** contextplane
+**Kind:** epic · **Status:** done — `eval_score` is cancelled from this epic and belongs to whatever builds procedural memory · **Blocked by:** none · **Repo:** contextplane
 
 Not greenfield, and the earlier claim that the core product claim was
 unfalsifiable was wrong. `eval/fixtures/` already holds 50 pre-authored
@@ -504,9 +504,16 @@ memory with the reason written down rather than rediscovered.
 **Closed on everything buildable.** E8-T4 shipped the multi-session recall
 measurement this body's audit found missing.
 
-`eval_score` stays blocked, and the reason is recorded rather than left to be
-rediscovered: a held-out replay suite is held out *from mining*, and nothing
-mines procedures, so there is no artifact to score. E8-T3 built the Wilson bound
+**`eval_score` is cancelled from this epic**, and the reason is that it was
+never this epic's to deliver. A held-out replay suite is held out *from mining*,
+and nothing mines procedures, so there is no artifact to score. That is not a
+blocker this epic can clear by working harder — it is a dependency on a
+capability nobody has built and no entry in this file describes.
+
+Carrying it as an open clause implied somebody here would get to it. Whoever
+builds procedural memory owns this, and should size the task against the suite
+that then exists rather than inherit a stub written against assumptions from
+before it did. E8-T3 built the Wilson bound
 the gate will rest on and said plainly it had no consumer, which was the right
 order. This reopens when procedural memory exists — not before, because a pass
 rate over an empty suite is a number with no referent.
@@ -562,7 +569,7 @@ recorded justification. Never per-actor cells outside the audit role.
 
 ### E12 — Migration/import path
 
-**Kind:** epic · **Status:** done — except E12-T3, T4 and T5, blocked on a case being able to name a claim (ADR 0023 §3a) · **Blocked by:** E1, E5 ⚙ · **Repo:** contextplane
+**Kind:** epic · **Status:** done — E12-T3, T4 and T5 cancelled: imported claims are already governed and the batch shortcut has no workload · **Blocked by:** E1, E5 ⚙ · **Repo:** contextplane
 
 Bulk-import API with provenance mapping; Backstage/CMDB/wiki connectors.
 Provenance mapping reuses the governed assertion path — `observed_time` and
@@ -575,7 +582,7 @@ below-minimum-sample halt rather than defining a second sampling regime.
 
 ### E13 — Surface consolidation and deprecation
 
-**Kind:** epic · **Status:** done — except the deprecation clause, blocked on a usage corpus · **Blocked by:** E2, E3, E7 · **Repo:** contextplane
+**Kind:** epic · **Status:** done — the deprecation clause is cancelled from this epic; retiring a surface is a post-release act · **Blocked by:** E2, E3, E7 · **Repo:** contextplane
 
 Simplicity is subtraction, not just profiling. Once the two-call
 remember/recall loop (E7) is the served default: consolidate the five
@@ -609,14 +616,20 @@ candidate pairs. The dual-alias
 window is struck: greenfield repository, no external consumers, so surfaces that
 consolidate are replaced rather than aliased.
 
-Deprecated-surface count stays blocked, deliberately and on the record (E13-T3):
-there is no usage corpus because nothing has been released, and retiring a tool
-on absence of evidence is refused. That is a precondition, not a task somebody
-skipped.
+**Deprecated-surface count is cancelled from this epic**, and the reasoning
+E13-T3 recorded is why rather than a reason to keep waiting: there is no usage
+corpus because nothing has been released, and retiring a tool on absence of
+evidence is refused.
+
+Retiring a surface is a post-release act. It needs a released surface, real
+usage, and a deprecation window with consumers to notify — none of which this
+epic can manufacture and none of which belongs to a pre-release plan. E13-T3
+built the usage signal that will measure it when there is something to measure;
+that is the deliverable, and it shipped.
 
 ### E15 — Salience: deciding what is worth keeping
 
-**Kind:** epic · **Status:** done — except the retention threshold, which needs observed volume · **Blocked by:** none · **Repo:** contextplane, contextplane-ui
+**Kind:** epic · **Status:** done — the retention threshold is cancelled from this epic; fitting it is a post-release act · **Blocked by:** none · **Repo:** contextplane, contextplane-ui
 
 Nothing today decides what is worth remembering, so everything is kept — which
 is the assumption that fails first at machine write volume. Salience is a
@@ -678,11 +691,20 @@ E15-T6 and E15-T7 carried the rename through to the wire and its contract pin,
 so `SearchResultItem` now says `fused_rank_score` and no bare `score` survives —
 which is what the original clause claimed and did not deliver.
 
-The retention threshold remains deliberately uncut. Choosing a precision/recall
-operating point needs observed volume no development tree has, and unlike the
-validation refusal in E9 a wrong threshold here fails *open in the destructive
-direction*: it discards memories. E15-T5 built the label data it would be chosen
-from, which was the right order to stop at.
+**The retention threshold is cancelled from this epic.** Choosing a
+precision/recall operating point needs observed volume no development tree has,
+and unlike the validation refusal in E9 a wrong threshold here fails *open in the
+destructive direction*: it discards memories.
+
+Cancelled rather than carried open, because "uncut" implied somebody here would
+cut it and nobody can. Fitting an operating point is a post-release act: it needs
+production volume, a labelled sample drawn from it, and somebody accountable for
+what gets discarded. E15-T5 built the label data it will be chosen from, which
+was the right order to stop at and is this epic's actual deliverable.
+
+Whoever fits it should size the task against the volume that exists then. A
+threshold chosen now would be fitted to a development tree and applied to a
+production one.
 
 ### E16 — Truth confidence: corroboration and measured volatility
 
@@ -7113,7 +7135,7 @@ Acceptance:
 
 ### E12-T3 — The migrated-canonical disposition, and a halt E5 has not defined
 
-**Kind:** task · **Status:** blocked — on a case being able to name a claim (ADR 0023 §3a) · **Blocked by:** E12-T4, E12-T5 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** cancelled — imported claims are already governed; the batch shortcut is an optimisation for volume that does not exist · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 **The halt this entry was blocked on now exists**, as E5-T2b, defined where this
 entry said it had to be. Two other blockers took its place, and both were found
@@ -7192,7 +7214,7 @@ Acceptance:
 
 ### E12-T4 — Nothing writes a policy disposition
 
-**Kind:** task · **Status:** blocked — on E12-T5 · **Blocked by:** E12-T5 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** cancelled — with E12-T3, which is the only thing that wanted a policy disposition · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a connector run opens curation cases for what it imported and disposes
 them under a stated rule, recorded as `policy` rather than as a person.
@@ -7222,7 +7244,7 @@ Acceptance:
 
 ### E12-T5 — What a migrated claim's disposition commits to
 
-**Kind:** task · **Status:** blocked — on a case being able to name a claim (ADR 0023 §3a) · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** cancelled — with E12-T3; there is no disposition left to define · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `migrated_canonical` exists in the disposition vocabulary with its five
 dimensions decided and written down.
@@ -7290,6 +7312,38 @@ graph and match `propose_canonical` exactly; a migration answering them
 differently would be writing into a second canonical graph. The one that is
 genuinely this disposition's own is the evidence threshold, which is a statement
 about a **lot** rather than about one claim.
+
+**Decided: cancelled, and the reason is that the requirement had already been
+met by a different route.**
+
+Three designs for a batch-acceptance flow were attacked and all three found
+fatally wrong — the last on a verified schema fact, that a curation case is
+keyed on an axis and cannot name a claim, so no disposition is evidence about an
+imported row. At that point the question stopped being *how do we build this* and
+became *do we still need it*.
+
+**We do not, because imported claims are already governed.** A connector run goes
+through `SourceIngestService.ingest` to `ClaimService.stage_claim`, which runs
+contradiction detection, then consolidation, promotion eligibility and the
+serving rules — the same path every other claim takes. Nothing about imported
+material escapes governance today. What `migrated_canonical` would have added is
+the ability to mark a *batch* canonical without per-claim review: an optimisation
+for volume, not a governance property.
+
+**And the volume does not exist.** Nothing has been released. Building an
+acceptance-sampling apparatus — a lot model, a sampling frame, a claim-naming
+case, acceptance transitions — for a workload nobody has, on a design that failed
+three reviews, is precisely the defect this file has now named seven times: a
+mechanism built, wired, and consulted by nothing. Cancelling is the one option
+that does not author it deliberately.
+
+**What would reopen this**, stated so nobody re-derives it: import volume large
+enough that per-claim curation is genuinely impractical. At that point the
+acceptance-sampling design can be attempted against a real workload that can size
+it — and ADR 0023 §3a records the verified blocker, the mechanism a fourth
+attempt should build on (quarantine's connector-run selector, which already
+withholds a run's claims through a materialised column with an exact members
+table), and the two governance questions that outlive any design.
 
 **The distinction from E4-T6 is the one that matters.** DORA thresholds are an
 external legal fact no reasoning here produces. What a disposition in *this*
@@ -10145,45 +10199,38 @@ annotated or genuinely blocked. Every surface the plan named has a transport, an
 the wave that closed it removed six mechanisms that were built, wired and reached
 by nothing.
 
-### Not delivered, and why each is not a task somebody forgot
+### Not delivered, and decided rather than left open
 
-**Blocked on a precondition nobody can manufacture.** These are the honest
-terminal state for work whose input does not exist. Each carries its reopen
-trigger; none should be filed as a task, because a task implies it can be
-started.
+Nothing in this file is blocked. Every item is delivered or cancelled, because
+"blocked" is not a resting state — it is a decision somebody owes, and leaving
+one unmade for long enough is how it becomes a commitment nobody remembers
+making.
 
-| | Waiting on | Reopens when |
+**Cancelled: the batch-acceptance flow (E12-T3, T4, T5).** Imported claims are
+already governed — a connector run goes through `stage_claim`, contradiction
+detection, consolidation, promotion eligibility and the serving rules, the same
+path every other claim takes. `migrated_canonical` would have added the ability
+to mark a *batch* canonical without per-claim review: an optimisation for volume,
+not a governance property. Three designs for it were attacked and all three
+found fatally wrong, the last on a verified schema fact. Building an
+acceptance-sampling apparatus for a workload nobody has, on a design that failed
+three reviews, is the defect this file names seven times. **Reopens on** import
+volume that makes per-claim curation genuinely impractical.
+
+**Cancelled from this file, because each belongs to a phase this file is not
+in.** All three needed an input that only exists after release, and carrying
+them open implied somebody here would reach them.
+
+| | Why it is not this file's | Who owns it |
 | --- | --- | --- |
-| `eval_score` (E8) | Nothing mines procedures, so a held-out replay suite is held out from nothing. E8-T3 built the Wilson bound and recorded that it had no consumer, which was the right order. | Procedural memory exists. Not before: a pass rate over an empty suite is a number with no referent. |
-| The deprecation clause (E13) | No usage corpus. Nothing has been released, and retiring a tool on absence of evidence is refused on the record. | A released surface has usage to read. |
-| The retention threshold (E15) | No observed volume. A wrong operating point fails open in the destructive direction — it discards memories. | There is volume to fit against. |
+| `eval_score` (E8) | A held-out replay suite is held out *from mining*, and nothing mines procedures. Not a blocker this epic can clear — a dependency on a capability no entry here describes. | Whoever builds procedural memory. E8-T3 built the Wilson bound it will rest on. |
+| The deprecation clause (E13) | Retiring a surface needs a released surface, real usage, and consumers to notify. None can be manufactured pre-release. | Post-release. E13-T3 built the usage signal that will measure it. |
+| The retention threshold (E15) | A precision/recall operating point needs production volume; a wrong one fails open in the destructive direction and discards memories. | Post-release. E15-T5 built the label data it will be chosen from. |
 
-**None of the three has a task, and that is the decision rather than an
-oversight.** Each was checked against the question *"could somebody start this
-tomorrow"*, and the answer is no for the same reason in every case: the input
-does not exist, and no amount of decomposition creates it. Filing them would put
-three permanently-unstartable rows in a backlog and make a task count read worse
-than the truth — while *not* naming them at all is how a commitment quietly
-disappears. So they are named here, with their trigger, and deliberately not
-filed.
-
-**Whoever picks one up should file the task then**, sized against the input that
-finally exists, rather than inheriting a stub written years earlier against
-assumptions that have moved. That is this file's own most expensive lesson: the
-entries that cost the most were the ones written before their subject existed.
-
-**Blocked on a schema fact, and it is narrow — and these three *are* filed**,
-because unlike the row above somebody could start them tomorrow. E12-T3, T4 and
-T5 need **a curation case to be able to name a claim.** `curation_cases` is keyed on an axis
-and has no `claim_id`, so no disposition is evidence about a particular imported
-row and every acceptance scheme proposed so far — three of them — evaluates
-evidence that does not exist. ADR 0023 §3a records the finding, what a fourth
-attempt should build on instead, and the two governance decisions that outlive
-whatever design is chosen.
-
-This is the only remaining item that is work rather than a wait, and it is
-smaller than "a flow": start by giving a case a claim, and the rest becomes
-answerable.
+**Each says "size the task against the input that then exists."** Inheriting a
+stub written years earlier against assumptions that have moved is this file's
+own most expensive lesson — the entries that cost the most were the ones written
+before their subject existed.
 
 ### What this file should be read as teaching
 
