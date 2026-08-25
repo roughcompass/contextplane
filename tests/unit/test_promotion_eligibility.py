@@ -598,3 +598,49 @@ async def test_set_policy_writes_upsert_and_audits_the_new_values() -> None:
     assert audit_params["action"] == actions.PROMOTION_POLICY_SET
     assert audit_params["tid"] == tenant_id
     assert audit_params["aid"] == actor_id
+
+
+def test_a_quarantined_claim_is_not_promotable() -> None:
+    """The gap this check closed, and it was a write path rather than a read one.
+
+    `quarantine.py` argues that materialising the predicate on a column means
+    "no future serving path can forget" it. That holds for serving, and
+    promotion is not serving — it writes the canonical answer. The sweep's
+    candidate query filtered `status` and `t_invalidated_at` and not this, so a
+    claim an operator had deliberately withheld stayed a promotion candidate.
+
+    A quarantine says the claim's *provenance* turned out to be wrong — a
+    connector run that asserted stale ownership across an estate is the case it
+    exists for. Promoting one while it is withheld would make the withheld
+    assertion the canonical answer, which is the exact opposite of what the
+    operator asked for.
+    """
+    verdict = elig.assess_eligibility(_claim(quarantined_at=_T0), _policy())
+
+    assert not verdict.eligible
+    assert elig.INELIGIBLE_QUARANTINED in verdict.reasons
+
+
+def test_a_claim_that_is_not_quarantined_is_unaffected() -> None:
+    """The column is absent from most reads, and `.get` returning None must mean
+    "not withheld" rather than accidentally blocking everything."""
+    assert elig.assess_eligibility(_claim(), _policy()).eligible
+    assert elig.assess_eligibility(_claim(quarantined_at=None), _policy()).eligible
+
+
+def test_the_sweep_query_filters_quarantined_claims_too() -> None:
+    """Belt and braces, and the braces are the point.
+
+    `assess_eligibility` is the guard every propose path passes, so the sweep's
+    query does not strictly need this. It carries it anyway because a candidate
+    query that selects rows it will then always reject is a sweep doing work per
+    tick for claims an operator has withheld — and because the query is what a
+    reader checks first when asking "does promotion see quarantined claims".
+    """
+    import inspect
+
+    from contextplane.workers import promotion_sweep
+
+    source = inspect.getsource(promotion_sweep.PromotionSweepWorker._candidates)
+
+    assert "quarantined_at IS NULL" in source

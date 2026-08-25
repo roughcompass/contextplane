@@ -193,6 +193,19 @@ class PromotionSweepWorker:
         the moment `propose` succeeds for it -- `propose` sets it to 'proposed' in
         the same transaction that inserts the proposal row, so there is no window
         in which the same claim could be proposed twice by two ticks.
+
+        **`quarantined_at IS NULL` is here because it was missing**, and the gap
+        was worse than a serving leak: quarantine is what an operator reaches for
+        when a connector run turns out to have asserted something wrong across an
+        estate, and this query would have carried those very claims on toward
+        canon. `claim_serving` and the embedding index filtered the column;
+        nothing on the promotion path did.
+
+        `quarantine.py` says *"no future serving path can forget"* the column
+        because the predicate is materialised rather than evaluated on read. That
+        is true of serving paths and this is not one -- it writes. The
+        conformance test named in this module's tests pins the whole set now,
+        rather than trusting the next author to remember.
         """
         async with self._session_factory() as session:
             rows = (
@@ -200,6 +213,7 @@ class PromotionSweepWorker:
                     text(
                         "SELECT claim_id FROM memory_claims "
                         "WHERE status = 'staged' AND t_invalidated_at IS NULL "
+                        "  AND quarantined_at IS NULL "
                         "  AND subject_entity_id IS NOT NULL "
                         "  AND consolidated_at IS NOT NULL "
                         "  AND promotion_state IS NULL "
