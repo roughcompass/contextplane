@@ -5573,6 +5573,75 @@
         "title": "DailySeriesOut",
         "type": "object"
       },
+      "DeadlinePolicyRequest": {
+        "description": "The durations this tenant's regulator requires, overriding the default.",
+        "properties": {
+          "final_seconds": {
+            "exclusiveMinimum": 0.0,
+            "title": "Final Seconds",
+            "type": "integer"
+          },
+          "initial_seconds": {
+            "exclusiveMinimum": 0.0,
+            "title": "Initial Seconds",
+            "type": "integer"
+          },
+          "intermediate_seconds": {
+            "exclusiveMinimum": 0.0,
+            "title": "Intermediate Seconds",
+            "type": "integer"
+          },
+          "source_note": {
+            "description": "Which regulation, article and RTS version these come from. Three durations with no stated source are three numbers nobody can audit.",
+            "maxLength": 2000,
+            "minLength": 20,
+            "title": "Source Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "initial_seconds",
+          "intermediate_seconds",
+          "final_seconds",
+          "source_note"
+        ],
+        "title": "DeadlinePolicyRequest",
+        "type": "object"
+      },
+      "DeadlinePolicyResponse": {
+        "properties": {
+          "final_seconds": {
+            "title": "Final Seconds",
+            "type": "integer"
+          },
+          "initial_seconds": {
+            "title": "Initial Seconds",
+            "type": "integer"
+          },
+          "intermediate_seconds": {
+            "title": "Intermediate Seconds",
+            "type": "integer"
+          },
+          "is_default": {
+            "description": "Whether these are the built-in default rather than a policy this tenant recorded. The default follows the regulation; confirming it against this deployment's own regulator is the deployment's job, and this says whether anybody has.",
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "source_note": {
+            "title": "Source Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "initial_seconds",
+          "intermediate_seconds",
+          "final_seconds",
+          "source_note",
+          "is_default"
+        ],
+        "title": "DeadlinePolicyResponse",
+        "type": "object"
+      },
       "DeclarePrincipalRequest": {
         "description": "What a principal is, and who is accountable for it.",
         "properties": {
@@ -9693,6 +9762,54 @@
               }
             ],
             "title": "Classified By"
+          },
+          "deadline_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`default` or `tenant_policy` \u2014 which durations produced the three instants. Recorded because a default that changes in a later release must not leave an auditor unable to say where a given deadline came from.",
+            "title": "Deadline Basis"
+          },
+          "final_report_due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Report Due At"
+          },
+          "initial_report_due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Report Due At"
+          },
+          "intermediate_report_due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intermediate Report Due At"
           },
           "materiality": {
             "title": "Materiality",
@@ -20257,6 +20374,68 @@
         "summary": " Patch Pii Pattern",
         "tags": [
           "admin: pii"
+        ]
+      }
+    },
+    "/v1/admin/reporting-deadline-policy": {
+      "get": {
+        "description": "The durations in force for this tenant, and whether anybody chose them.",
+        "operationId": "get_deadline_policy_v1_admin_reporting_deadline_policy_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeadlinePolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Deadline Policy",
+        "tags": [
+          "admin: obligations"
+        ]
+      },
+      "put": {
+        "description": "Record what this tenant's regime requires, overriding the default.\n\nAlready-stamped deadlines do not move. They are what somebody was working\nto, and rewriting them would rewrite the audit's answer to \"when was this\ndue\".",
+        "operationId": "set_deadline_policy_v1_admin_reporting_deadline_policy_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeadlinePolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeadlinePolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Deadline Policy",
+        "tags": [
+          "admin: obligations"
         ]
       }
     },

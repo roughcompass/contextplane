@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.service.governance.actors import ActorDirectoryService
+from contextplane.service.governance.deadlines import ReportingDeadlineService
 from contextplane.service.governance.obligation_evidence import ObligationEvidenceService
 from contextplane.service.governance.obligations import ReportingObligationService
 from contextplane.service.governance.visibility import VisibilityService
@@ -61,6 +62,11 @@ class GovernanceServices:
     #: collaborator: an obligation is owned by exactly one tenant and is never
     #: cross-tenant readable, so there is no decision for one to make.
     reporting_obligations: ReportingObligationService
+    #: The clock a classification-as-material starts. Its own service rather than
+    #: more of `ReportingObligationService`: nominating and classifying is a
+    #: judgement somebody records, and stamping deadlines is what follows from
+    #: one. Different question, and one of them has a scheduled observer.
+    reporting_deadlines: ReportingDeadlineService
     actor_directory: ActorDirectoryService
     obligation_evidence: ObligationEvidenceService
 
@@ -73,6 +79,7 @@ def build_governance_services(
     obligations = ReportingObligationService(session_factory, clock=clock)
     return GovernanceServices(
         reporting_obligations=obligations,
+        reporting_deadlines=ReportingDeadlineService(session_factory, clock=clock),
         actor_directory=ActorDirectoryService(session_factory, clock=clock),
         obligation_evidence=ObligationEvidenceService(session_factory, obligations=obligations),
         visibility=VisibilityService(session_factory, clock),
@@ -114,6 +121,22 @@ def register_governance_jobs(
         max_instances=1,
         coalesce=True,
         id="reporting_obligation_backlog",
+        replace_existing=True,
+        next_run_time=datetime.datetime.now(tz=datetime.UTC),
+    )
+
+    # The deadline gauges, on the same argument and a tighter interval. A
+    # reporting backlog moves in hours; a deadline that has just passed is worth
+    # knowing about sooner than the next hour, because the whole point of the
+    # clock is that a missed deadline is loud.
+    deadlines = ReportingDeadlineService(session_factory, clock=clock)
+    scheduler.add_job(
+        deadlines.observe,
+        trigger="interval",
+        minutes=5,
+        max_instances=1,
+        coalesce=True,
+        id="reporting_deadline_state",
         replace_existing=True,
         next_run_time=datetime.datetime.now(tz=datetime.UTC),
     )

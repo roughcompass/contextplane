@@ -59,6 +59,7 @@ from contextplane.service.governance.actors import (
 from contextplane.service.governance.actors import (
     parse_cursor as parse_actor_cursor,
 )
+from contextplane.service.governance.deadlines import StampedDeadlines
 from contextplane.service.governance.obligations import (
     MATERIALITY_MATERIAL,
     MATERIALITY_NOT_MATERIAL,
@@ -112,6 +113,22 @@ class ObligationResponse(BaseModel):
     classified_by: uuid.UUID | None
     classification_note: str | None
 
+    #: Set together when a classification as material starts the clock, and null
+    #: on anything not classified material. All three or none: a partial set
+    #: would let a reader believe the missing ones were not due rather than not
+    #: recorded.
+    initial_report_due_at: datetime.datetime | None = None
+    intermediate_report_due_at: datetime.datetime | None = None
+    final_report_due_at: datetime.datetime | None = None
+    deadline_basis: str | None = Field(
+        default=None,
+        description=(
+            "`default` or `tenant_policy` — which durations produced the three instants. "
+            "Recorded because a default that changes in a later release must not leave an "
+            "auditor unable to say where a given deadline came from."
+        ),
+    )
+
 
 class BacklogResponse(BaseModel):
     """The unclassified backlog, and how long the longest has waited.
@@ -123,7 +140,7 @@ class BacklogResponse(BaseModel):
     oldest_age_seconds: float
 
 
-def _response(obligation: ReportingObligation) -> ObligationResponse:
+def _response(obligation: ReportingObligation, stamped: StampedDeadlines | None = None) -> ObligationResponse:
     return ObligationResponse(
         obligation_id=obligation.obligation_id,
         summary=obligation.summary,
@@ -133,6 +150,14 @@ def _response(obligation: ReportingObligation) -> ObligationResponse:
         classified_at=obligation.classified_at,
         classified_by=obligation.classified_by,
         classification_note=obligation.classification_note,
+        # The freshly stamped instants when the classify path just produced
+        # them, and otherwise whatever the row already carries. A read must show
+        # the deadlines without the caller having asked a second surface, which
+        # is E4-T6's "visible without anybody asking".
+        deadline_basis=obligation.deadline_basis if stamped is None else stamped.basis,
+        final_report_due_at=(obligation.final_report_due_at if stamped is None else stamped.final),
+        initial_report_due_at=(obligation.initial_report_due_at if stamped is None else stamped.initial),
+        intermediate_report_due_at=(obligation.intermediate_report_due_at if stamped is None else stamped.intermediate),
     )
 
 
@@ -163,16 +188,104 @@ async def classify_obligation(
     the one somebody acted on, and an overwrite would leave the trail describing
     only the most recent opinion.
     """
+    services = _services(request)
     try:
-        obligation = await _services(request).reporting_obligations.classify(
+        obligation = await services.reporting_obligations.classify(
             ctx,
             obligation_id=obligation_id,
             materiality=body.materiality,
             note=body.note,
         )
+        # The clock starts here rather than on a later call, and that is E4-T6's
+        # own requirement: the deadlines are stamped *at classification time*,
+        # so a separate "now start the clock" step would be a window in which an
+        # obligation is material and nothing is due.
+        stamped = None
+        if obligation.materiality == MATERIALITY_MATERIAL:
+            stamped = await services.reporting_deadlines.stamp(ctx, obligation_id)
     except (ConflictError, NotFoundError, ValidationError) as exc:
         raise map_catalog_error(exc) from exc
-    return _response(obligation)
+    return _response(obligation, stamped)
+
+
+class DeadlinePolicyRequest(BaseModel):
+    """The durations this tenant's regulator requires, overriding the default."""
+
+    initial_seconds: int = Field(gt=0)
+    intermediate_seconds: int = Field(gt=0)
+    final_seconds: int = Field(gt=0)
+    source_note: str = Field(
+        min_length=20,
+        max_length=2000,
+        description=(
+            "Which regulation, article and RTS version these come from. Three durations "
+            "with no stated source are three numbers nobody can audit."
+        ),
+    )
+
+
+class DeadlinePolicyResponse(BaseModel):
+    initial_seconds: int
+    intermediate_seconds: int
+    final_seconds: int
+    source_note: str
+    is_default: bool = Field(
+        description=(
+            "Whether these are the built-in default rather than a policy this tenant "
+            "recorded. The default follows the regulation; confirming it against this "
+            "deployment's own regulator is the deployment's job, and this says whether "
+            "anybody has."
+        )
+    )
+
+
+@router.put("/reporting-deadline-policy", response_model=DeadlinePolicyResponse)
+async def set_deadline_policy(
+    request: Request,
+    body: DeadlinePolicyRequest,
+    ctx: Annotated[TenantContext, Depends(_admin_required)],
+) -> DeadlinePolicyResponse:
+    """Record what this tenant's regime requires, overriding the default.
+
+    Already-stamped deadlines do not move. They are what somebody was working
+    to, and rewriting them would rewrite the audit's answer to "when was this
+    due".
+    """
+    try:
+        policy = await _services(request).reporting_deadlines.set_policy(
+            ctx,
+            initial=datetime.timedelta(seconds=body.initial_seconds),
+            intermediate=datetime.timedelta(seconds=body.intermediate_seconds),
+            final=datetime.timedelta(seconds=body.final_seconds),
+            source_note=body.source_note,
+        )
+    except ValidationError as exc:
+        raise map_catalog_error(exc) from exc
+    return DeadlinePolicyResponse(
+        final_seconds=int(policy.final.total_seconds()),
+        initial_seconds=int(policy.initial.total_seconds()),
+        intermediate_seconds=int(policy.intermediate.total_seconds()),
+        is_default=False,
+        source_note=policy.source_note,
+    )
+
+
+@router.get("/reporting-deadline-policy", response_model=DeadlinePolicyResponse)
+async def get_deadline_policy(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(_admin_required)],
+) -> DeadlinePolicyResponse:
+    """The durations in force for this tenant, and whether anybody chose them."""
+    deadlines = _services(request).reporting_deadlines
+    configured = await deadlines.policy_for(ctx)
+    policy = configured or deadlines.default_policy()
+    return DeadlinePolicyResponse(
+        final_seconds=int(policy.final.total_seconds()),
+        initial_seconds=int(policy.initial.total_seconds()),
+        intermediate_seconds=int(policy.intermediate.total_seconds()),
+        is_default=configured is None,
+        source_note=policy.source_note,
+    )
 
 
 @router.get("/reporting-obligations/{obligation_id}", response_model=ObligationResponse)
