@@ -4243,6 +4243,67 @@
         "title": "CitationResponse",
         "type": "object"
       },
+      "CitedIncidentResponse": {
+        "description": "One external incident record this obligation is about.",
+        "properties": {
+          "authorized_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorized Uri"
+          },
+          "bound_at": {
+            "format": "date-time",
+            "title": "Bound At",
+            "type": "string"
+          },
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "reference_id": {
+            "format": "uuid",
+            "title": "Reference Id",
+            "type": "string"
+          },
+          "source_namespace": {
+            "title": "Source Namespace",
+            "type": "string"
+          },
+          "source_system": {
+            "title": "Source System",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference_id",
+          "source_system",
+          "source_namespace",
+          "external_id",
+          "authorized_uri",
+          "observed_at",
+          "bound_at"
+        ],
+        "title": "CitedIncidentResponse",
+        "type": "object"
+      },
       "ClaimHistoryResponse": {
         "additionalProperties": false,
         "properties": {
@@ -9723,6 +9784,47 @@
           "next_cursor"
         ],
         "title": "NotificationListResponse",
+        "type": "object"
+      },
+      "ObligationEvidenceResponse": {
+        "description": "One obligation, the incidents it cites, and the claims citing those.",
+        "properties": {
+          "citing_claims": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Citing Claims",
+            "type": "array"
+          },
+          "incidents": {
+            "items": {
+              "$ref": "#/components/schemas/CitedIncidentResponse"
+            },
+            "title": "Incidents",
+            "type": "array"
+          },
+          "is_matched": {
+            "description": "Whether anybody has yet said which record this obligation concerns. False is a nomination in progress rather than a defect, and a reader of an empty bundle needs to be able to tell those apart.",
+            "title": "Is Matched",
+            "type": "boolean"
+          },
+          "obligation": {
+            "$ref": "#/components/schemas/ObligationResponse"
+          },
+          "provenance": {
+            "title": "Provenance",
+            "type": "string"
+          }
+        },
+        "required": [
+          "obligation",
+          "incidents",
+          "citing_claims",
+          "provenance",
+          "is_matched"
+        ],
+        "title": "ObligationEvidenceResponse",
         "type": "object"
       },
       "ObligationResponse": {
@@ -20574,6 +20676,50 @@
           }
         },
         "summary": "Classify Obligation",
+        "tags": [
+          "admin: obligations"
+        ]
+      }
+    },
+    "/v1/admin/reporting-obligations/{obligation_id}:evidence": {
+      "get": {
+        "description": "Everything recorded about one obligation, in one read.\n\n**This route is why the service exists, and it was missing.**\n`ObligationEvidenceService` shipped as E4-T7's deliverable, wired into the\ncontainer and reached by no transport -- so the export nobody could call was\nrecorded as delivered. An export surface with no caller is not an export,\nand this is the seventh instance of that defect the plan has caught.\n\nThe scope is a join and nothing is inferred: an obligation, the incidents it\ncites, and the claims whose provenance names those incidents. A claim reaches\nthis bundle only by citing an incident this obligation cites.\n\nIds, never claim content. Somebody assembling a regulatory submission needs\nto know *which* records bear on it; serving the values here would be a second\nserving path with none of the servability rules the real one applies.",
+        "operationId": "obligation_evidence_v1_admin_reporting_obligations__obligation_id__evidence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "obligation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Obligation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObligationEvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Obligation Evidence",
         "tags": [
           "admin: obligations"
         ]
