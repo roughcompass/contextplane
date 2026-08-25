@@ -767,7 +767,11 @@ class PromotionService:
                         "SELECT claim_id, subject_entity_id, predicate, value_jsonb AS value, "
                         "       owning_tenant_id, author_tenant_id, author_actor_id, status, "
                         "       is_contested, confidence, source_authority, consolidated_at, "
-                        "       promotion_state, asserted_valid_from, asserted_valid_to "
+                        "       promotion_state, asserted_valid_from, asserted_valid_to, "
+                        # Selected so `assess_eligibility` can refuse a withheld
+                        # claim. Absent from this list, the check there silently
+                        # reads `None` and passes.
+                        "       quarantined_at "
                         "  FROM memory_claims WHERE claim_id = :cid AND t_invalidated_at IS NULL"
                     ),
                     {"cid": claim_id},

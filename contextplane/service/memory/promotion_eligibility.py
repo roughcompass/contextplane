@@ -43,6 +43,10 @@ INELIGIBLE_BELOW_FLOOR: Final[str] = "below the tenant confidence floor"
 INELIGIBLE_NO_TARGET: Final[str] = "no canonical target"
 INELIGIBLE_UNATTRIBUTED: Final[str] = "no attributable source"
 INELIGIBLE_ALREADY: Final[str] = "already promoted"
+#: Withheld by an operator. Not a judgement about the claim's content -- a
+#: quarantine says the *provenance* turned out to be wrong -- but a claim nobody
+#: is allowed to read must not become the canonical answer while it is withheld.
+INELIGIBLE_QUARANTINED: Final[str] = "withheld by a quarantine"
 
 # --- high impact --------------------------------------------------------------
 
@@ -250,6 +254,14 @@ def assess_eligibility(claim: dict[str, Any], policy: PromotionPolicy) -> Eligib
         reasons.append(INELIGIBLE_CONTESTED)
     if claim.get("promotion_state") in {"proposed", "promoted"}:
         reasons.append(INELIGIBLE_ALREADY)
+
+    # Here rather than only in the sweep's candidate query, which is where the
+    # gap was: that query is one propose path and the guard belongs where every
+    # path passes. `quarantine.py` says no future *serving* path can forget the
+    # column because the predicate is materialised -- true, and promotion is not
+    # a serving path. It writes canon, which is worse to get wrong.
+    if claim.get("quarantined_at") is not None:
+        reasons.append(INELIGIBLE_QUARANTINED)
 
     confidence = claim.get("confidence")
     if confidence is not None and float(confidence) < policy.confidence_floor:
