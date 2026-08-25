@@ -81,7 +81,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     from contextplane.context.resolve import ContextResolver, ResolvedContext
-    from contextplane.context.schemas.envelope import ContextEnvelopeV1
+    from contextplane.context.schemas.envelope import ContextBlockV1, ContextEnvelopeV1
     from contextplane.extraction.response_provider import ResponseProvider
     from contextplane.types import Clock, TenantContext
 
@@ -96,6 +96,23 @@ MAX_PROMPT_CHARS: Final[int] = 20_000
 #: person is not a thing this operation does, and letting it through would put a
 #: machine's answer under a human's name in the record.
 SIMULATABLE_KIND: Final = "agent"
+
+
+@dataclasses.dataclass(frozen=True)
+class ServedRecord:
+    """One item as the model saw it, kept because nothing else keeps it.
+
+    `context_receipt_items` records which items a resolution served and
+    deliberately not their content, so a judge asked whether an answer is
+    grounded in what was served has nothing to check against. Re-resolving to
+    recover the material would grade a different envelope than the answer came
+    from.
+    """
+
+    receipt_item_id: str
+    block: str
+    item_key: str
+    payload_json: str
 
 
 @dataclasses.dataclass(frozen=True)
@@ -154,6 +171,9 @@ class Simulation:
     duration_ms: int | None
     created_at: datetime.datetime
     run_item_id: uuid.UUID | None = None
+    #: What the model was shown. Empty only on a simulation written before this
+    #: was recorded, which no shipped version produced.
+    served: tuple[ServedRecord, ...] = ()
 
     @property
     def uncited_served_ids(self) -> tuple[str, ...]:
@@ -166,10 +186,10 @@ class Simulation:
         cited = {citation.receipt_item_id for assertion in self.assertions for citation in assertion.citations}
         return tuple(sorted(self.served_receipt_item_ids - cited))
 
-    #: Every receipt item id the envelope actually served. Set by the service at
-    #: construction; a simulation read back from storage carries the ids its
-    #: citations name plus whatever the receipt says, which is the reader's join.
-    served_receipt_item_ids: frozenset[str] = frozenset()
+    @property
+    def served_receipt_item_ids(self) -> frozenset[str]:
+        """Every receipt item id the envelope served, from the stored material."""
+        return frozenset(record.receipt_item_id for record in self.served)
 
 
 class SimulationService:
@@ -259,7 +279,8 @@ class SimulationService:
             # receipt write is not conditional on the generation succeeding.
             raise
 
-        served = _served_ids(resolved.envelope)
+        served_records = _served_records(resolved.envelope)
+        served = frozenset(record.receipt_item_id for record in served_records)
         assertions = tuple(
             SimulatedAssertion(
                 citations=tuple(
@@ -290,7 +311,7 @@ class SimulationService:
             provider_id=provider.provider_id,
             receipt_id=resolved.receipt_id,
             run_item_id=run_item_id,
-            served_receipt_item_ids=served,
+            served=served_records,
             simulated_actor_id=simulated_actor_id,
             simulation_id=uuid.uuid4(),
             usage=usage,
@@ -322,6 +343,22 @@ class SimulationService:
             )
             if header is None:
                 raise NotFoundError(f"simulation {simulation_id} not found")
+
+            served_rows = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT receipt_item_id, block, item_key, payload "
+                            "  FROM evaluation_simulation_served_items "
+                            " WHERE simulation_id = :sid AND tenant_id = :tid "
+                            " ORDER BY receipt_item_id"
+                        ),
+                        {"sid": simulation_id, "tid": ctx.tenant_id},
+                    )
+                )
+                .mappings()
+                .all()
+            )
 
             rows = (
                 (
@@ -368,6 +405,15 @@ class SimulationService:
             provider_id=header["provider_id"],
             receipt_id=header["receipt_id"],
             run_item_id=header["run_item_id"],
+            served=tuple(
+                ServedRecord(
+                    block=row["block"],
+                    item_key=row["item_key"],
+                    payload_json=json.dumps(row["payload"], default=str, sort_keys=True),
+                    receipt_item_id=str(row["receipt_item_id"]),
+                )
+                for row in served_rows
+            ),
             simulated_actor_id=header["simulated_actor_id"],
             simulation_id=header["simulation_id"],
             usage=TokenReport(
@@ -455,6 +501,22 @@ class SimulationService:
                     "usage_source": simulation.usage.source,
                 },
             )
+            for record in simulation.served:
+                await session.execute(
+                    text(
+                        "INSERT INTO evaluation_simulation_served_items "
+                        "(simulation_id, tenant_id, receipt_item_id, block, item_key, payload) "
+                        "VALUES (:sid, :tid, :item, :block, :key, CAST(:payload AS JSONB))"
+                    ),
+                    {
+                        "block": record.block,
+                        "item": record.receipt_item_id,
+                        "key": record.item_key,
+                        "payload": record.payload_json,
+                        "sid": simulation.simulation_id,
+                        "tid": ctx.tenant_id,
+                    },
+                )
             for assertion in simulation.assertions:
                 assertion_id = uuid.uuid4()
                 await session.execute(
@@ -487,9 +549,31 @@ class SimulationService:
                     )
 
 
-def _served_ids(envelope: ContextEnvelopeV1) -> frozenset[str]:
-    """Every receipt item id this envelope served, across all five blocks."""
-    return frozenset(item.receipt_item_id.value() for block in envelope.blocks for item in block.items)
+def _served_records_of(block: ContextBlockV1) -> tuple[ServedRecord, ...]:
+    """One block's items, serialized exactly once.
+
+    The single place a payload becomes bytes. Serializing separately for the
+    model and for the record would let a judge grade content that differed from
+    what the candidate was shown, in a way nothing would report.
+    """
+    return tuple(
+        ServedRecord(
+            block=block.name,
+            item_key=item.receipt_item_id.item_key,
+            payload_json=json.dumps(item.payload, default=str, sort_keys=True),
+            receipt_item_id=item.receipt_item_id.value(),
+        )
+        for item in block.items
+    )
+
+
+def _served_records(envelope: ContextEnvelopeV1) -> tuple[ServedRecord, ...]:
+    """Every served item, as the model will see it, across all five blocks.
+
+    Serialized once, through `_served_records_of`, so both the model and the
+    stored record get byte-identical material.
+    """
+    return tuple(record for block in envelope.blocks for record in _served_records_of(block))
 
 
 def _response_request(
@@ -514,12 +598,12 @@ def _response_request(
         ServedBlockView(
             items=tuple(
                 ServedItemView(
-                    block=block.name,
-                    item_key=item.receipt_item_id.item_key,
-                    payload_json=json.dumps(item.payload, default=str, sort_keys=True),
-                    receipt_item_id=item.receipt_item_id.value(),
+                    block=record.block,
+                    item_key=record.item_key,
+                    payload_json=record.payload_json,
+                    receipt_item_id=record.receipt_item_id,
                 )
-                for item in block.items
+                for record in _served_records_of(block)
             ),
             name=block.name,
             reason=block.reason,
@@ -548,6 +632,7 @@ __all__ = [
     "MAX_PROMPT_CHARS",
     "SIMULATABLE_KIND",
     "CitedItem",
+    "ServedRecord",
     "Simulation",
     "SimulatedAssertion",
     "SimulationService",

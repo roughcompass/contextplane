@@ -35,6 +35,14 @@ nothing can infer the kind from the transport. `simulated_actor_id` records whic
 principal was simulated; the service refuses an undeclared one, and the column
 exists so a reader of a past simulation can see who it claimed to be.
 
+**The material the model was shown is recorded, because nothing else holds it.**
+`context_receipt_items` records *which* items a resolution served -- their
+identity and their trust metadata -- and deliberately not their content. So a
+judge asked whether an answer is grounded in what was served has nothing to
+check it against, and re-resolving would grade a different envelope. A simulation
+nobody can reproduce is the unreceiptable failure ADR 0025 rejected when it
+declined a browser-side call, arriving from the other direction.
+
 **The pinned tuple is on the *judgement*, not here.** A simulation is a candidate
 answer; what grades it carries `(judge_model_id, rubric_version,
 prompt_template_hash)` per ADR 0026, and that table lands with the judge. Putting
@@ -145,6 +153,30 @@ CREATE TABLE evaluation_simulations (
 )
 """.replace("__USAGE__", _USAGE_SOURCES).replace("__DISPOSITIONS__", _INSTRUCTION_STATES)
 
+_SERVED = """
+CREATE TABLE evaluation_simulation_served_items (
+    simulation_id   UUID NOT NULL REFERENCES evaluation_simulations(simulation_id) ON DELETE CASCADE,
+    tenant_id       UUID NOT NULL REFERENCES tenants(tenant_id),
+
+    -- The digest the envelope served, which is what a citation names.
+    receipt_item_id TEXT NOT NULL,
+    block           TEXT NOT NULL,
+    item_key        TEXT NOT NULL,
+
+    -- The item's payload as the model saw it, serialized once by the service so
+    -- two providers are sent byte-identical material and a difference between
+    -- two answers is a difference in the models.
+    --
+    -- Stored rather than joined because the receipt does not carry content and
+    -- was never meant to: a receipt says what was served, and a judge grading
+    -- groundedness needs what was *said*. Re-resolving to recover it would grade
+    -- a different envelope than the one the answer came from.
+    payload         JSONB NOT NULL,
+
+    PRIMARY KEY (simulation_id, receipt_item_id)
+)
+"""
+
 _ASSERTIONS = """
 CREATE TABLE evaluation_simulation_assertions (
     assertion_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -212,6 +244,7 @@ CREATE INDEX ix_citations_by_item ON evaluation_simulation_citations (tenant_id,
 
 def upgrade() -> None:
     op.execute(_SIMULATIONS)
+    op.execute(_SERVED)
     op.execute(_ASSERTIONS)
     op.execute(_CITATIONS)
     op.execute(_BY_TENANT)
@@ -224,4 +257,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute("DROP TABLE evaluation_simulation_citations")
     op.execute("DROP TABLE evaluation_simulation_assertions")
+    op.execute("DROP TABLE evaluation_simulation_served_items")
     op.execute("DROP TABLE evaluation_simulations")
