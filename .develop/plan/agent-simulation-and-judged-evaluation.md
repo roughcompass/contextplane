@@ -15,7 +15,7 @@ two answers and no record of which won.
 
 ### E24 — Agent simulation and judged evaluation: a response to grade, a judge that is not the candidate, and improvement paths that do not presume a cause
 
-**Kind:** epic · **Status:** open · **Blocked by:** none · **Repo:** contextplane, contextplane-ui
+**Kind:** epic · **Status:** done — all sixteen tasks closed · **Repo:** contextplane, contextplane-ui
 
 The user's framing, in their words, because the plan should not restate it into
 something easier to build: *"a user enters a prompt and then is able to run tests
@@ -989,7 +989,7 @@ copy has tests behind it. `pnpm test` still runs in CI as part of the gate job.
 
 ### E24-T10 — The Served surface gains the destination that answers its question
 
-**Kind:** task · **Status:** pending · **Blocked by:** E24-T9 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E24-T9 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: prompt sets, their runs and their verdicts become a screen.
 
@@ -1010,7 +1010,7 @@ Acceptance:
 
 ### E24-T11 — Context Lab becomes the simulator
 
-**Kind:** task · **Status:** pending · **Blocked by:** E24-T3, E24-T9 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E24-T3, E24-T9 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: agent, instructions in force, prompt and expectations above three panes —
 context, response, score.
@@ -1042,9 +1042,28 @@ Acceptance:
     pnpm --filter admin-dashboard test -- -t "simulation"
     pnpm lint && pnpm type-check && pnpm test && pnpm build
 
+**Shipped. Not a rewrite, and two things the entry did not anticipate.**
+
+**`emptyBlockMessage` had no case for the fifth block, so it fell through to the
+ARC line.** An empty instruction block read *"No governed policies were requested
+or selected for this run"* — a sentence about a different arm entirely. That is
+the four-block assumption in the form it actually took on this page, and it is
+exactly the class of defect the epic body predicted. It now reports the
+resolution's own `instruction_block_note`, which distinguishes the three empties.
+
+**The scope a simulation resolves under is captured from the resolution rather
+than re-read from the form.** A simulation that resolved a differently-scoped
+question than the one on screen would be answering something nobody asked, and
+the form is editable between the two actions.
+
+**The sentence is amended, not deleted**, and the amendment does the work the
+plan asked for: it keeps *"the resolver retrieves context only"* and adds that
+simulation is a separate receipted operation, so a reader who has just watched a
+response appear knows which component did not produce it.
+
 ### E24-T12 — The score pane: evidence before verdict, unproven when uncalibrated
 
-**Kind:** task · **Status:** pending · **Blocked by:** E24-T5, E24-T7, E24-T11 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E24-T5, E24-T7, E24-T11 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: five criteria, each showing what it concluded and what it concluded it from,
 with an override that is one action away and a calibration state that is never
@@ -1070,9 +1089,27 @@ Acceptance:
     pnpm --filter admin-dashboard test -- -t "score"
     pnpm lint && pnpm type-check && pnpm test && pnpm build
 
+**Shipped, and it needed a service task first.** The pane shows five criteria and
+only two were reachable: `envelope_judge.py` had no caller. E24-T4a cut and closed
+that before this could pass its own acceptance.
+
+**Five rows render even when four have nothing to say.** A pane rendering only
+the criteria it had results for would let a reader believe the run was assessed
+on one — and the absent rows include all three that implicate what was served.
+`unjudged` and `unassertable` are distinct outcomes because their remedies are:
+one needs a judge run, the other needs expectations declared before the next run.
+
+**`confidence_is_calibrated` arrives from the service and is not inferred.** A
+client that computed it would be a second place the rule lives, and the one that
+could get it wrong — putting a confident label on a guess in the place least able
+to absorb one, which is the defect ADR 0019 refused for `actor_kind`.
+
+**Evidence renders on a pass as well as a fail.** Evidence supplied only on
+failures teaches a reader that passes are not checkable.
+
 ### E24-T13 — The improvement surface: observations, several at once, unranked
 
-**Kind:** task · **Status:** pending · **Blocked by:** E24-T12 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E24-T12 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: a failing run offers every opportunity its record supports, names none of
 them as the cause, and links each to the surface that already handles it.
@@ -1098,9 +1135,37 @@ Acceptance:
     pnpm --filter admin-dashboard test -- -t "improvement"
     pnpm lint && pnpm type-check && pnpm test && pnpm build
 
+**Shipped. Nine observation kinds, every one of them a fact from the run's own
+record.**
+
+The seed table's seven rows are all present, plus two the record turned out to
+support: **a citation naming something that was never served** (which the forced
+tool call makes observable at all), and **instructions declared but never
+submitted** — the `declared_unknown` disposition, which is the one instruction
+state a caller can leave by acting.
+
+**`couldPointAt` is a list on every observation, and a test asserts it.** The
+user's correction is the acceptance criterion, so "more than one candidate" is
+checked rather than trusted: a single-entry list would be a diagnosis wearing an
+observation's clothes.
+
+**Ranking is refused and nothing is scored.** The order is the order the evidence
+appears in, so two readers of one run see one list. `curationModel.ts`'s rule
+holds verbatim.
+
+**Every rating comes from the shipped thirteen** — `ignored`, `missing`,
+`incorrect`, `contradicted`, `unsafe` — and an observation with no item-level
+rating offers no record action rather than collapsing into one of the three the
+dashboard writes today.
+
+**The instruction door stays gated.** This surface links to the agent's page and
+offers no instruction edit, because E20-T7 requires a stored failure-pattern
+report first — which turns a finding here into citable evidence rather than an
+opinion.
+
 ### E24-T14 — Comparing two runs, in the vocabulary ARC already uses
 
-**Kind:** task · **Status:** pending · **Blocked by:** E24-T10 · **Hotspot:** no · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** E24-T10 · **Hotspot:** no · **Repo:** contextplane-ui
 
 Goal: two runs of one prompt set, side by side, with what moved named rather than
 diffed as text.
@@ -1163,6 +1228,41 @@ Named rather than left as a remainder, on this file's convention.
   blocked identifier fields ... each need a read that does not exist."* This epic
   adds one picker (the agent) and adds no free-text identifier field, which the
   shipped gate enforces anyway.
+
+## Close-out — what the epic learned that the entries did not say
+
+Recorded here rather than left in sixteen task bodies, because three of the four
+findings are shapes rather than incidents.
+
+**Two tasks were cut mid-epic, and both were the same shape.** E24-T4a
+(`envelope_judge` had no caller) and E24-T9a (a duplicate schema name renamed a
+published one) were found by *building the consumer*, not by reading the
+producer. The generalizable rule: **a mechanism is not finished until something
+reaches it**, and the cheapest way to discover that nothing does is to write the
+thing that would.
+
+**"A check that fires on everything" is the epic's recurring defect, and it
+appeared three times.** `judge.py`'s tenant dimension fired on every real item
+because no arm writes a tenant into a payload. `envelope_judge`'s classification
+dimension would have fired on every replayed item, because recorded material has
+no trust record. And `assert_unchanged` would have reported drift on every
+five-block run had it defaulted to re-digesting the four-block scorer. All three
+look like working defences and distinguish nothing. **A gate, a scorer or a
+constraint that cannot produce a negative result is worth as much as one that
+cannot produce a positive one**, and the test that catches it is the one asserting
+the *passing* case.
+
+**Every count written into a plan entry was stale by the time it was claimed.**
+The ADR numbers (0022/0023 were taken), the path count (seventeen was
+twenty-eight), the schema count (five was two). The entries' *premises* held —
+the evaluation schemas really were absent from the pin — and their arithmetic did
+not. Grounding an entry before claiming it is what caught all three.
+
+**Four gates now exist that did not.** `contract-schema-names` (added here),
+plus the three the epic's own tests encode: the block-name parser reads its
+vocabulary from one list, the freeze registry refuses an unregistered scorer, and
+the score pane's calibration flag is server-sent rather than client-derived. Each
+replaces a convention that had already been broken once.
 
 ### Handoff to E8 — the memory-quality measurements have no reader
 
