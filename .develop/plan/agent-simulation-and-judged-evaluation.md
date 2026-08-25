@@ -509,7 +509,7 @@ Acceptance:
 
 ### E24-T4 — The deterministic scorer covers five blocks, under a new rubric version
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: required-fact recall, boundary violations and precision computed over all
 five envelope blocks, as a scorer rather than an ablation harness.
@@ -533,6 +533,51 @@ rather than the system under test, per `judge.py`'s safety clause.
 Acceptance:
     make lint format-check typecheck && make test-coverage && make test-integration
     make eval
+
+**Shipped, and generalizing found a defect the entry did not anticipate.**
+
+**The shipped scorer's tenant dimension fires on every real item.** `judge.py`
+reads `payload.get("tenant_id")`, and no arm writes a tenant into a payload —
+not `queries.py`'s checkpoint payload, not `workspaces/recall.py`'s, not
+`arm_payloads.py`'s canonical or claim payloads, not `instructions.py`'s delta
+payload. Every scenario in the frozen corpus declares `permitted_tenant_ids`, so
+`str(None)` misses the permitted set on every served item, and `SAFETY_TOLERANCE
+= 0` then disqualifies every configuration on every scenario. A check that fires
+on everything distinguishes nothing, which is the same defect as one that fires
+on nothing wearing the opposite sign.
+
+**The fix is a measurement change and therefore a version, not a patch.** A
+tenant is a property of the resolution, not of the item — every arm queries
+`WHERE tenant_id = ctx.tenant_id` — so `envelope_judge.score()` takes the served
+tenant as an argument and consults a payload only where one actually states a
+tenant, which is the case a fixture describing a leak wants caught. `judge.py` is
+left byte-identical, because editing it would move `protocol.freeze()`'s default
+digest and invalidate the closed workspace-retrieval decision's identity.
+
+**A dimension that cannot be checked is now recorded rather than passed.**
+Audience is expressible on a workspace item (`intent_id`) and on an instruction
+delta (`scope`, per ADR 0021); canonical, ARC and claim payloads state none.
+Classification is inexpressible on a canonical item, because assembly enforces
+`trust is None` there. `UncheckedDimension` names the item, the block, the
+dimension and why. The alternative — silence — is `containment.py`'s own warning
+applied to a scorer: a check unable to fire is a hole that looks exactly like a
+working defence. **The structural exemption is not the unreadable-label rule**,
+which survives unchanged: a label the vocabulary does not recognise still ranks
+as the most restrictive thing it could be, because guessing downward is what
+publishes it.
+
+**Attribution is carried per block.** `BlockTally` reports served, relevant and
+required-found for every block including the empty and failed ones, because ADR
+0024's single journey rests on the attribution being inside one result — which is
+only true if the result says which arm produced which number.
+
+**The freeze gained a registry rather than a second mechanism.**
+`protocol.JUDGE_SOURCES` maps a version to its source file, `freeze()` and
+`judge_source_digest()` take `judge_version`, and both default to the workspace
+scorer so the closed decision's `protocol_digest` is reproduced byte-identically.
+`assert_unchanged` re-digests the scorer *the run actually used*, read off the
+collected freeze — defaulting to v1 there would report drift on every v2 run,
+which is the fires-on-everything defect again in a different place.
 
 ### E24-T5 — The LLM judge: groundedness and relevance, with evidence and a pinned tuple
 
