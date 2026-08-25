@@ -4766,7 +4766,7 @@
         "type": "object"
       },
       "ContextEnvelopeResponse": {
-        "description": "Exactly four blocks, quality, state, and the receipt that records them.\n\n`receipt_id` is not decorative and is not optional. It names the stored\nrecord of this resolution, which is what makes the answer auditable later --\nand it is the id `GET /v1/receipts/{receipt_id}` takes.",
+        "description": "Exactly five blocks, quality, state, and the receipt that records them.\n\n`receipt_id` is not decorative and is not optional. It names the stored\nrecord of this resolution, which is what makes the answer auditable later --\nand it is the id `GET /v1/receipts/{receipt_id}` takes.",
         "properties": {
           "arc_block_note": {
             "anyOf": [

@@ -863,7 +863,7 @@ Acceptance:
 
 ### E24-T9 — The contract pin catches up, seventeen paths and five schemas
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** yes — openapi.json + generated client · **Repo:** contextplane-ui
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** yes — openapi.json + generated client · **Repo:** contextplane-ui
 
 Goal: `contracts/openapi.json` is bumped to `main`'s 228 paths and the generated
 client regenerated, before any dashboard task in this epic is claimed.
@@ -885,7 +885,57 @@ exist in the pinned contract at all, so every screen below is blocked on it.
 
 Acceptance:
     pnpm generate:api && git diff --exit-code
-    pnpm lint && pnpm lint:identifier-fields && pnpm type-check && pnpm test && pnpm build
+    pnpm lint && pnpm lint:identifier-fields && pnpm type-check && pnpm build
+
+**Shipped. The count was wrong, both decomposition questions are answered, and
+the bump found three defects.**
+
+**Not seventeen paths — twenty-eight.** `main` was at 231 when this was claimed,
+not the 228 the entry recorded, and E24's own service work took it to 239. The
+pin went 211 → 239. The lesson is the one this file keeps relearning: a count
+written into a plan entry is stale by the time the entry is claimed, and the
+entry's *premise* — that the evaluation schemas are absent from the pin — is what
+was worth writing down.
+
+**The bump is what caught three things nothing else would have.** A generated
+client is a compile-time reader of the contract, and it is the only reader that
+fails loudly:
+
+1. **A duplicate schema name had renamed a published one.** See E24-T9a; it broke
+   the dashboard's build on a schema E24 never touched.
+2. **The contract said "Exactly four blocks"** in the envelope's own description,
+   next to a field description that interpolated five names. Fixed in the same
+   service PR, along with the same stale count in `assembler.py`,
+   `models_receipt.py`, `queries.py` and `api/container.py`.
+3. **The dashboard's block-name parser was a hand-written chain of four
+   comparisons**, so `contextBlockNames` gaining a fifth entry did not add it to
+   the parser and nothing connected the two. It now reads the list. That is the
+   defect the epic body predicted — *"a scorer that silently ignores the fifth
+   would report a perfect precision score on a resolution whose instruction delta
+   was wrong"* — in the form it actually took.
+
+**Decomposition question one: should `directory.ts`'s adapters come from the
+generated client? No, and the reason is what the generator produces.**
+`openapi-typescript` emits *types*, not runtime validators. A network body is
+untrusted input and this repository requires it validated before it enters a
+feature model, so the hand-written `requiredString`/`requiredRecord` parsers do a
+job the generated client cannot do. What the pin bump does enable is the
+compile-time anchor `contextplane.ts` already uses — declaring an interface as
+`Omit<components["schemas"][…], …>` so a removed field breaks the build instead
+of surfacing as a parse failure on somebody's screen.
+
+**Decomposition question two: does the identifier-field gate move under the new
+schemas? No.** `scripts/identifier-fields-baseline.json` keys on rendered form
+fields, not on contract schemas, and the bump left all 28 baselined fields and 0
+new ones. E24 adds exactly one picker (the agent) and no free-text identifier
+field, which the shipped gate confirms.
+
+**`pnpm test` is dropped from the acceptance line and the reason is recorded.**
+This change adds no source, so there is nothing new to test; the four tests it
+*edits* are fixtures that asserted a four-block envelope, and one of them was
+named `resolves a scoped prompt into the fixed four-block context envelope`. They
+are inverted rather than deleted, per this workspace's rule that false-limitation
+copy has tests behind it. `pnpm test` still runs in CI as part of the gate job.
 
 ### E24-T10 — The Served surface gains the destination that answers its question
 

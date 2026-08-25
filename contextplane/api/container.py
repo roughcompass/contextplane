@@ -284,7 +284,7 @@ class Services:
     intent_grants: IntentGrantService
 
     # Layered context: bounded workspace recall, and the composer that turns it
-    # and three other services into the four arms one resolution reads. Both are
+    # and four other services into the five arms one resolution reads. Both are
     # here for the same reason task memory is -- one instance per deployment, so
     # both transports resolve context over identical arms rather than each
     # building its own set and drifting on which service answers which block.

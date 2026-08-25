@@ -300,7 +300,7 @@ class QualityResponse(BaseModel):
 
 
 class ContextEnvelopeResponse(BaseModel):
-    """Exactly four blocks, quality, state, and the receipt that records them.
+    """Exactly five blocks, quality, state, and the receipt that records them.
 
     `receipt_id` is not decorative and is not optional. It names the stored
     record of this resolution, which is what makes the answer auditable later --

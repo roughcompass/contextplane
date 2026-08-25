@@ -1,9 +1,9 @@
-"""Assemble the four-block context envelope from four independent arms.
+"""Assemble the five-block context envelope from five independent arms.
 
 One deterministic contract that cannot flatten authority or hide an arm
 failure. Everything here exists to protect one of those two properties.
 
-**Authority is not flattened.** The four arms stay four blocks. Nothing merges
+**Authority is not flattened.** The five arms stay five blocks. Nothing merges
 them, re-ranks across them, or promotes a workspace note next to a canonical
 answer because it scored well. A single ranked list would be more convenient to
 consume and would destroy the only signal telling a reader which claims the
@@ -191,7 +191,7 @@ def _block_from_outcome(
 ) -> tuple[ContextBlockV1, SelectionEvidence, bool]:
     """Turn one arm's facts into one block, and say what it cost.
 
-    The single place success/empty/degraded/failed is decided, so the four arms
+    The single place success/empty/degraded/failed is decided, so the five arms
     cannot drift on what "degraded" means.
     """
     considered = len(outcome.items)
@@ -281,7 +281,7 @@ async def assemble(
 ) -> AssemblyResult:
     """Resolve one context envelope.
 
-    Every one of the four arms is asked, always, and every one appears in the
+    Every one of the five arms is asked, always, and every one appears in the
     result. An arm missing from `arms` is a failed arm rather than an absent
     block: a caller that has to check whether a block exists will get that check
     wrong once, and the failure looks like missing data rather than a missing

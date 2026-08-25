@@ -54,7 +54,7 @@ def _checkpoint_trust(
         source=_WORKSPACE_SOURCE,
         # An annotation, not a fact: a checkpoint is one agent's record of its own
         # working state, and reading it as a fact the registry asserts is exactly
-        # the flattening the four blocks exist to prevent.
+        # the flattening the five blocks exist to prevent.
         assertion_kind="annotation",
         authority=author,
         freshness=recorded_at,
