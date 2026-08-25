@@ -562,7 +562,7 @@ recorded justification. Never per-actor cells outside the audit role.
 
 ### E12 — Migration/import path
 
-**Kind:** epic · **Status:** done — except E12-T3, T4 and T5, blocked on a lot-scoped sample-and-review flow (ADR 0023) · **Blocked by:** E1, E5 ⚙ · **Repo:** contextplane
+**Kind:** epic · **Status:** done — except E12-T3, T4 and T5, blocked on a case being able to name a claim (ADR 0023 §3a) · **Blocked by:** E1, E5 ⚙ · **Repo:** contextplane
 
 Bulk-import API with provenance mapping; Backstage/CMDB/wiki connectors.
 Provenance mapping reuses the governed assertion path — `observed_time` and
@@ -592,8 +592,9 @@ control set does not.
 
 **Metric status, after decomposition measured all three.** Default-profile tool
 count was recorded as met at exactly 8, on a registry scalar no gate validated.
-It had drifted: the core tier holds **nine**, one over target. Corrected, and
-the gate now counts the list rather than trusting the summary. The
+The tier holds **nine** — raised deliberately by E22-T14 with its argument on the
+record, and the ratchet raised with it. The stale part was the summary, not the
+decision; the gate now counts the list rather than trusting it. The
 REST target is **8 against ≤ 6**, two over, with both candidate pairs nameable
 (E13-T1). Deprecated-surface count is **blocked, deliberately and on the
 record** (E13-T3): there is no usage corpus, because nothing has been released,
@@ -601,10 +602,10 @@ and retiring a tool on absence of evidence is refused. The dual-alias window is
 **struck** — this is a greenfield repository with no external consumers, so
 surfaces that consolidate are replaced, not aliased.
 
-**Closed on what the metrics allow.** Default-profile tool count is nine against
-a target of eight — one over, found when the registry scalars it was measured by
-turned out to be unvalidated and stale. The REST target was 8 against ≤ 6 and
-E13-T1 named both candidate pairs. The dual-alias
+**Closed on what the metrics allow.** Default-profile tool count is nine, held by
+a ratchet that E22-T14 argued up from eight for a stated reason — the mechanism
+E13-T4 built, working. The REST target was 8 against ≤ 6 and E13-T1 named both
+candidate pairs. The dual-alias
 window is struck: greenfield repository, no external consumers, so surfaces that
 consolidate are replaced rather than aliased.
 
@@ -5859,20 +5860,29 @@ E13 is measured against three tracked metrics, and grounding them first changes
 what the epic is for. Two are now measurable exactly, because E7-T1 committed
 the registry that measures them.
 
-**Default-profile tool count, target ≤ 8: missed by one, and this paragraph
-used to say otherwise.** `install_surface_filter` makes a default connection
-expose only the core tier, and that tier now holds **nine** tools against a
-target of eight.
+**Default-profile tool count, target ≤ 8: revised to 9, with an argument, which
+is the ratchet working.** `install_surface_filter` makes a default connection
+expose only the core tier, and that tier holds **nine** tools.
 
-The original claim — *"already met, at exactly 8"* — cited `core_count: 8`
-against `tool_count: 67` from `tool_registry.json`. Those scalars were **not
-validated by any gate** and had drifted: the file said 8 and 70 while the list
-held 9 and 71. So an epic closed a metric by quoting a summary nobody checked.
+This paragraph read *"already met, at exactly 8"* for longer than it was true,
+and the correction has two halves that should not be conflated.
 
-Both are fixed: the scalars are correct, and `check_mcp_tool_registry.py` now
-counts the list and refuses a mismatch. The metric itself is one over, which is
-a real remainder rather than a bookkeeping error — recorded here rather than
-absorbed, because the whole point of a target is that missing it is visible.
+**The target moved on purpose.** E22-T14 added `declare_instruction_set` as the
+ninth and raised `_CORE_TOOL_CEILING` with it, on the argument that
+`registry_resolve_context` is core and takes an `instruction_digest` that only
+this tool produces — so leaving it extended would advertise a parameter no
+default-connection agent could satisfy. E13-T4 built that ratchet precisely so a
+number could only go down *or be argued with*, and somebody argued. That is the
+mechanism behaving as designed, not a miss.
+
+**The bookkeeping was genuinely stale.** `tool_registry.json`'s summary scalars
+said `core_count: 8` / `tool_count: 70` against nine and seventy-one, and **no
+gate validated them** — so this epic's claim rested on a number nobody checked,
+which would have read as "target met" indefinitely.
+`check_mcp_tool_registry.py` now counts the list and refuses a mismatch.
+
+So: the metric is 9 against a ceiling of 9, held by a ratchet, with the raise
+argued on the record. The remainder is the REST path count, which is E13-T1's.
 
 **REST endpoints an agent integration must know, target ≤ 6: currently 8.** The
 eight core tools map to eight distinct operations, one each. Two over, and the
@@ -10148,8 +10158,23 @@ started.
 | The deprecation clause (E13) | No usage corpus. Nothing has been released, and retiring a tool on absence of evidence is refused on the record. | A released surface has usage to read. |
 | The retention threshold (E15) | No observed volume. A wrong operating point fails open in the destructive direction — it discards memories. | There is volume to fit against. |
 
-**Blocked on a schema fact, and it is narrow.** E12-T3, T4 and T5 need **a
-curation case to be able to name a claim.** `curation_cases` is keyed on an axis
+**None of the three has a task, and that is the decision rather than an
+oversight.** Each was checked against the question *"could somebody start this
+tomorrow"*, and the answer is no for the same reason in every case: the input
+does not exist, and no amount of decomposition creates it. Filing them would put
+three permanently-unstartable rows in a backlog and make a task count read worse
+than the truth — while *not* naming them at all is how a commitment quietly
+disappears. So they are named here, with their trigger, and deliberately not
+filed.
+
+**Whoever picks one up should file the task then**, sized against the input that
+finally exists, rather than inheriting a stub written years earlier against
+assumptions that have moved. That is this file's own most expensive lesson: the
+entries that cost the most were the ones written before their subject existed.
+
+**Blocked on a schema fact, and it is narrow — and these three *are* filed**,
+because unlike the row above somebody could start them tomorrow. E12-T3, T4 and
+T5 need **a curation case to be able to name a claim.** `curation_cases` is keyed on an axis
 and has no `claim_id`, so no disposition is evidence about a particular imported
 row and every acceptance scheme proposed so far — three of them — evaluates
 evidence that does not exist. ADR 0023 §3a records the finding, what a fourth
