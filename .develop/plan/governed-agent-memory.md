@@ -256,7 +256,7 @@ E3 remnants.
 
 ### E4 — Provenance-scoped quarantine + DORA wiring
 
-**Kind:** epic · **Status:** done — except E4-T6, blocked on ratified thresholds from legal · **Blocked by:** E2 · **Repo:** contextplane
+**Kind:** epic · **Status:** done — all twelve tasks · **Blocked by:** E2 · **Repo:** contextplane
 
 Quarantine by provenance predicate with dry-run blast-radius preview; bulk
 bitemporal revert; pre-quarantine of downstream receipts; severity
@@ -562,7 +562,7 @@ recorded justification. Never per-actor cells outside the audit role.
 
 ### E12 — Migration/import path
 
-**Kind:** epic · **Status:** done — except E12-T3, blocked on E12-T5's governance decision · **Blocked by:** E1, E5 ⚙ · **Repo:** contextplane
+**Kind:** epic · **Status:** done — except E12-T3, T4 and T5, blocked on a lot-scoped sample-and-review flow (ADR 0023) · **Blocked by:** E1, E5 ⚙ · **Repo:** contextplane
 
 Bulk-import API with provenance mapping; Backstage/CMDB/wiki connectors.
 Provenance mapping reuses the governed assertion path — `observed_time` and
