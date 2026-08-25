@@ -9763,11 +9763,13 @@ Acceptance:
 
 ### E22-T15 — Evaluation runs: a prompt, a set of them, and a verdict that persists
 
-**Kind:** task · **Status:** done · **Blocked by:** E22-T9, E22-T14 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done; boundary clause superseded by E24 · **Blocked by:** E22-T9, E22-T14 · **Hotspot:** no · **Repo:** contextplane
 
 Goal: a saved prompt set can be resolved repeatedly, its results compared across runs, and a verdict recorded against a run rather than lost with the page.
 
-This is the new capability the epic was scoped to include, and its boundary is set by what Context Lab already gets right. `ContextLabPage.tsx:256` states it plainly: *"The resolver retrieves context only. It does not call a language model, generate an answer, or invent an evaluation score."* That boundary holds — an evaluation run resolves context and records a human verdict; it does not generate a response and it does not score itself.
+This is the new capability the epic was scoped to include, and its boundary is set by what Context Lab already gets right. `ContextLabPage.tsx:256` states it plainly: *"The resolver retrieves context only. It does not call a language model, generate an answer, or invent an evaluation score."* ~~That boundary holds — an evaluation run resolves context and records a human verdict; it does not generate a response and it does not score itself.~~
+
+**STRUCK — superseded by E24 on the user's decision. The mechanism below is not superseded; one sentence is.** See [`agent-simulation-and-judged-evaluation.md`](agent-simulation-and-judged-evaluation.md) and ADR 0025. What survives verbatim: `POST /v1/context/resolve` is unchanged and still does not generate, so the `ContextLabPage.tsx:256` sentence quoted above stays true of the resolver and stays on the screen. What is reversed: *a separate receipted operation* — `POST /v1/evaluation/simulations` — composes resolution with a model call, and its response is graded. What is **not** reversed, and is the clause E24 honours by construction: *it does not score itself*. The judge is never the model under test (ADR 0026), and the deterministic scorer never asks the system under test whether it was right. Prompt sets, runs and persisted verdicts are consumed by E24 unchanged.
 
 What Context Lab cannot do, and this adds: one prompt at a time with no set; no comparison between two resolutions; no persistence, so a judgement cannot be revisited or compared after a change; and no way to ask *"what changed for this prompt set after I adjusted that policy?"*, which is the question the whole loop exists to answer.
 
