@@ -480,7 +480,7 @@ Acceptance:
 
 ### E24-T3 — `POST /v1/evaluation/simulations`: resolve as an agent, then answer
 
-**Kind:** task · **Status:** pending · **Blocked by:** E24-T1 · **Hotspot:** yes — openapi.json + generated client · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** E24-T1 · **Hotspot:** yes — openapi.json + generated client · **Repo:** contextplane
 
 Goal: one operation that resolves context as a declared agent, generates a
 response from the five-block envelope and the instructions in force, and returns
@@ -506,6 +506,48 @@ ADR 0026 are enforced in the service method both transports reach.
 
 Acceptance:
     make lint format-check typecheck && make test-coverage && make test-integration
+
+**Shipped. The seam decision, and four things the entry did not name.**
+
+**A sibling protocol, not a widened one.** Nothing an `ExtractionRequest` carries
+means anything to a generation call — no session events, no strategy, no
+permitted predicates — so a widened protocol would hand every extraction adapter
+three fields to ignore and every generation adapter four. `ResponseProvider` sits
+beside `ExtractionProvider` in `extraction/`, over the same `adapter_kit`
+transport, the same `TokenUsage` contract, the same containment boundary and the
+same metrics. One seam, two consumers, as ADR 0025 required.
+
+**Absence is `None`, not a no-op, and that is a departure with a reason.**
+`factory.build_provider` returns `NoOpProvider` because extraction is a
+background drain that should pause silently rather than raise every tick. A
+simulation is a person clicking a button, so an empty answer that looks like a
+model with nothing to say is the wrong report. `build_response_provider` returns
+`None`, the service raises, and the route answers `501` — not `503`, because the
+capability is absent *on this deployment* until somebody configures it, and
+`503` tells a caller to retry something retrying cannot fix.
+
+**Three status codes, each carrying a different remedy.** `409` for a same-family
+judge (the deployment is reachable and what it is configured as is the problem),
+`501` for no provider, `502` for a provider that failed — and the resolution's
+receipt is written before the generation is attempted, so the record is complete
+even when the response to the caller is not. That is ADR 0025's dissent, answered
+in the order of operations rather than in prose.
+
+**Citations are three tables, and a citation naming something never served is
+stored as declared.** A foreign key would turn *"the model cited an id that was
+not in the envelope"* — the finding a groundedness check exists to produce — into
+a failed write with no record of what the model said. `was_served` is computed at
+write time by the one component holding both sides.
+
+**A near-miss the gates caught, and it is the third of its kind.** This
+migration's instruction-state constant was first spelled the same way as the
+curation vocabulary's. `tests/conformance/test_learning_curation.py` scans every
+migration for that spelling and holds the *last* one equal to the curation set —
+so a second, unrelated vocabulary under that name would not have shadowed the
+check, it would have *become* what the check believed it was checking, and the
+curation vocabulary would have gone ungoverned from this migration onward. The
+generalizable rule: a constant named after a word another vocabulary already owns
+is not a style question when a gate greps for it.
 
 ### E24-T4 — The deterministic scorer covers five blocks, under a new rubric version
 

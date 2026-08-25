@@ -7,12 +7,26 @@
     GET  /v1/evaluation/prompt-sets/{set_id}/runs     → RunListResponse
     GET  /v1/evaluation/runs/{run_id}                 → RunResponse
     POST /v1/evaluation/runs/items/{item_id}/verdict  → VerdictResponse
+    GET  /v1/evaluation/simulations/availability      → SimulationAvailabilityResponse
+    POST /v1/evaluation/simulations                   → SimulationResponse
+    GET  /v1/evaluation/simulations/{simulation_id}   → SimulationResponse
 
 This router adapts and does not decide. Which prompts a run resolves, what a
 verdict may say, whether two runs are comparable and what happens to a prompt
 that raised are all settled in `context/evaluation/runs.py`, because the MCP
 surface answers the same questions and a rule enforced in one adapter is a rule
 the other will eventually enforce differently.
+
+**The simulation guards are in the service for that reason and no other.**
+Whether a principal may be simulated (ADR 0019) and whether a candidate and its
+judge share a provider family (ADR 0026) are decided in
+`context/evaluation/simulation.py`. This router maps their refusals onto status
+codes and adds none of its own.
+
+**The resolver still does not generate.** `POST /v1/context/resolve` is untouched
+by these three routes; a simulation resolves through it and *then* calls a model,
+and the receipt and the simulation stay separately addressable — which is what
+keeps "the retrieval was fine and the agent fumbled it" answerable.
 
 **A run is a `POST` that resolves synchronously.** It is bounded — a set holds at
 most a hundred prompts — and the alternative, a job id the caller polls, would
@@ -31,7 +45,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from contextplane.api.auth.context import require_roles
 from contextplane.api.container import Services, services
@@ -47,8 +61,16 @@ from contextplane.api.schemas.evaluation import (
     RunResponse,
     VerdictResponse,
 )
+from contextplane.api.schemas.simulation import (
+    RunSimulationRequest,
+    SimulationAvailabilityResponse,
+    SimulationResponse,
+)
 from contextplane.auth.roles import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER
 from contextplane.exceptions import CatalogError
+from contextplane.extraction.provider import ProviderError
+from contextplane.extraction.response_factory import JudgeFamilyRefused
+from contextplane.extraction.response_provider import SimulationUnavailable
 from contextplane.types import TenantContext
 
 router = APIRouter(prefix="/v1/evaluation", tags=["evaluation"])
@@ -187,3 +209,117 @@ async def record_verdict(
     except CatalogError as exc:
         raise map_catalog_error(exc) from exc
     return VerdictResponse.of(recorded)
+
+
+# ---------------------------------------------------------------------------
+# Simulation
+# ---------------------------------------------------------------------------
+
+
+@router.get("/simulations/availability", response_model=SimulationAvailabilityResponse)
+async def simulation_availability(
+    ctx: Annotated[TenantContext, Depends(_read_required)],
+    container: Annotated[Services, Depends(services)],
+) -> SimulationAvailabilityResponse:
+    """Whether this deployment can simulate, and under which selectors.
+
+    Declared before the route above it in path order deliberately: FastAPI
+    matches in declaration order, and `/simulations/{simulation_id}` would
+    otherwise swallow `availability` and fail on a UUID parse.
+
+    Carries no credential and no endpoint — only which selectors are in force,
+    which is what somebody needs to fix a refusal. A deployment with no provider
+    is complete rather than broken: prompt sets, runs, verdicts and the
+    deterministic criteria all work, and this says which half is switched off.
+    """
+    simulation = container.simulation
+    settings = container.settings
+    return SimulationAvailabilityResponse(
+        available=simulation.is_available,
+        judge_model=settings.judge_model,
+        judge_provider=settings.judge_provider,
+        simulation_model=settings.simulation_model,
+        simulation_provider=settings.simulation_provider,
+    )
+
+
+@router.post("/simulations", response_model=SimulationResponse)
+async def run_simulation(
+    body: RunSimulationRequest,
+    ctx: Annotated[TenantContext, Depends(_write_required)],
+    container: Annotated[Services, Depends(services)],
+) -> SimulationResponse:
+    """Resolve as a declared agent, then answer from what came back.
+
+    Two records: the resolver writes its receipt and this writes the generation
+    beside it, referencing rather than copying. Both remain separately
+    addressable, so "the retrieval was fine and the agent fumbled it" stays a
+    question somebody can answer.
+
+    The resolution runs on the *caller's* identity. `simulated_actor_id` names
+    whose behaviour is being modelled and grants nothing — resolving under the
+    simulated principal's entitlements would be a privilege escalation wearing an
+    evaluation feature.
+    """
+    try:
+        simulation = await container.simulation.simulate(
+            ctx,
+            prompt=body.prompt,
+            resolver_arguments=_resolver_arguments(body.request),
+            run_item_id=body.run_item_id,
+            simulated_actor_id=body.simulated_actor_id,
+        )
+    except JudgeFamilyRefused as exc:
+        # 409 rather than 503: the deployment is reachable and configured, and
+        # what it is configured as is the problem. A 503 would invite a retry
+        # against a configuration that cannot change by being retried.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.reason) from exc
+    except SimulationUnavailable as exc:
+        # 501 rather than 503: the capability is not implemented *on this
+        # deployment*, which is a permanent answer until somebody configures it,
+        # and 503 says "try again shortly" to a caller for whom that is false.
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=exc.reason) from exc
+    except ProviderError as exc:
+        # The resolution happened and its receipt is written; only the generation
+        # failed. 502 says the upstream model is the failing party, which is what
+        # a caller needs to know before deciding whether to retry.
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=exc.reason) from exc
+    except CatalogError as exc:
+        raise map_catalog_error(exc) from exc
+    return SimulationResponse.of(simulation)
+
+
+@router.get("/simulations/{simulation_id}", response_model=SimulationResponse)
+async def get_simulation(
+    simulation_id: uuid.UUID,
+    ctx: Annotated[TenantContext, Depends(_read_required)],
+    container: Annotated[Services, Depends(services)],
+) -> SimulationResponse:
+    """One simulation, its assertions in order, and every citation on them.
+
+    `envelope_state` is empty on this read and that is deliberate: the state
+    belongs to the resolution, which owns it on the receipt. A copy stored here
+    could not be corrected when the receipt was, so the reader joins instead.
+    """
+    try:
+        simulation = await container.simulation.get(ctx, simulation_id)
+    except CatalogError as exc:
+        raise map_catalog_error(exc) from exc
+    return SimulationResponse.of(simulation)
+
+
+def _resolver_arguments(request: dict[str, object]) -> dict[str, object]:
+    """The saved-prompt shape, minus the query the prompt supplies.
+
+    Validated through `PromptRequestV1` rather than passed through, so a
+    misspelled field is refused here instead of resolving a different question
+    than the caller asked. `query` is filled with the prompt because that model
+    requires one and the simulation's prompt is it.
+    """
+    from contextplane.context.evaluation.prompt_request import PromptRequestV1  # noqa: PLC0415
+
+    body = {key: value for key, value in request.items() if key != "query"}
+    validated = PromptRequestV1.of({**body, "query": "simulation"})
+    arguments = validated.resolver_arguments()
+    arguments.pop("query")
+    return arguments

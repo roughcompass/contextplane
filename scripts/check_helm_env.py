@@ -95,6 +95,12 @@ _CANONICAL_SECRET_NAMES: frozenset[str] = frozenset(
         # credential the chart was ever checked for.
         "EXTRACTION_API_KEY",
         "EXTRACTION_EXTRA_HEADERS",
+        # The simulation and judge credentials (E24). Listed for the same reason
+        # the extraction pair is: a name missing here is a name this gate
+        # silently governs nothing about, and these two are the credentials a
+        # deployment sends a resolved envelope under.
+        "SIMULATION_API_KEY",
+        "JUDGE_API_KEY",
         "METRICS_BEARER_TOKEN",
     }
 )

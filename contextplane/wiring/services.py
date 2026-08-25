@@ -212,6 +212,7 @@ def build_services_container(
     layered_context = layered_context_wiring.build_layered_context_services(
         session_factory,
         core.clock,
+        settings=settings,
         retrieval=core.retrieval_area.retrieval,
         claim_serving=arc.memory_area.claim_serving,
         arc_receipt_reader=arc.arc.arc_receipt_reader,

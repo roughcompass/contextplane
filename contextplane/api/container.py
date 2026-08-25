@@ -91,6 +91,7 @@ from contextplane.auth.entitlements.resolver import EntitlementResolver
 from contextplane.config import Settings
 from contextplane.context.arms import ContextArms
 from contextplane.context.evaluation.runs import EvaluationRunService
+from contextplane.context.evaluation.simulation import SimulationService
 from contextplane.context.instructions import InstructionChannel
 from contextplane.context.receipts import ContextReceiptService
 from contextplane.context.references import ReceiptReferenceIndex
@@ -302,6 +303,7 @@ class Services:
     # per call could vary within one process, and two runs of one deployment
     # would then look incomparable.
     evaluation_runs: EvaluationRunService
+    simulation: SimulationService
     # The three listings E23-T1 adds. Each narrows itself from something the
     # caller already holds — participation grants, credential memberships, and
     # what the receipt detail read would serve — so none of them takes a scope

@@ -93,6 +93,44 @@ claims.
 | `EXTRACTION_AUTH_TEMPLATE` | — | How the credential is spelled inside that header, e.g. `Bearer {key}`. Must contain the literal `{key}` exactly once. Empty means the adapter's default. |
 | `EXTRACTION_EXTRA_HEADERS` | — | Anything else the endpoint requires, as `Name:value,Name:value`. Held as a secret, because gateways routinely authenticate with a second header. |
 
+## Agent simulation and its judge
+
+Two roles, configured symmetrically because ADR 0026 requires them to be
+different provider families. Both default to `noop`, which switches the feature
+off — and a deployment that configures neither is complete rather than broken:
+prompt sets, runs, verdicts and the three deterministic criteria (required-fact
+recall, boundary violations, precision) all work with no model at all. A caller
+who asks for the agent half is told which setting is unset.
+
+**The judge is never the candidate, and the service enforces it.** A simulation
+whose agent model and judge model share a provider family is refused with a
+`409`, naming both models, because a judge from the candidate's own family scores
+it 10–25 % higher than a third party does. That is a constraint rather than
+advice: an advisory note is the shape of guidance followed until the day somebody
+is in a hurry and has one key.
+
+| Variable | Default | Description |
+|---|---|---|
+| `SIMULATION_PROVIDER` | `noop` | Which model answers as the simulated agent: `noop` (off), `anthropic`, or `openai`. `local` extracts with pattern rules and cannot answer a prompt, so it is not offered here. |
+| `SIMULATION_MODEL` | — | Model the simulated agent answers with. Empty means the selected adapter's own default, which is a property of the provider that has to serve it. |
+| `SIMULATION_BASE_URL` | — | Endpoint simulation calls. Empty means the adapter's vendor default. **Security-relevant and change-controlled**: this is where the resolved envelope — governed context — is sent. A non-`https` value warns at startup. |
+| `SIMULATION_TIMEOUT_S` | `120` | Per-call ceiling, in seconds. Higher than the extraction default because a simulation reads a whole envelope and writes an argued answer. |
+| `SIMULATION_MAX_OUTPUT_TOKENS` | `2048` | Ceiling on the generated answer. A budget, not a target: it bounds the response and never the envelope, because a budget changes presentation and not obligations. |
+| `SIMULATION_API_KEY` | — | Credential for the simulation provider. Held as a secret. Separate from `EXTRACTION_API_KEY` on purpose — two roles sharing one key would be two roles a deployment could not point at two vendors. |
+| `JUDGE_PROVIDER` | `noop` | Which model grades groundedness and answer relevance. Never the same family as `SIMULATION_PROVIDER`. |
+| `JUDGE_MODEL` | — | Model the judge grades with. Empty means the selected adapter's own default. |
+| `JUDGE_BASE_URL` | — | Endpoint the judge calls. Same egress consideration as `SIMULATION_BASE_URL`. |
+| `JUDGE_API_KEY` | — | Credential for the judge provider. Held as a secret. |
+
+### What a single-provider deployment gets
+
+Everything except the two model-judged criteria. Required-fact recall, boundary
+violations and precision are computed by a program with no model in the loop, so
+they are unaffected by the family constraint — and that separation is what keeps
+a failure of those three attributable to what was *served* rather than to the
+judge.
+
+
 ### Precedence among the credential names
 
 `EXTRACTION_API_KEY` is canonical. `CLAUDE_API_KEY` and `ANTHROPIC_API_KEY` are

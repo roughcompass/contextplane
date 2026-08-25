@@ -2455,6 +2455,34 @@
         "title": "AssertionProvenanceInputV1",
         "type": "object"
       },
+      "AssertionResponse": {
+        "description": "One claim the answer made, and what it rested on.",
+        "properties": {
+          "citations": {
+            "description": "Empty when the assertion rested on nothing served. That is a real state, not a missing one: it is either a fact the graph does not hold or a groundedness failure, and the improvement surface offers both readings rather than choosing.",
+            "items": {
+              "$ref": "#/components/schemas/contextplane__api__schemas__simulation__CitationResponse"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "position",
+          "text",
+          "citations"
+        ],
+        "title": "AssertionResponse",
+        "type": "object"
+      },
       "AssignOwnershipRequestV1": {
         "additionalProperties": false,
         "description": "A new ownership assignment. Lands in `draft`; validation is a separate act.",
@@ -4212,37 +4240,6 @@
         "title": "CitationItem",
         "type": "object"
       },
-      "CitationResponse": {
-        "additionalProperties": false,
-        "description": "A resolvable handle to the evidence behind a claim.",
-        "properties": {
-          "excerpt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Excerpt"
-          },
-          "kind": {
-            "title": "Kind",
-            "type": "string"
-          },
-          "ref": {
-            "title": "Ref",
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind",
-          "ref"
-        ],
-        "title": "CitationResponse",
-        "type": "object"
-      },
       "CitedIncidentResponse": {
         "description": "One external incident record this obligation is about.",
         "properties": {
@@ -4336,7 +4333,7 @@
           },
           "citations": {
             "items": {
-              "$ref": "#/components/schemas/CitationResponse"
+              "$ref": "#/components/schemas/contextplane__api__routers__memory__CitationResponse"
             },
             "title": "Citations",
             "type": "array"
@@ -15279,6 +15276,49 @@
         "title": "RunResponse",
         "type": "object"
       },
+      "RunSimulationRequest": {
+        "description": "Resolve as a declared agent, then answer.",
+        "properties": {
+          "prompt": {
+            "description": "What to ask. Answered from the resolved envelope and nothing else.",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "request": {
+            "additionalProperties": true,
+            "description": "The context-resolve request this simulation resolves under: the same fields `POST /v1/context/resolve` takes, minus `query`, which the prompt supplies. Omit it entirely for a bare resolution.",
+            "title": "Request",
+            "type": "object"
+          },
+          "run_item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The evaluation run item this simulation answers, when it is part of a run. Absent for an interactive one.",
+            "title": "Run Item Id"
+          },
+          "simulated_actor_id": {
+            "description": "The principal whose behaviour is being modelled. Must be declared `agent` per ADR 0019 \u2014 an agent is declared, never inferred, so an undeclared principal is refused rather than defaulted. This names whose behaviour is simulated; it does not grant that principal's authority, and the resolution still runs on the caller's own.",
+            "format": "uuid",
+            "title": "Simulated Actor Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "simulated_actor_id",
+          "prompt"
+        ],
+        "title": "RunSimulationRequest",
+        "type": "object"
+      },
       "SearchResponse": {
         "description": "Response for the search endpoint -- bounded by `top_k`, so `total` is an exact count, not an estimate.",
         "properties": {
@@ -15835,6 +15875,152 @@
         ],
         "title": "SignatureAlgorithm",
         "type": "string"
+      },
+      "SimulationAvailabilityResponse": {
+        "description": "Whether this deployment can simulate, and under what.\n\nA read a surface calls before offering the action, so an operator sees a\nswitched-off feature rather than a button that always fails. It carries no\ncredential and no endpoint \u2014 only which selectors are in force, which is what\nsomebody needs to know to fix a refusal.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "judge_model": {
+            "title": "Judge Model",
+            "type": "string"
+          },
+          "judge_provider": {
+            "description": "`noop` when no judge is configured. Never the same family as `simulation_provider` \u2014 the service refuses that pair rather than warning about it.",
+            "title": "Judge Provider",
+            "type": "string"
+          },
+          "simulation_model": {
+            "description": "Empty when the selected adapter's own default is in force.",
+            "title": "Simulation Model",
+            "type": "string"
+          },
+          "simulation_provider": {
+            "title": "Simulation Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "simulation_provider",
+          "simulation_model",
+          "judge_provider",
+          "judge_model"
+        ],
+        "title": "SimulationAvailabilityResponse",
+        "type": "object"
+      },
+      "SimulationResponse": {
+        "description": "One resolution and the answer generated from it, kept apart.",
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "assertions": {
+            "items": {
+              "$ref": "#/components/schemas/AssertionResponse"
+            },
+            "title": "Assertions",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "envelope_state": {
+            "description": "`complete`, `degraded` or `blocked`, as the resolution reported it.",
+            "title": "Envelope State",
+            "type": "string"
+          },
+          "instruction_disposition": {
+            "description": "`not_declared`, `declared_unknown` or `declared_known`. Three states, never two: an agent that declared no instructions and one that declared an empty set are different experiments, and a score conflating them would be scoring both under one number.",
+            "title": "Instruction Disposition",
+            "type": "string"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "provider_id": {
+            "title": "Provider Id",
+            "type": "string"
+          },
+          "receipt_id": {
+            "description": "The resolution's own receipt, referenced rather than embedded. Read it to see what was served; this body says what was made of it.",
+            "format": "uuid",
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "run_item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Item Id"
+          },
+          "simulated_actor_id": {
+            "format": "uuid",
+            "title": "Simulated Actor Id",
+            "type": "string"
+          },
+          "simulation_id": {
+            "format": "uuid",
+            "title": "Simulation Id",
+            "type": "string"
+          },
+          "uncited_served_ids": {
+            "description": "Served items no assertion cited. An observation, not a diagnosis: it means the scope was too wide, or the agent ignored them, and the improvement surface names both.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Uncited Served Ids",
+            "type": "array"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/UsageResponse"
+          }
+        },
+        "required": [
+          "simulation_id",
+          "receipt_id",
+          "simulated_actor_id",
+          "prompt",
+          "answer",
+          "provider_id",
+          "model_id",
+          "instruction_disposition",
+          "envelope_state",
+          "usage",
+          "assertions",
+          "uncited_served_ids",
+          "created_at"
+        ],
+        "title": "SimulationResponse",
+        "type": "object"
       },
       "SourceApprovalClaim": {
         "additionalProperties": false,
@@ -17887,6 +18073,60 @@
         "title": "UpdateEntityRequest",
         "type": "object"
       },
+      "UsageResponse": {
+        "description": "What the call cost, as reported or as explicitly unknown.",
+        "properties": {
+          "cached_prompt_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cached Prompt Tokens"
+          },
+          "completion_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completion Tokens"
+          },
+          "prompt_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Tokens"
+          },
+          "served_item_count": {
+            "description": "How many items the envelope carried. Paired with the token figure because `limit` is the only lever the product offers when a run comes back too large.",
+            "title": "Served Item Count",
+            "type": "integer"
+          },
+          "source": {
+            "description": "`provider_reported`, `estimated` or `unknown`. Absent counts mean nobody could report \u2014 never that the call was free, which is the reading that makes a spend figure lie.",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "served_item_count"
+        ],
+        "title": "UsageResponse",
+        "type": "object"
+      },
       "UsageSummaryOut": {
         "additionalProperties": false,
         "description": "Response body for GET /v1/admin/usage/summary: one row per surface for the resolved window.",
@@ -18464,6 +18704,37 @@
         "title": "_Accepted",
         "type": "object"
       },
+      "contextplane__api__routers__memory__CitationResponse": {
+        "additionalProperties": false,
+        "description": "A resolvable handle to the evidence behind a claim.",
+        "properties": {
+          "excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "ref"
+        ],
+        "title": "CitationResponse",
+        "type": "object"
+      },
       "contextplane__api__schemas__directory__ReceiptListResponse": {
         "description": "Recent resolutions this caller may open.",
         "properties": {
@@ -18509,6 +18780,26 @@
           "receipts"
         ],
         "title": "ReceiptListResponse",
+        "type": "object"
+      },
+      "contextplane__api__schemas__simulation__CitationResponse": {
+        "description": "One receipt item id an assertion rested on.",
+        "properties": {
+          "receipt_item_id": {
+            "title": "Receipt Item Id",
+            "type": "string"
+          },
+          "was_served": {
+            "description": "Whether the cited id was actually in the envelope. False is a finding rather than a bug: a model citing something that was not served is exactly what a groundedness check is for, so the citation is stored as declared.",
+            "title": "Was Served",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "receipt_item_id",
+          "was_served"
+        ],
+        "title": "CitationResponse",
         "type": "object"
       }
     },
@@ -29393,6 +29684,114 @@
           }
         },
         "summary": "Get Run",
+        "tags": [
+          "evaluation"
+        ]
+      }
+    },
+    "/v1/evaluation/simulations": {
+      "post": {
+        "description": "Resolve as a declared agent, then answer from what came back.\n\nTwo records: the resolver writes its receipt and this writes the generation\nbeside it, referencing rather than copying. Both remain separately\naddressable, so \"the retrieval was fine and the agent fumbled it\" stays a\nquestion somebody can answer.\n\nThe resolution runs on the *caller's* identity. `simulated_actor_id` names\nwhose behaviour is being modelled and grants nothing \u2014 resolving under the\nsimulated principal's entitlements would be a privilege escalation wearing an\nevaluation feature.",
+        "operationId": "run_simulation_v1_evaluation_simulations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunSimulationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Simulation",
+        "tags": [
+          "evaluation"
+        ]
+      }
+    },
+    "/v1/evaluation/simulations/availability": {
+      "get": {
+        "description": "Whether this deployment can simulate, and under which selectors.\n\nDeclared before the route above it in path order deliberately: FastAPI\nmatches in declaration order, and `/simulations/{simulation_id}` would\notherwise swallow `availability` and fail on a UUID parse.\n\nCarries no credential and no endpoint \u2014 only which selectors are in force,\nwhich is what somebody needs to fix a refusal. A deployment with no provider\nis complete rather than broken: prompt sets, runs, verdicts and the\ndeterministic criteria all work, and this says which half is switched off.",
+        "operationId": "simulation_availability_v1_evaluation_simulations_availability_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationAvailabilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Simulation Availability",
+        "tags": [
+          "evaluation"
+        ]
+      }
+    },
+    "/v1/evaluation/simulations/{simulation_id}": {
+      "get": {
+        "description": "One simulation, its assertions in order, and every citation on them.\n\n`envelope_state` is empty on this read and that is deliberate: the state\nbelongs to the resolution, which owns it on the receipt. A copy stored here\ncould not be corrected when the receipt was, so the reader joins instead.",
+        "operationId": "get_simulation_v1_evaluation_simulations__simulation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Simulation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Simulation",
         "tags": [
           "evaluation"
         ]

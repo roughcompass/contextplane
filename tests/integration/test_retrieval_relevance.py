@@ -290,6 +290,7 @@ async def _resolver(pg_url: str) -> tuple[ContextResolver, async_sessionmaker[An
     services = build_layered_context_services(
         factory,
         clock,
+        settings=settings,
         retrieval=RetrievalService(factory, clock, embedder, settings),
         claim_serving=ClaimServingService(factory, clock=clock),
         arc_receipt_reader=ReceiptReader(factory, authorization=ArcAuthorizationService(visibility=_NoCapabilities())),
