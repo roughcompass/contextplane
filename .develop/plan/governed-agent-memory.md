@@ -591,8 +591,9 @@ count trending to zero. Rule: no consolidation may drop a governance property
 control set does not.
 
 **Metric status, after decomposition measured all three.** Default-profile tool
-count is **already met at exactly 8** — E7-T1's registry records `core_count: 8`
-against `tool_count: 67`, so E13 keeps it shrunk rather than shrinking it. The
+count was recorded as met at exactly 8, on a registry scalar no gate validated.
+It had drifted: the core tier holds **nine**, one over target. Corrected, and
+the gate now counts the list rather than trusting the summary. The
 REST target is **8 against ≤ 6**, two over, with both candidate pairs nameable
 (E13-T1). Deprecated-surface count is **blocked, deliberately and on the
 record** (E13-T3): there is no usage corpus, because nothing has been released,
@@ -600,9 +601,10 @@ and retiring a tool on absence of evidence is refused. The dual-alias window is
 **struck** — this is a greenfield repository with no external consumers, so
 surfaces that consolidate are replaced, not aliased.
 
-**Closed on what the metrics allow.** Default-profile tool count was already
-met at exactly 8, so this epic keeps it shrunk rather than shrinking it. The REST
-target was 8 against ≤ 6 and E13-T1 named both candidate pairs. The dual-alias
+**Closed on what the metrics allow.** Default-profile tool count is nine against
+a target of eight — one over, found when the registry scalars it was measured by
+turned out to be unvalidated and stale. The REST target was 8 against ≤ 6 and
+E13-T1 named both candidate pairs. The dual-alias
 window is struck: greenfield repository, no external consumers, so surfaces that
 consolidate are replaced rather than aliased.
 
@@ -5848,12 +5850,20 @@ E13 is measured against three tracked metrics, and grounding them first changes
 what the epic is for. Two are now measurable exactly, because E7-T1 committed
 the registry that measures them.
 
-**Default-profile tool count, target ≤ 8: already met, at exactly 8.**
-`tool_registry.json` records `core_count: 8` against `tool_count: 67`, and
-`install_surface_filter` makes a default connection expose only the core tier.
-E13 does not have to shrink this. It has to keep it shrunk, which is a gate
-rather than a project — and the gate exists, since the registry is checked
-against the code in both directions by `make lint`.
+**Default-profile tool count, target ≤ 8: missed by one, and this paragraph
+used to say otherwise.** `install_surface_filter` makes a default connection
+expose only the core tier, and that tier now holds **nine** tools against a
+target of eight.
+
+The original claim — *"already met, at exactly 8"* — cited `core_count: 8`
+against `tool_count: 67` from `tool_registry.json`. Those scalars were **not
+validated by any gate** and had drifted: the file said 8 and 70 while the list
+held 9 and 71. So an epic closed a metric by quoting a summary nobody checked.
+
+Both are fixed: the scalars are correct, and `check_mcp_tool_registry.py` now
+counts the list and refuses a mismatch. The metric itself is one over, which is
+a real remainder rather than a bookkeeping error — recorded here rather than
+absorbed, because the whole point of a target is that missing it is visible.
 
 **REST endpoints an agent integration must know, target ≤ 6: currently 8.** The
 eight core tools map to eight distinct operations, one each. Two over, and the
@@ -7084,7 +7094,7 @@ Acceptance:
 
 ### E12-T3 — The migrated-canonical disposition, and a halt E5 has not defined
 
-**Kind:** task · **Status:** blocked — on a lot-scoped sample-and-review flow that does not exist (ADR 0023) · **Blocked by:** E12-T4, E12-T5 · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** blocked — on a case being able to name a claim (ADR 0023 §3a) · **Blocked by:** E12-T4, E12-T5 · **Hotspot:** no · **Repo:** contextplane
 
 **The halt this entry was blocked on now exists**, as E5-T2b, defined where this
 entry said it had to be. Two other blockers took its place, and both were found
@@ -7193,7 +7203,7 @@ Acceptance:
 
 ### E12-T5 — What a migrated claim's disposition commits to
 
-**Kind:** task · **Status:** blocked — on the staged flow ADR 0023 sketches · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** blocked — on a case being able to name a claim (ADR 0023 §3a) · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
 Goal: `migrated_canonical` exists in the disposition vocabulary with its five
 dimensions decided and written down.
@@ -10129,18 +10139,35 @@ started.
 | The deprecation clause (E13) | No usage corpus. Nothing has been released, and retiring a tool on absence of evidence is refused on the record. | A released surface has usage to read. |
 | The retention threshold (E15) | No observed volume. A wrong operating point fails open in the destructive direction — it discards memories. | There is volume to fit against. |
 
-**Blocked on a mechanism, and buildable the day somebody starts.** E12-T3, T4 and
-T5 need the lot-scoped acceptance flow ADR 0023 §3 describes. This is the only
-remaining item that is work rather than a wait, and it is the one to pick up
-first.
+**Blocked on a schema fact, and it is narrow.** E12-T3, T4 and T5 need **a
+curation case to be able to name a claim.** `curation_cases` is keyed on an axis
+and has no `claim_id`, so no disposition is evidence about a particular imported
+row and every acceptance scheme proposed so far — three of them — evaluates
+evidence that does not exist. ADR 0023 §3a records the finding, what a fourth
+attempt should build on instead, and the two governance decisions that outlive
+whatever design is chosen.
+
+This is the only remaining item that is work rather than a wait, and it is
+smaller than "a flow": start by giving a case a claim, and the rest becomes
+answerable.
 
 ### What this file should be read as teaching
 
-Two decisions in its last wave were reached by careful reasoning from real
-mechanisms, and both were wrong. One shipped before anybody noticed; one was
-caught before implementation because somebody was asked to attack it.
+Three designs for one problem were reached by careful reasoning from real
+mechanisms, and all three were wrong. One shipped before anybody noticed and had
+to be withdrawn; two were caught before implementation because somebody was asked
+to attack them. Each review found the design contradicting a mechanism already in
+the tree rather than being internally inconsistent — which is the failure mode a
+single author cannot self-detect, because the contradiction lives in the part of
+the codebase they did not read.
 
-The gates did not catch either. They cannot: they check that code does what it
-says, and both failures were in what the code said. For anything making a
+The same reviews, aimed at designs, found four live defects in *shipped* code:
+a quarantined claim was promotable to canon and its content was served through
+the agent-performance read; a migration chain was severed across two parallel
+branches; and an epic closed a target by quoting a registry scalar no gate
+validated, which had drifted.
+
+The gates caught none of it. They cannot: they check that code does what it says,
+and every one of these was in what the code said. **For anything making a
 governance or safety claim, an adversarial review before merge is the cheapest
-control available here, and it is the one this file learned last.
+control available here**, and it is the one this file learned last.

@@ -53,6 +53,12 @@ DEFAULT_EXAMPLES_PER_GROUP = 5
 #: examples through a lateral join so the limit applies per group rather than to
 #: the whole result.
 #:
+#: **A quarantined claim still counts and still appears; only its value is
+#: withheld.** Dropping it from the counts would let an operator improve an
+#: agent's measured accuracy by quarantining its worst claims, which is a worse
+#: failure than the disclosure: a quarantine is about the claim's provenance
+#: turning out to be wrong, not about whether the agent's judgement was.
+#:
 #: `total_count` counts every decided verdict in the group, not every claim: an
 #: unreviewed claim says nothing about whether the agent got it right, and
 #: including it would make a well-reviewed predicate look worse than an ignored
@@ -64,6 +70,7 @@ WITH judged AS (
            c.claim_category,
            c.predicate,
            c.value_jsonb,
+           c.quarantined_at,
            a.verdict,
            a.note,
            a.adjudicated_at
@@ -93,7 +100,18 @@ SELECT g.claim_category,
   CROSS JOIN LATERAL (
       SELECT coalesce(json_agg(x ORDER BY x.adjudicated_at DESC), '[]'::json) AS examples
         FROM (
-            SELECT j.claim_id, j.value_jsonb, j.note, j.adjudicated_at
+            SELECT j.claim_id,
+                   -- Withheld content stays withheld here too. A quarantine says
+                   -- the claim's provenance turned out to be wrong, and this
+                   -- surface hands the value to the authoring agent itself via
+                   -- `get_my_failure_patterns` -- so serving it would disclose
+                   -- through a performance read what the serving path refuses.
+                   -- The id and the reviewer's note still come back, because
+                   -- "one of yours was wrong and has since been withheld" is
+                   -- exactly what this report is for.
+                   CASE WHEN j.quarantined_at IS NULL THEN j.value_jsonb END AS value_jsonb,
+                   j.note,
+                   j.adjudicated_at
               FROM judged j
              WHERE j.claim_category = g.claim_category
                AND j.predicate = g.predicate
@@ -124,6 +142,9 @@ class FailureExample:
     """One wrong claim, with what the reviewer said about it."""
 
     claim_id: uuid.UUID
+    #: `None` when the claim has since been quarantined. The example is still
+    #: listed -- the agent should know one of its claims was judged wrong -- but
+    #: withheld content is not disclosed through a performance read.
     value: object
     note: str | None
 
