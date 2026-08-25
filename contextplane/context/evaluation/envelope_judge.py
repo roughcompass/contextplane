@@ -49,11 +49,15 @@ reader can tell a passed check from an absent one. `containment.py` states the
 same rule for its own defences: a check unable to fire is a hole that looks
 exactly like a working defence.
 
-**The classification exemption is structural and is not the unreadable-label
-rule.** An unreadable label still ranks as the most restrictive thing it could
-be, because guessing downward is what publishes it. A canonical item carries no
-label at all, by construction, and treating a structural absence as
-most-restrictive would flag the registry's own answer on every resolution.
+**A missing trust record is unchecked; an unreadable label is not.** The two look
+alike and behave oppositely. An item whose trust record carries a classification
+the vocabulary does not recognise still ranks as the most restrictive thing it
+could be, because guessing downward is what publishes it. An item with *no trust
+record at all* has nothing to rank: canonical carries none by construction, and
+material replayed from storage may have lost one. Treating either absence as
+most-restrictive would flag every such item — the fires-on-everything defect this
+scorer exists to fix, one level down. Both absences are recorded as unchecked,
+with different reasons, because a reader needs to know which.
 
 ## What is unchanged, and deliberately
 
@@ -128,6 +132,12 @@ SCORED_BLOCKS: Final[tuple[str, ...]] = BLOCK_NAMES
 # not run, and reworded prose loses that the first time somebody edits it.
 UNCHECKED_NO_AUDIENCE_FIELD: Final = "the item states no audience"
 UNCHECKED_NO_CLASSIFICATION: Final = "canonical items carry no trust metadata by construction"
+#: Distinct from the canonical case, and the distinction is load-bearing.
+#: Canonical carries no trust record *by design*; an item outside canonical with
+#: no record is an input that lost one — a replay of stored material, most often
+#: — and reading either as "most restrictive" would flag every such item. That is
+#: the fires-on-everything defect this scorer was written to fix, one level down.
+UNCHECKED_NO_TRUST_RECORD: Final = "the item carries no trust record, so its classification is unknown"
 
 #: Which of ADR 0021's three scopes an instruction delta may carry. Re-declared
 #: rather than imported from the storage layer: this is what the *scorer* will
@@ -382,11 +392,17 @@ def _classification_outcome(
     *, block: str, key: str, item: ContextItemV1, facts: AuthorizationFacts
 ) -> SafetyViolation | UncheckedDimension | None:
     """The classification check, or the record that this block cannot express one."""
-    if block == BLOCK_CANONICAL:
+    if item.trust is None:
+        # Two reasons, not one. Canonical carries no trust record by design;
+        # anything else with none has lost one, and conflating them would hide
+        # which of the two a reader is looking at.
         return UncheckedDimension(
-            item_key=key, block=block, dimension=VIOLATION_CLASSIFICATION, reason=UNCHECKED_NO_CLASSIFICATION
+            item_key=key,
+            block=block,
+            dimension=VIOLATION_CLASSIFICATION,
+            reason=UNCHECKED_NO_CLASSIFICATION if block == BLOCK_CANONICAL else UNCHECKED_NO_TRUST_RECORD,
         )
-    label = item.trust.classification if item.trust is not None else None
+    label = item.trust.classification
     if _classification_rank(label) <= _classification_rank(facts.max_classification):
         return None
     return SafetyViolation(
@@ -551,6 +567,7 @@ __all__ = [
     "SCORED_BLOCKS",
     "UNCHECKED_NO_AUDIENCE_FIELD",
     "UNCHECKED_NO_CLASSIFICATION",
+    "UNCHECKED_NO_TRUST_RECORD",
     "VIOLATION_AUDIENCE",
     "VIOLATION_CLASSIFICATION",
     "VIOLATION_KINDS",

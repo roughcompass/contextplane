@@ -33,6 +33,7 @@ from contextplane.context.evaluation.fingerprint import resolver_fingerprint
 from contextplane.context.evaluation.judge_calibration import JudgeCalibrationService
 from contextplane.context.evaluation.judgement import JudgementService
 from contextplane.context.evaluation.runs import EvaluationRunService
+from contextplane.context.evaluation.scoring import SimulationScoringService
 from contextplane.context.evaluation.simulation import SimulationService
 from contextplane.context.instructions import InstructionChannel
 from contextplane.context.receipts import ContextReceiptService
@@ -70,6 +71,7 @@ class LayeredContextServices:
     simulation: SimulationService
     judgement: JudgementService
     judge_calibration: JudgeCalibrationService
+    simulation_scoring: SimulationScoringService
     intent_directory: IntentDirectoryService
     tenant_directory: TenantDirectoryService
     context_reference_index: ReceiptReferenceIndex
@@ -176,6 +178,7 @@ def build_layered_context_services(
             calibration=judge_calibration,
         ),
         judge_calibration=judge_calibration,
+        simulation_scoring=SimulationScoringService(session_factory),
         context_reference_index=ReceiptReferenceIndex(session_factory=session_factory),
         context_resume=ContextResumeService(session_factory=session_factory, clock=clock),
     )

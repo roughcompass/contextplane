@@ -93,6 +93,7 @@ from contextplane.context.arms import ContextArms
 from contextplane.context.evaluation.judge_calibration import JudgeCalibrationService
 from contextplane.context.evaluation.judgement import JudgementService
 from contextplane.context.evaluation.runs import EvaluationRunService
+from contextplane.context.evaluation.scoring import SimulationScoringService
 from contextplane.context.evaluation.simulation import SimulationService
 from contextplane.context.instructions import InstructionChannel
 from contextplane.context.receipts import ContextReceiptService
@@ -308,6 +309,7 @@ class Services:
     simulation: SimulationService
     judgement: JudgementService
     judge_calibration: JudgeCalibrationService
+    simulation_scoring: SimulationScoringService
     # The three listings E23-T1 adds. Each narrows itself from something the
     # caller already holds — participation grants, credential memberships, and
     # what the receipt detail read would serve — so none of them takes a scope

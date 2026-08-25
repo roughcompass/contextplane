@@ -3254,6 +3254,40 @@
         "title": "BindingTransitionRequest",
         "type": "object"
       },
+      "BlockTallyResponse": {
+        "description": "One block's contribution, so a total stays attributable.",
+        "properties": {
+          "block": {
+            "title": "Block",
+            "type": "string"
+          },
+          "relevant": {
+            "title": "Relevant",
+            "type": "integer"
+          },
+          "required_found": {
+            "title": "Required Found",
+            "type": "integer"
+          },
+          "served": {
+            "title": "Served",
+            "type": "integer"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "block",
+          "state",
+          "served",
+          "relevant",
+          "required_found"
+        ],
+        "title": "BlockTallyResponse",
+        "type": "object"
+      },
       "Body_admit_source_upload_v1_arc_sources_uploads_post": {
         "properties": {
           "body": {
@@ -6078,6 +6112,136 @@
           "idempotency_key"
         ],
         "title": "DetailRequestBody",
+        "type": "object"
+      },
+      "DeterministicScoreResponse": {
+        "description": "The three criteria a program computes, or the reason it could not.",
+        "properties": {
+          "blocks": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/BlockTallyResponse"
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "is_safe": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the resolution served nothing it should not have. One violation fails the case whatever the other numbers say.",
+            "title": "Is Safe"
+          },
+          "precision": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precision"
+          },
+          "prompt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which prompt's declared expectations were used, when any were.",
+            "title": "Prompt Id"
+          },
+          "recall": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recall"
+          },
+          "required_found": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Found"
+          },
+          "required_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Total"
+          },
+          "rubric_version": {
+            "title": "Rubric Version",
+            "type": "string"
+          },
+          "served_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Served Total"
+          },
+          "unassertable": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present instead of a score when nothing was declared in advance to check. A scenario whose required facts were written after seeing what the system returned would be satisfied by whatever the system returned.",
+            "title": "Unassertable"
+          },
+          "unchecked": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/UncheckedResponse"
+            },
+            "title": "Unchecked",
+            "type": "array"
+          },
+          "violations": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ViolationResponse"
+            },
+            "title": "Violations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rubric_version"
+        ],
+        "title": "DeterministicScoreResponse",
         "type": "object"
       },
       "DiscardClaimRequest": {
@@ -18595,6 +18759,35 @@
         "title": "TrustResponse",
         "type": "object"
       },
+      "UncheckedResponse": {
+        "description": "One boundary this item could not be checked against, and why.\n\nNot a violation and not a pass. A surface that reported neither would let an\nabsent check read as a clean one.",
+        "properties": {
+          "block": {
+            "title": "Block",
+            "type": "string"
+          },
+          "dimension": {
+            "title": "Dimension",
+            "type": "string"
+          },
+          "item_key": {
+            "title": "Item Key",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_key",
+          "block",
+          "dimension",
+          "reason"
+        ],
+        "title": "UncheckedResponse",
+        "type": "object"
+      },
       "UpdateEntityRequest": {
         "description": "Bag of attribute updates applied bi-temporally; does not change entity_type or name directly.",
         "properties": {
@@ -18936,6 +19129,37 @@
           "proof"
         ],
         "title": "VerifierRegistrationRequest",
+        "type": "object"
+      },
+      "ViolationResponse": {
+        "description": "One served item that should not have been served, and which rule it broke.",
+        "properties": {
+          "block": {
+            "description": "Which arm served it. 'Something leaked' without the arm is unactionable.",
+            "title": "Block",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "item_key": {
+            "title": "Item Key",
+            "type": "string"
+          },
+          "kind": {
+            "description": "One of ['tenant', 'audience', 'classification', 'lifecycle'].",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_key",
+          "block",
+          "kind",
+          "detail"
+        ],
+        "title": "ViolationResponse",
         "type": "object"
       },
       "VocabularyValueCreate": {
@@ -30481,6 +30705,50 @@
           }
         },
         "summary": "Judge With Panel",
+        "tags": [
+          "evaluation"
+        ]
+      }
+    },
+    "/v1/evaluation/simulations/{simulation_id}/score": {
+      "get": {
+        "description": "Required-fact recall, boundary violations and precision, with no model in the loop.\n\nThat absence is the property, not a limitation: it is what keeps a failure of\nthese three attributable to what was *served* rather than to what graded it,\nwhich is the whole reason ADR 0024 could keep memory evaluation and agent\nevaluation in one journey.\n\n**It can refuse, and the refusal is the honest answer.** The scorer asks the\nscenario, never the system under test, so it needs expectations declared\nbefore the run. An interactive simulation has none, and scoring it against\nexpectations typed afterwards would measure whatever the system returned.\n`unassertable` carries the reason instead of a zero-filled score.",
+        "operationId": "score_simulation_v1_evaluation_simulations__simulation_id__score_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Simulation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeterministicScoreResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Score Simulation",
         "tags": [
           "evaluation"
         ]
