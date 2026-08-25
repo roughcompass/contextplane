@@ -405,11 +405,13 @@ T11 introduces a second evaluation entry point.
 
 ---
 
-### E24-T1 — ADR 0022: the resolver does not generate, and simulation is a separate receipted operation
+### E24-T1 — ADR 0025: the resolver does not generate, and simulation is a separate receipted operation
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
-Goal: `.develop/adr/0022-simulation-is-separate-from-resolution.md`, recording
+**Renumbered from 0022, and the correction is recorded rather than silently applied.** This entry was written naming ADR 0022 and E24-T2 naming ADR 0023. Both numbers were taken before either task was claimed — by `0022-a-migration-is-a-lot-and-a-lot-is-sampled.md` and `0023-a-sample-is-drawn-from-the-lot-it-accepts.md` — and `contextplane-ui` had meanwhile taken 0024 for the one-journey decision. The sequence spans both repositories on purpose, because *"two ADR 0004s would be a citation nobody can resolve"*. So the acceptance commands below name 0025 and E24-T2's name 0026. The generalizable finding, which is why this paragraph exists rather than a silent edit: **a plan entry that pins a number to a shared sequence is stale the moment anything else claims one**, and grounding the entry before claiming it is what caught this rather than a colliding file.
+
+Goal: `.develop/adr/0025-simulation-is-separate-from-resolution.md`, recording
 the reversal of E22-T15's boundary clause and, more importantly, recording exactly
 how narrow the reversal is.
 
@@ -435,15 +437,17 @@ how narrow the reversal is.
   not one fused row.
 
 Acceptance:
-    test -f .develop/adr/0022-simulation-is-separate-from-resolution.md
-    grep -q "^## Dissent" .develop/adr/0022-simulation-is-separate-from-resolution.md
-    grep -q "^## Assumptions" .develop/adr/0022-simulation-is-separate-from-resolution.md
+    test -f .develop/adr/0025-simulation-is-separate-from-resolution.md
+    grep -q "^## Dissent" .develop/adr/0025-simulation-is-separate-from-resolution.md
+    grep -q "^## Assumptions" .develop/adr/0025-simulation-is-separate-from-resolution.md
 
-### E24-T2 — ADR 0023: a judge is never the candidate, and its confidence is uncalibrated until fitted
+### E24-T2 — ADR 0026: a judge is never the candidate, and its confidence is uncalibrated until fitted
 
-**Kind:** task · **Status:** pending · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
+**Kind:** task · **Status:** done · **Blocked by:** none · **Hotspot:** no · **Repo:** contextplane
 
-Goal: `.develop/adr/0023-the-judge-is-not-the-candidate.md`, deciding the four
+Renumbered from 0023 for the reason recorded under E24-T1.
+
+Goal: `.develop/adr/0026-the-judge-is-not-the-candidate.md`, deciding the four
 forks the epic body raises and pinning the freeze.
 
 - **Context**: self-preference bias measured at 10–25 %; position, verbosity and
@@ -470,9 +474,9 @@ forks the epic body raises and pinning the freeze.
   the deterministic three fully available without any judge at all.
 
 Acceptance:
-    test -f .develop/adr/0023-the-judge-is-not-the-candidate.md
-    grep -q "^## Dissent" .develop/adr/0023-the-judge-is-not-the-candidate.md
-    grep -q "^## Assumptions" .develop/adr/0023-the-judge-is-not-the-candidate.md
+    test -f .develop/adr/0026-the-judge-is-not-the-candidate.md
+    grep -q "^## Dissent" .develop/adr/0026-the-judge-is-not-the-candidate.md
+    grep -q "^## Assumptions" .develop/adr/0026-the-judge-is-not-the-candidate.md
 
 ### E24-T3 — `POST /v1/evaluation/simulations`: resolve as an agent, then answer
 
@@ -498,7 +502,7 @@ later inference over prose.
 
 Per the standing rule, the guard lives in the service and not in a router: the
 declared-principal check from ADR 0019 assumption 2 and the family constraint from
-ADR 0023 are enforced in the service method both transports reach.
+ADR 0026 are enforced in the service method both transports reach.
 
 Acceptance:
     make lint format-check typecheck && make test-coverage && make test-integration
@@ -544,7 +548,7 @@ trace is one a reviewer can only accept or reject.
 
 Every judged result carries `(judge_model_id, rubric_version,
 prompt_template_hash)` and its raw self-reported confidence. The confidence is
-recorded and contributes nothing until E24-T6 fits it, per ADR 0023 part 3.
+recorded and contributes nothing until E24-T6 fits it, per ADR 0026 part 3.
 
 Acceptance:
     make lint format-check typecheck && make test-coverage && make test-integration
@@ -561,7 +565,7 @@ The mechanism exists and is reused rather than re-derived:
 mapping, stores a fit that misses its bound without selecting it, and separates
 populations whose numbers do not mean the same thing. Here the separation key is
 the pinned tuple — a fit made under one judge model does not describe another, and
-ADR 0023 part 4 makes a rubric edit a new population for the same reason.
+ADR 0026 part 4 makes a rubric edit a new population for the same reason.
 
 The human confirmations that feed it come from E24-T7's override path, which is
 why this is blocked on it rather than only on T5.
@@ -605,7 +609,7 @@ Goal: an opt-in three-family panel with majority vote on a prompt-set run, and a
 disagreement that is visible rather than averaged away.
 
 Opt-in per the epic body: 3× cost is right for a launch gate and wrong for
-iteration. The family-diversity requirement is the same one ADR 0023 enforces for
+iteration. The family-diversity requirement is the same one ADR 0026 enforces for
 the single judge, extended — a panel of three from one family cancels nothing.
 
 Split votes are the interesting output and are not smoothed. A 2–1 panel records
@@ -770,7 +774,7 @@ vocabulary (`mandatory_block_added`, `conflict_changed`, and the rest): a reader
 comparing runs is asking what changed in kind, and a character diff over serialized
 payloads answers a different question.
 
-A comparison spanning two rubric versions warns, per ADR 0023 part 4. Decomposition
+A comparison spanning two rubric versions warns, per ADR 0026 part 4. Decomposition
 confirms whether a run pins the resolver configuration it ran under — E22-T15
 already flagged that it almost certainly must, since a comparison across a config
 change is meaningless if neither side records which config produced it.
