@@ -380,3 +380,57 @@ async def test_a_verdict_is_attributed_to_the_caller_and_not_to_a_named_actor(
     parameters = set(inspect.signature(EvaluationRunService.record_verdict).parameters)
 
     assert parameters == {"self", "ctx", "item_id", "verdict", "note"}
+
+
+# --- expectations (E24-T7) ----------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_prompt_carries_what_it_is_checking(world: dict[str, Any]) -> None:
+    """Declared at the prompt, before any run: a requirement written afterwards
+    would be satisfied by whatever the system returned."""
+    service = _service(world)
+    created = await service.create_set(world["ctx"], name=f"set-{uuid.uuid4().hex[:8]}")
+
+    await service.add_prompt(
+        world["ctx"],
+        set_id=created.set_id,
+        request={"query": "drain the queue"},
+        expectations={"required_item_keys": ["k1"], "min_recall": 0.9, "preset": "compliance"},
+    )
+
+    prompts = await service.prompts_in(world["ctx"], set_id=created.set_id)
+    assert prompts[0].expectations == {
+        "min_recall": 0.9,
+        "preset": "compliance",
+        "require_groundedness": True,
+        "require_relevance": True,
+        "required_item_keys": ["k1"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_prompt_that_asserts_nothing_stores_nothing(world: dict[str, Any]) -> None:
+    """A real state, and different from an object of permissive thresholds."""
+    service = _service(world)
+    created = await service.create_set(world["ctx"], name=f"set-{uuid.uuid4().hex[:8]}")
+
+    await service.add_prompt(world["ctx"], set_id=created.set_id, request={"query": "anything"})
+
+    prompts = await service.prompts_in(world["ctx"], set_id=created.set_id)
+    assert prompts[0].expectations is None
+
+
+@pytest.mark.asyncio
+async def test_unusable_expectations_are_refused_at_the_prompt(world: dict[str, Any]) -> None:
+    """A far better place to find out than on every run afterwards."""
+    service = _service(world)
+    created = await service.create_set(world["ctx"], name=f"set-{uuid.uuid4().hex[:8]}")
+
+    with pytest.raises(ValidationError, match="do not carry"):
+        await service.add_prompt(
+            world["ctx"],
+            set_id=created.set_id,
+            request={"query": "q"},
+            expectations={"min_recal": 0.9},
+        )

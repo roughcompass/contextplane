@@ -7,6 +7,7 @@
     GET  /v1/evaluation/prompt-sets/{set_id}/runs     → RunListResponse
     GET  /v1/evaluation/runs/{run_id}                 → RunResponse
     POST /v1/evaluation/runs/items/{item_id}/verdict  → VerdictResponse
+    GET  /v1/evaluation/expectation-presets           → PresetListResponse
     GET  /v1/evaluation/simulations/availability      → SimulationAvailabilityResponse
     POST /v1/evaluation/simulations                   → SimulationResponse
     GET  /v1/evaluation/simulations/{simulation_id}   → SimulationResponse
@@ -56,6 +57,7 @@ from contextplane.api.errors import map_catalog_error
 from contextplane.api.schemas.evaluation import (
     AddPromptRequest,
     CreatePromptSetRequest,
+    PresetListResponse,
     PromptResponse,
     PromptSetListResponse,
     PromptSetResponse,
@@ -139,6 +141,7 @@ async def add_prompt(
             set_id=set_id,
             request=body.request,
             intent_note=body.intent_note,
+            expectations=body.expectations,
         )
     except CatalogError as exc:
         raise map_catalog_error(exc) from exc
@@ -418,3 +421,25 @@ async def record_judgement_review(
     except CatalogError as exc:
         raise map_catalog_error(exc) from exc
     return ReviewResponse.of(recorded)
+
+
+@router.get("/expectation-presets", response_model=PresetListResponse)
+async def list_expectation_presets(
+    ctx: Annotated[TenantContext, Depends(_read_required)],
+) -> PresetListResponse:
+    """The seeded personas a prompt's expectations can be started from.
+
+    *"Here is a best practice, but you may amend for a given persona."* Each is a
+    parameterization of the same five criteria, never an extension: a persona
+    that could add a criterion would be a rubric, and two rubrics produce two
+    numbers nobody can put side by side.
+
+    Each carries the rubric versions its thresholds were written against, because
+    a threshold on a criterion that has since been redefined is a number
+    describing something else.
+
+    No tenant scoping: these are the shapes this deployment ships, not this
+    tenant's data. The read gate is still applied, because a caller with no role
+    on this deployment has no business enumerating its evaluation vocabulary.
+    """
+    return PresetListResponse.seeded()

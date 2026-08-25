@@ -305,6 +305,19 @@
       "AddPromptRequest": {
         "description": "One context request appended to a set.",
         "properties": {
+          "expectations": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What this prompt asserts about a run, in a form a program can check. Declared here and not after a run: a scenario whose required facts were written after seeing what the system returned would be satisfied by whatever the system returned. Omit it entirely to assert nothing, which is a real state and is rendered as one \u2014 an object of permissive thresholds would be checks that always pass. Seed it from a persona preset (['balanced', 'compliance', 'research']) and amend from there.",
+            "title": "Expectations"
+          },
           "intent_note": {
             "anyOf": [
               {
@@ -10959,6 +10972,59 @@
         "title": "PredicateResponse",
         "type": "object"
       },
+      "PresetListResponse": {
+        "description": "The seeded personas, over the same five criteria.\n\nEach is a parameterization and never an extension: a persona that could add a\ncriterion would be a rubric, and two rubrics produce two numbers nobody can\nput side by side.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PresetResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PresetListResponse",
+        "type": "object"
+      },
+      "PresetResponse": {
+        "description": "One seeded persona, and the rubric versions it parameterizes.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "envelope_rubric_version": {
+            "description": "The deterministic scorer this preset's thresholds are written against. Carried because a threshold on a criterion that has been redefined is a number describing something else.",
+            "title": "Envelope Rubric Version",
+            "type": "string"
+          },
+          "expectations": {
+            "additionalProperties": true,
+            "title": "Expectations",
+            "type": "object"
+          },
+          "judge_rubric_version": {
+            "title": "Judge Rubric Version",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "envelope_rubric_version",
+          "judge_rubric_version",
+          "expectations"
+        ],
+        "title": "PresetResponse",
+        "type": "object"
+      },
       "PreviewVersionRequest": {
         "properties": {
           "interface_format": {
@@ -11695,6 +11761,19 @@
       "PromptResponse": {
         "description": "One prompt, as stored.",
         "properties": {
+          "expectations": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What this prompt asserts, as validated and stored. Absent when it asserts nothing. The `preset` field inside it, when present, records the persona somebody started from and is never the source of truth \u2014 a preset edited afterwards must not change what a past prompt asserted.",
+            "title": "Expectations"
+          },
           "intent_note": {
             "anyOf": [
               {
@@ -29582,6 +29661,28 @@
         "summary": "Resolve a handle to one entity, refusing an ambiguous match.",
         "tags": [
           "entities"
+        ]
+      }
+    },
+    "/v1/evaluation/expectation-presets": {
+      "get": {
+        "description": "The seeded personas a prompt's expectations can be started from.\n\n*\"Here is a best practice, but you may amend for a given persona.\"* Each is a\nparameterization of the same five criteria, never an extension: a persona\nthat could add a criterion would be a rubric, and two rubrics produce two\nnumbers nobody can put side by side.\n\nEach carries the rubric versions its thresholds were written against, because\na threshold on a criterion that has since been redefined is a number\ndescribing something else.\n\nNo tenant scoping: these are the shapes this deployment ships, not this\ntenant's data. The read gate is still applied, because a caller with no role\non this deployment has no business enumerating its evaluation vocabulary.",
+        "operationId": "list_expectation_presets_v1_evaluation_expectation_presets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Expectation Presets",
+        "tags": [
+          "evaluation"
         ]
       }
     },

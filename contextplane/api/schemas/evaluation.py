@@ -21,6 +21,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from contextplane.context.evaluation.expectations import PRESET_NAMES, PRESETS, Preset
 from contextplane.context.evaluation.runs import (
     VERDICTS,
     Prompt,
@@ -54,6 +55,17 @@ class AddPromptRequest(BaseModel):
     intent_note: str | None = Field(
         default=None,
         description="What this prompt is checking. The question a later reader arrives with.",
+    )
+    expectations: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "What this prompt asserts about a run, in a form a program can check. Declared here "
+            "and not after a run: a scenario whose required facts were written after seeing what "
+            "the system returned would be satisfied by whatever the system returned. Omit it "
+            "entirely to assert nothing, which is a real state and is rendered as one — an object "
+            "of permissive thresholds would be checks that always pass. Seed it from a persona "
+            f"preset ({list(PRESET_NAMES)}) and amend from there."
+        ),
     )
 
 
@@ -106,16 +118,69 @@ class PromptResponse(BaseModel):
     position: int
     request: dict[str, Any]
     intent_note: str | None
+    expectations: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "What this prompt asserts, as validated and stored. Absent when it asserts nothing. "
+            "The `preset` field inside it, when present, records the persona somebody started "
+            "from and is never the source of truth — a preset edited afterwards must not change "
+            "what a past prompt asserted."
+        ),
+    )
 
     @classmethod
     def of(cls, prompt: Prompt) -> PromptResponse:
         """Project one prompt onto the wire."""
         return cls(
+            expectations=prompt.expectations,
             intent_note=prompt.intent_note,
             position=prompt.position,
             prompt_id=prompt.prompt_id,
             request=prompt.request,
         )
+
+
+class PresetResponse(BaseModel):
+    """One seeded persona, and the rubric versions it parameterizes."""
+
+    name: str
+    description: str
+    envelope_rubric_version: str = Field(
+        description=(
+            "The deterministic scorer this preset's thresholds are written against. Carried "
+            "because a threshold on a criterion that has been redefined is a number describing "
+            "something else."
+        )
+    )
+    judge_rubric_version: str
+    expectations: dict[str, Any]
+
+    @classmethod
+    def of(cls, entry: Preset) -> PresetResponse:
+        """Project one persona onto the wire."""
+        return cls(
+            description=entry.description,
+            envelope_rubric_version=entry.envelope_rubric_version,
+            expectations=entry.expectations.stored(),
+            judge_rubric_version=entry.judge_rubric_version,
+            name=entry.name,
+        )
+
+
+class PresetListResponse(BaseModel):
+    """The seeded personas, over the same five criteria.
+
+    Each is a parameterization and never an extension: a persona that could add a
+    criterion would be a rubric, and two rubrics produce two numbers nobody can
+    put side by side.
+    """
+
+    items: list[PresetResponse]
+
+    @classmethod
+    def seeded(cls) -> PresetListResponse:
+        """Every persona this deployment ships."""
+        return cls(items=[PresetResponse.of(PRESETS[name]) for name in PRESET_NAMES])
 
 
 class VerdictResponse(BaseModel):

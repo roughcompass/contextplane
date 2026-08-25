@@ -52,6 +52,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from sqlalchemy import text
 
+from contextplane.context.evaluation.expectations import ExpectationsV1
 from contextplane.context.evaluation.prompt_request import PromptRequestV1
 from contextplane.exceptions import NotFoundError, ValidationError
 
@@ -89,12 +90,17 @@ class PromptSet:
 
 @dataclasses.dataclass(frozen=True)
 class Prompt:
-    """One request in a set, and where in the set it sits."""
+    """One request in a set, where it sits, and what it is checking."""
 
     prompt_id: uuid.UUID
     position: int
     request: dict[str, Any]
     intent_note: str | None
+    #: What this prompt asserts about a run, declared before the run. `None` is a
+    #: real state -- an evaluator exploring has not yet decided what good looks
+    #: like -- and is different from an object full of permissive thresholds,
+    #: which would be checks that always pass.
+    expectations: dict[str, Any] | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -210,15 +216,23 @@ class EvaluationRunService:
         set_id: uuid.UUID,
         request: dict[str, Any],
         intent_note: str | None = None,
+        expectations: dict[str, Any] | None = None,
     ) -> Prompt:
-        """Append one prompt to a set.
+        """Append one prompt to a set, with what it is checking.
 
         `request` is validated before it is stored, so the JSON column is not a
         place unvalidated shapes accumulate. A set whose prompts cannot be
         resolved is one that fails at run time, per prompt, on every run — which
         is a much worse place to discover it.
+
+        `expectations` is validated for the same reason and declared here rather
+        than after a run, on `scenarios.py`'s argument: *a scenario whose required
+        facts were written after seeing what the system returned would be
+        satisfied by whatever the system returned*. Writing them at the prompt is
+        what makes that true by construction — there is nowhere to put one later.
         """
         validated = PromptRequestV1.of(request)
+        declared = ExpectationsV1.of(expectations) if expectations is not None else None
 
         async with self._session_factory() as session, session.begin():
             await self._require_live_set(session, ctx, set_id)
@@ -234,13 +248,16 @@ class EvaluationRunService:
             prompt_id = uuid.uuid4()
             note = (intent_note or "").strip() or None
             stored = validated.stored()
+            stored_expectations = declared.stored() if declared is not None else None
             await session.execute(
                 text(
                     "INSERT INTO evaluation_prompts "
-                    "(prompt_id, set_id, tenant_id, position, request, intent_note, added_at) "
-                    "VALUES (:pid, :sid, :tid, :position, CAST(:request AS JSONB), :note, :now)"
+                    "(prompt_id, set_id, tenant_id, position, request, intent_note, expectations, added_at) "
+                    "VALUES (:pid, :sid, :tid, :position, CAST(:request AS JSONB), :note, "
+                    "        CAST(:expectations AS JSONB), :now)"
                 ),
                 {
+                    "expectations": None if stored_expectations is None else _json(stored_expectations),
                     "note": note,
                     "now": self._clock.now(),
                     "pid": prompt_id,
@@ -250,7 +267,13 @@ class EvaluationRunService:
                     "tid": ctx.tenant_id,
                 },
             )
-        return Prompt(intent_note=note, position=int(count), prompt_id=prompt_id, request=stored)
+        return Prompt(
+            expectations=stored_expectations,
+            intent_note=note,
+            position=int(count),
+            prompt_id=prompt_id,
+            request=stored,
+        )
 
     async def list_sets(self, ctx: TenantContext, *, page_size: int = 50) -> tuple[PromptSet, ...]:
         """This tenant's sets, newest first, with how many prompts each holds."""
@@ -400,7 +423,7 @@ class EvaluationRunService:
             rows = (
                 await session.execute(
                     text(
-                        "SELECT prompt_id, position, request, intent_note "
+                        "SELECT prompt_id, position, request, intent_note, expectations "
                         "  FROM evaluation_prompts "
                         " WHERE set_id = :sid AND tenant_id = :tid "
                         " ORDER BY position"
@@ -410,6 +433,7 @@ class EvaluationRunService:
             ).mappings()
         return tuple(
             Prompt(
+                expectations=None if row["expectations"] is None else dict(row["expectations"]),
                 intent_note=row["intent_note"],
                 position=int(row["position"]),
                 prompt_id=row["prompt_id"],
