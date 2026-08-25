@@ -101,24 +101,41 @@ def test_every_disposition_a_person_may_record_has_its_consequences_served() -> 
     )
 
 
-def test_the_operator_surface_does_not_offer_a_disposition_a_service_writes() -> None:
-    """The one exclusion, and why it is not an oversight.
+def test_both_transports_offer_the_same_dispositions() -> None:
+    """The gap a withdrawn change exposed, closed.
 
-    `migrated_canonical` is written by `MigrationAcceptanceService` after the
-    lot's sample has cleared `require_minimum_sample`. Offering it here would let
-    somebody mark a claim migrated without a lot, without a sample and without
-    the halt — the self-marking batch ADR 0022 refuses, reachable by one POST.
+    The HTTP route states its set as a hand-written `Literal`; the MCP tool took
+    a bare `str` and let `record_disposition` validate, which validates against
+    the *whole* vocabulary. While every disposition was operator-recordable that
+    was invisible. The moment one was meant to be service-only, the agent-facing
+    surface accepted it and this test — inspecting only the HTTP model — reported
+    the surfaces closed.
+
+    So it checks the MCP tool too, and both against one name.
     """
-    literal = router_module.RecordDispositionRequest.model_fields["disposition"].annotation
-    offered = set(getattr(literal, "__args__", ()))
+    import inspect
 
-    assert curation_cases.POLICY_ONLY_DISPOSITIONS, "the exclusion is empty; this test proves nothing"
-    assert offered.isdisjoint(curation_cases.POLICY_ONLY_DISPOSITIONS)
-    # And the two names between them are the whole vocabulary, so a seventh
-    # cannot be added to neither and quietly reach no surface at all.
-    assert set(curation_cases.OPERATOR_DISPOSITIONS) | curation_cases.POLICY_ONLY_DISPOSITIONS == set(
-        curation_cases.DISPOSITIONS
+    from contextplane.api.mcp.tools import memory_curation as mcp_module
+
+    recordable = set(curation_cases.OPERATOR_DISPOSITIONS)
+    literal = router_module.RecordDispositionRequest.model_fields["disposition"].annotation
+    assert set(getattr(literal, "__args__", ())) == recordable
+
+    source = inspect.getsource(mcp_module.record_case_disposition)
+    assert "OPERATOR_DISPOSITIONS" in source, (
+        "the MCP tool must refuse a disposition a person may not record; without it "
+        "the agent-facing surface accepts every value the service knows"
     )
+
+
+def test_the_two_disposition_groups_are_the_whole_vocabulary() -> None:
+    """So a disposition cannot be added to neither and reach no surface at all,
+    or added to both and be offered where it should not be."""
+    operator = set(curation_cases.OPERATOR_DISPOSITIONS)
+    policy_only = curation_cases.POLICY_ONLY_DISPOSITIONS
+
+    assert operator | policy_only == set(curation_cases.DISPOSITIONS)
+    assert operator.isdisjoint(policy_only)
 
 
 def test_the_served_policy_carries_every_dimension_the_service_records() -> None:

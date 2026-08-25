@@ -21,7 +21,7 @@ was this due" is precisely the question an audit asks. The stored instant is wha
 somebody was working to.
 
 Revision ID: 0089_reporting_deadlines
-Revises: 0088_migrated_canonical_disposition
+Revises: 0087_instruction_delta_scope
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from __future__ import annotations
 from alembic import op
 
 revision = "0089_reporting_deadlines"
-down_revision: str | None = "0088_migrated_canonical_disposition"
+down_revision: str | None = "0087_instruction_delta_scope"
 branch_labels: str | None = None
 depends_on: str | None = None
 

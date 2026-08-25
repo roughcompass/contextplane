@@ -1,6 +1,24 @@
 # 0022 — A migration is a lot, a lot is sampled, and the policy records the act rather than the authority
 
-**Status:** Accepted 2026-08-24
+**Status:** Withdrawn 2026-08-24, superseded by 0023
+
+> **This decision was wrong and the code implementing it has been removed.**
+> Its central claim — that a migrated lot is accepted on a sample a person
+> inspected — is false of the mechanism it named. `inspected_dispositions`
+> counts a tenant's prior human dispositions over a caller-supplied window; it
+> is not a draw from the lot, and it cannot be, because the check runs before
+> the lot's cases exist. Acceptance sampling requires the inspected items to
+> come from the lot being accepted.
+>
+> `sampling_policy.py` had already said so, and this ADR quoted the module while
+> contradicting the sentence: *"the reviewed subset is not a random sample of
+> the lot… The figure is a floor on effort, not a guarantee about the residue,
+> and **no caller should describe it as the second**."* §1 below describes it as
+> exactly the second.
+>
+> Kept rather than deleted because the reasoning that produced it is worth being
+> able to read, and because the corrected understanding in 0023 only makes sense
+> against it.
 
 ## Context
 
