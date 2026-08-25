@@ -192,6 +192,19 @@ def main() -> int:
 
     problems: list[str] = []
 
+    # The two summary scalars, checked against the list they summarise. They were
+    # unvalidated and had drifted -- `core_count: 8` against nine core tools --
+    # and a plan epic closed out its "default-profile tool count <= 8" metric by
+    # citing the declared number rather than counting. A summary nobody checks is
+    # a number people quote.
+    declared_total = document.get("tool_count")
+    declared_core = document.get("core_count")
+    actual_core = sum(1 for entry in listed if entry.get("tier") == "core")
+    if declared_total != len(listed):
+        problems.append(f"tool_count is {declared_total!r}; there are {len(listed)} tools")
+    if declared_core != actual_core:
+        problems.append(f"core_count is {declared_core!r}; {actual_core} tools are tier 'core'")
+
     by_name: dict[str, dict[str, object]] = {}
     for entry in listed:
         name = str(entry.get("name", "<unnamed>"))

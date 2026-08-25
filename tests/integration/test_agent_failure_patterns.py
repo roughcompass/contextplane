@@ -301,3 +301,49 @@ async def test_a_group_with_no_evidence_is_refused(world: _World) -> None:
 
     with pytest.raises(ValidationError, match="examples_per_group"):
         await world.report(examples_per_group=0)
+
+
+@pytest.mark.asyncio
+async def test_a_quarantined_claims_value_is_withheld_from_its_own_example(
+    world: _World,
+) -> None:
+    """Withheld content stays withheld on a performance read.
+
+    Quarantine keeps a claim out of `claim_serving` and out of the embedding
+    index. This surface hands `value_jsonb` back — and `get_my_failure_patterns`
+    hands it to the *authoring agent itself* — so without this the performance
+    read discloses exactly what the serving path refuses.
+
+    The example is still listed and still counted. An agent whose claim was
+    judged wrong should be told so, and dropping quarantined claims from the
+    counts would let an operator improve a measured accuracy by quarantining the
+    worst ones — a worse failure than the disclosure, and a different one: a
+    quarantine is about provenance turning out to be wrong, not about whether the
+    agent's judgement was.
+    """
+    claim_id = await world.judged(verdict="incorrect", value="platform", note="wrong owner")
+    async with world.factory() as session, session.begin():
+        await session.execute(
+            text("UPDATE memory_claims SET quarantined_at = :now WHERE claim_id = :cid"),
+            {"cid": claim_id, "now": _SEEDED},
+        )
+
+    report = await world.report()
+
+    examples = [e for g in report.groups for e in g.examples]
+    assert [e.claim_id for e in examples] == [claim_id], "the example must still be listed"
+    assert examples[0].value is None, "a quarantined claim's value must not be served here"
+    assert examples[0].note == "wrong owner", "the reviewer's note is not the withheld content"
+    assert report.n_incorrect == 1, "quarantining must not improve a measured accuracy"
+
+
+@pytest.mark.asyncio
+async def test_an_unquarantined_example_still_carries_its_value(world: _World) -> None:
+    """The withholding is conditional, not a blanket removal — the report is
+    considerably less useful without the value in the ordinary case."""
+    await world.judged(verdict="incorrect", value="platform", note="wrong owner")
+
+    report = await world.report()
+
+    examples = [e for g in report.groups for e in g.examples]
+    assert examples[0].value == "platform"

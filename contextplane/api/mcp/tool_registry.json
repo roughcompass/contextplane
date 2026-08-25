@@ -1,8 +1,8 @@
 {
   "artifact_version": 1,
   "_comment": "Every tool the MCP server registers, and which surface tier it belongs to. Committed rather than generated: a list computed from the code agrees with the code by construction and so cannot catch the code being wrong -- the same reason ranking_registry.json is an artifact. `scripts/check_mcp_tool_registry.py` holds the two in agreement in both directions. TIERS: `core` is what a default connection exposes; `extended` requires an autonomy envelope that names it, which E7-T3 wires. HOW CORE WAS CHOSEN, and what could not be derived: E7-T1 asks for the set to come from what receipts show agents actually call. No such corpus exists -- this service has never been released, and the receipts in a development tree are the test suite's. So the set is derived from a stated rule instead: a verb is core if an agent needs it to complete one turn of the two-call loop without reaching for a second surface. That is `whoami` to know who it is, record and list session events for the loop itself, search over claims and over the catalog to find what it already knows, resolve and resume for context, and one entity read. Eight. When a real corpus exists, replace the rule with the measurement rather than arguing about the list.",
-  "core_count": 8,
-  "tool_count": 70,
+  "core_count": 9,
+  "tool_count": 71,
   "tools": [
     {
       "name": "add_workspace_entry",

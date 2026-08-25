@@ -116,6 +116,50 @@ detectable. **Acceptance is a transition on the lot row, not a disposition per
 claim** — which removes the need to resurrect `migrated_canonical` at all, and
 makes rejection a single `t_invalidated_at` sweep over `lot_id`.
 
+### 3a. The replacement was attacked too, and E12's blocker is a schema fact
+
+The lot-based design above was reviewed before implementation, on this ADR's own
+instruction. **It is the third design for this problem and the third found
+fatally wrong.** Two of its defects are verified schema facts rather than
+opinions, and one is terminal for every design proposed so far.
+
+**A curation case cannot name a claim.** `curation_cases` has no `claim_id`
+column; it is keyed on `(tenant_id, subject_reference, predicate)` — an axis. So
+there is no path from a sampled *claim* to a disposition *about that claim*, and
+every acceptance scheme proposed here evaluates evidence that does not exist.
+`open_case` is idempotent per axis, so two sampled claims on one axis share one
+case and one decision disposes of both — and the case it reuses may be a
+months-old open case about an unrelated contradiction, which is 0022's original
+error, prior curation licensing a conclusion about new material, reappearing
+inside a single lot.
+
+**Rejection could not execute.** `ck_memory_claims_invalidated` is a
+biconditional — `(t_invalidated_at IS NULL) = (status <> 'superseded')` — and
+`ck_memory_claims_superseded_has_successor` then requires a named successor. A
+rejected lot has none, so "a single `t_invalidated_at` sweep over `lot_id`" is
+refused by the database. It would be defeated even if forced through, because
+`_SERVABLE_AS_OF` compares that column against a caller-supplied `as_of`, which
+is the documented reason quarantine is a separate column.
+
+**And gating reads would not have been enough.** Staging mutates the existing
+corpus before any lot closes: contradiction detection marks pre-existing claims
+contested, and consolidation supersedes them in favour of lot claims and merges
+their provenance into confidence scores. Rejecting a lot reverses none of it.
+
+**Where a fourth attempt should start.** The withholding mechanism already
+exists and is the right shape: quarantine's connector-run selector withholds
+exactly one run's claims through a *materialised* column every path reads
+unconditionally, with a members table giving an exact, auditable, revertible
+set. A lot-status join across many readers is the read-time predicate ADR 0016
+rejected by name, for the reason it gave — every scan added afterwards has to
+remember to join it. And the reader set is not four: roughly twenty-five modules
+read `memory_claims`.
+
+So E12-T3 is blocked on something narrower and more concrete than "a flow":
+**a case must be able to name a claim.** Until it can, no disposition is
+evidence about an imported row and the acceptance arithmetic has nothing to
+read.
+
 Two governance questions remain, and they are decisions rather than
 implementation: **who may be routed a sample case** — with a check that the owner
 is a human actor kind, since `actor_kind` is a stored parameter defaulting to
@@ -193,7 +237,17 @@ is the second time in one wave that careful reasoning from real code produced a
 design that did not survive an adversarial reader — and the second time the
 review cost minutes where the mistake would have cost a release.
 
-**The replacement in §3 has exactly the status the sketch did.** It comes from
-the review rather than from me, which makes it differently-sourced, not verified.
-Nobody has attacked *it*. Whoever implements it should assume it is wrong
-somewhere and find out where first.
+**The replacement was attacked and was also wrong** (§3a). Three designs for one
+problem, three fatal reviews, and each review found the design contradicting a
+mechanism already shipped rather than being internally inconsistent.
+
+That is the finding worth carrying out of this. The failure mode is not sloppy
+reasoning — each design was derived carefully from real code. It is that a design
+reasoned from *some* of a large codebase will contradict the parts it did not
+read, and the author is the last person able to notice. The cost asymmetry is
+stark: each review took minutes, and the one design that escaped review shipped
+and had to be withdrawn.
+
+**Do not write a fourth design here.** §3a names a verified schema-level blocker
+and the shipped mechanism a future attempt should build on. Those are facts a
+next author can start from; another sketch from this chair would be the fourth.
