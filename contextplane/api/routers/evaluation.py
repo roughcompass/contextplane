@@ -10,6 +10,9 @@
     GET  /v1/evaluation/simulations/availability      → SimulationAvailabilityResponse
     POST /v1/evaluation/simulations                   → SimulationResponse
     GET  /v1/evaluation/simulations/{simulation_id}   → SimulationResponse
+    POST /v1/evaluation/simulations/{simulation_id}/judgements     → JudgementListResponse
+    GET  /v1/evaluation/simulations/{simulation_id}/judgements     → JudgementListResponse
+    POST /v1/evaluation/judgements/{judgement_id}/review           → ReviewResponse
 
 This router adapts and does not decide. Which prompts a run resolves, what a
 verdict may say, whether two runs are comparable and what happens to a prompt
@@ -60,6 +63,13 @@ from contextplane.api.schemas.evaluation import (
     RunListResponse,
     RunResponse,
     VerdictResponse,
+)
+from contextplane.api.schemas.judgement import (
+    JudgementListResponse,
+    JudgementResponse,
+    RecordJudgementReviewRequest,
+    ReviewResponse,
+    RunJudgementRequest,
 )
 from contextplane.api.schemas.simulation import (
     RunSimulationRequest,
@@ -323,3 +333,88 @@ def _resolver_arguments(request: dict[str, object]) -> dict[str, object]:
     arguments = validated.resolver_arguments()
     arguments.pop("query")
     return arguments
+
+
+# ---------------------------------------------------------------------------
+# Judged criteria, and the human who may overrule the judge
+# ---------------------------------------------------------------------------
+
+
+@router.post("/simulations/{simulation_id}/judgements", response_model=JudgementListResponse)
+async def judge_simulation(
+    simulation_id: uuid.UUID,
+    body: RunJudgementRequest,
+    ctx: Annotated[TenantContext, Depends(_write_required)],
+    container: Annotated[Services, Depends(services)],
+) -> JudgementListResponse:
+    """Grade one simulated answer on groundedness and answer relevance.
+
+    Both criteria in one call, because they are read from the same material and
+    two calls would double the cost to produce two verdicts that could disagree
+    about what the answer said.
+
+    Refused with `409` when the judge shares a provider family with the candidate
+    — a judge from the candidate's own family scores it 10–25 % higher than a
+    third party does, and that is a constraint rather than advice.
+    """
+    try:
+        judged = await container.judgement.judge(ctx, simulation_id=simulation_id, panel_position=body.panel_position)
+    except JudgeFamilyRefused as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.reason) from exc
+    except SimulationUnavailable as exc:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=exc.reason) from exc
+    except ProviderError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=exc.reason) from exc
+    except CatalogError as exc:
+        raise map_catalog_error(exc) from exc
+    return JudgementListResponse(items=[JudgementResponse.of(entry) for entry in judged])
+
+
+@router.get("/simulations/{simulation_id}/judgements", response_model=JudgementListResponse)
+async def list_judgements(
+    simulation_id: uuid.UUID,
+    ctx: Annotated[TenantContext, Depends(_read_required)],
+    container: Annotated[Services, Depends(services)],
+) -> JudgementListResponse:
+    """Every judged criterion of one simulation, with every review on each.
+
+    `confidence_is_calibrated` is false on every row until E24-T6 fits bins for
+    the pinned tuple. It is sent rather than left for each client to work out,
+    because a client that got it wrong would render an unexamined number with an
+    authoritative look — on the screen whose job is calibrating trust.
+    """
+    try:
+        judged = await container.judgement.judgements_of(ctx, simulation_id)
+    except CatalogError as exc:
+        raise map_catalog_error(exc) from exc
+    return JudgementListResponse(items=[JudgementResponse.of(entry) for entry in judged])
+
+
+@router.post("/judgements/{judgement_id}/review", response_model=ReviewResponse)
+async def record_judgement_review(
+    judgement_id: uuid.UUID,
+    body: RecordJudgementReviewRequest,
+    ctx: Annotated[TenantContext, Depends(_write_required)],
+    container: Annotated[Services, Depends(services)],
+) -> ReviewResponse:
+    """Confirm or overrule one judged criterion.
+
+    A second fact beside the judge's, never a correction to it: the pair (what
+    the judge said, what the person said) is the only thing calibration can be
+    fitted from, and overwriting would destroy it.
+
+    Attributed to the caller and not to an actor the caller names. A second
+    review from the same reviewer replaces the first, because somebody who
+    changed their mind has one opinion; two reviewers disagreeing stays two rows.
+    """
+    try:
+        recorded = await container.judgement.record_review(
+            ctx,
+            judgement_id=judgement_id,
+            note=body.note,
+            observed_confidence=body.observed_confidence,
+            verdict=body.verdict,
+        )
+    except CatalogError as exc:
+        raise map_catalog_error(exc) from exc
+    return ReviewResponse.of(recorded)

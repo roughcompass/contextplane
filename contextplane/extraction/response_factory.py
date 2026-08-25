@@ -34,6 +34,7 @@ from contextplane.extraction.response_provider import SimulationUnavailable
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from contextplane.config import Settings
+    from contextplane.extraction.judge_prompt import JudgeProvider
     from contextplane.extraction.response_provider import ResponseProvider
 
 _log = logging.getLogger(__name__)
@@ -137,7 +138,7 @@ def build_response_provider(settings: Settings, *, env: dict[str, str] | None = 
     )
 
 
-def build_judge_provider(settings: Settings, *, env: dict[str, str] | None = None) -> ResponseProvider | None:
+def build_judge_provider(settings: Settings, *, env: dict[str, str] | None = None) -> JudgeProvider | None:
     """The judging provider named by configuration, or `None` when switched off.
 
     The same construction as the candidate's, because a judge is a model answering
@@ -179,7 +180,14 @@ def _build(
     role: str,
     setting: str,
     key_setting: str,
-) -> ResponseProvider | None:
+) -> AnthropicResponseProvider | OpenAICompatibleResponseProvider | None:
+    """The concrete adapter, so both public builders can narrow to their own protocol.
+
+    Returning the union rather than either protocol is what lets one construction
+    path serve two roles: the shipped adapters answer prompts *and* grade
+    answers, and a builder typed to one protocol could not hand its result to the
+    other without a cast that would stop checking anything.
+    """
     if selector == DISABLED:
         _log.info(
             "%s.provider_disabled: no %s provider configured. Prompt sets, runs, verdicts and the "

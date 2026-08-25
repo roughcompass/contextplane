@@ -9090,6 +9090,23 @@
         "title": "InterfaceSurfaceResponse",
         "type": "object"
       },
+      "JudgementListResponse": {
+        "description": "Every judged criterion of one simulation.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JudgementResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "JudgementListResponse",
+        "type": "object"
+      },
       "JudgementPageResponse": {
         "description": "One page, and where the next one starts. The cursor is opaque.",
         "properties": {
@@ -9117,6 +9134,112 @@
           "next_cursor"
         ],
         "title": "JudgementPageResponse",
+        "type": "object"
+      },
+      "JudgementResponse": {
+        "description": "One criterion, judged, with the trace that makes the verdict arguable.",
+        "properties": {
+          "confidence": {
+            "description": "The judge's own number, on its own scale. Read `confidence_is_calibrated` before showing it as anything: until a fit exists for this judge's pinned tuple, it predicts nothing.",
+            "title": "Confidence",
+            "type": "number"
+          },
+          "confidence_is_calibrated": {
+            "description": "Whether a bin fit exists for this result's pinned tuple. False means the verdict is unproven and must be rendered as such \u2014 a confident-looking score on the screen whose job is calibrating trust is a confident label on a guess.",
+            "title": "Confidence Is Calibrated",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "criterion": {
+            "description": "One of ['groundedness', 'answer_relevance'].",
+            "title": "Criterion",
+            "type": "string"
+          },
+          "evidence": {
+            "description": "The spans the judge relied on, quoted. Present on a pass as well as a fail.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "is_disputed": {
+            "description": "Whether any reviewer overruled the judge. A visible state, never a silent overwrite.",
+            "title": "Is Disputed",
+            "type": "boolean"
+          },
+          "judge_model_id": {
+            "title": "Judge Model Id",
+            "type": "string"
+          },
+          "judge_provider_id": {
+            "title": "Judge Provider Id",
+            "type": "string"
+          },
+          "judgement_id": {
+            "format": "uuid",
+            "title": "Judgement Id",
+            "type": "string"
+          },
+          "panel_position": {
+            "title": "Panel Position",
+            "type": "integer"
+          },
+          "prompt_template_hash": {
+            "description": "A digest over what the judge was asked \u2014 template, rubric, tool name and output schema. Pinned separately from the model id because position, verbosity and format bias are properties of the template rather than of the model.",
+            "title": "Prompt Template Hash",
+            "type": "string"
+          },
+          "reasoning": {
+            "description": "The judge's step-by-step reasoning, produced before its verdict. Required: a score with no trace is one a reviewer can only accept or reject.",
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "reviews": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewResponse"
+            },
+            "title": "Reviews",
+            "type": "array"
+          },
+          "rubric_version": {
+            "title": "Rubric Version",
+            "type": "string"
+          },
+          "simulation_id": {
+            "format": "uuid",
+            "title": "Simulation Id",
+            "type": "string"
+          },
+          "verdict": {
+            "description": "One of ['pass', 'fail']. No partial credit.",
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "judgement_id",
+          "simulation_id",
+          "criterion",
+          "verdict",
+          "reasoning",
+          "evidence",
+          "confidence",
+          "confidence_is_calibrated",
+          "judge_provider_id",
+          "judge_model_id",
+          "rubric_version",
+          "prompt_template_hash",
+          "panel_position",
+          "is_disputed",
+          "created_at",
+          "reviews"
+        ],
+        "title": "JudgementResponse",
         "type": "object"
       },
       "JudgmentAuthor": {
@@ -13409,6 +13532,47 @@
         "title": "RecordEventRequest",
         "type": "object"
       },
+      "RecordJudgementReviewRequest": {
+        "description": "One reviewer's word on one judged criterion.",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why. Required for anything other than `confirmed`: a disagreement with no reason is one the next reader has to reach again from scratch.",
+            "title": "Note"
+          },
+          "observed_confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The reviewer's own confidence. Follows the claim-adjudication contract.",
+            "title": "Observed Confidence"
+          },
+          "verdict": {
+            "description": "One of ['confirmed', 'overruled', 'unsure']. `unsure` is information about the reviewer rather than a third verdict on the answer, and calibration excludes it \u2014 counting it either way would bias the fit.",
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict"
+        ],
+        "title": "RecordJudgementReviewRequest",
+        "type": "object"
+      },
       "RecordVerdictRequest": {
         "description": "One reviewer's judgement of one prompt's resolution.",
         "properties": {
@@ -14779,6 +14943,56 @@
         "title": "ReviewProposalRequest",
         "type": "object"
       },
+      "ReviewResponse": {
+        "description": "One recorded review of one judged criterion.",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "observed_confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Confidence"
+          },
+          "reviewed_at": {
+            "format": "date-time",
+            "title": "Reviewed At",
+            "type": "string"
+          },
+          "reviewed_by": {
+            "format": "uuid",
+            "title": "Reviewed By",
+            "type": "string"
+          },
+          "verdict": {
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "note",
+          "observed_confidence",
+          "reviewed_by",
+          "reviewed_at"
+        ],
+        "title": "ReviewResponse",
+        "type": "object"
+      },
       "RevisionIndexResponse": {
         "properties": {
           "items": {
@@ -15198,6 +15412,20 @@
           "verdicts"
         ],
         "title": "RunItemResponse",
+        "type": "object"
+      },
+      "RunJudgementRequest": {
+        "description": "Grade one simulated answer on both model-judged criteria.",
+        "properties": {
+          "panel_position": {
+            "default": 0,
+            "description": "Which judge this is. Zero is the single judge an interactive simulation gets; a panel of three occupies 0, 1 and 2. Re-judging at the same position replaces that verdict, because a re-run is not a second opinion.",
+            "minimum": 0.0,
+            "title": "Panel Position",
+            "type": "integer"
+          }
+        },
+        "title": "RunJudgementRequest",
         "type": "object"
       },
       "RunListResponse": {
@@ -29357,6 +29585,60 @@
         ]
       }
     },
+    "/v1/evaluation/judgements/{judgement_id}/review": {
+      "post": {
+        "description": "Confirm or overrule one judged criterion.\n\nA second fact beside the judge's, never a correction to it: the pair (what\nthe judge said, what the person said) is the only thing calibration can be\nfitted from, and overwriting would destroy it.\n\nAttributed to the caller and not to an actor the caller names. A second\nreview from the same reviewer replaces the first, because somebody who\nchanged their mind has one opinion; two reviewers disagreeing stays two rows.",
+        "operationId": "record_judgement_review_v1_evaluation_judgements__judgement_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "judgement_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Judgement Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordJudgementReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Judgement Review",
+        "tags": [
+          "evaluation"
+        ]
+      }
+    },
     "/v1/evaluation/prompt-sets": {
       "get": {
         "description": "This tenant's sets, newest first.",
@@ -29792,6 +30074,102 @@
           }
         },
         "summary": "Get Simulation",
+        "tags": [
+          "evaluation"
+        ]
+      }
+    },
+    "/v1/evaluation/simulations/{simulation_id}/judgements": {
+      "get": {
+        "description": "Every judged criterion of one simulation, with every review on each.\n\n`confidence_is_calibrated` is false on every row until E24-T6 fits bins for\nthe pinned tuple. It is sent rather than left for each client to work out,\nbecause a client that got it wrong would render an unexamined number with an\nauthoritative look \u2014 on the screen whose job is calibrating trust.",
+        "operationId": "list_judgements_v1_evaluation_simulations__simulation_id__judgements_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Simulation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JudgementListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Judgements",
+        "tags": [
+          "evaluation"
+        ]
+      },
+      "post": {
+        "description": "Grade one simulated answer on groundedness and answer relevance.\n\nBoth criteria in one call, because they are read from the same material and\ntwo calls would double the cost to produce two verdicts that could disagree\nabout what the answer said.\n\nRefused with `409` when the judge shares a provider family with the candidate\n\u2014 a judge from the candidate's own family scores it 10\u201325 % higher than a\nthird party does, and that is a constraint rather than advice.",
+        "operationId": "judge_simulation_v1_evaluation_simulations__simulation_id__judgements_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Simulation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunJudgementRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JudgementListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Judge Simulation",
         "tags": [
           "evaluation"
         ]
