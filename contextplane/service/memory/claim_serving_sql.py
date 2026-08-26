@@ -30,19 +30,46 @@ _PROJECTION = """c.claim_id, c.subject_entity_id, c.predicate, c.value_jsonb AS 
        c.claim_category, c.confidence, c.source_authority, c.asserted_valid_from,
        c.asserted_valid_to, c.confirms_claim_id, c.created_at,
        c.confidence_scored_at, c.confidence_hold_until, c.namespace,
-       c.visibility, c.owning_tenant_id"""
+       c.visibility, c.owning_tenant_id, subject.name AS subject_name"""
+
+#: What a claim is *about*, by name, joined once rather than looked up per claim.
+#:
+#: A served claim named its subject with a UUID and nothing else, and an agent
+#: holding one cannot tell what it is about. Asked *"who owns salt design system
+#: and what lifecycle state is it in?"*, the model said so twice in its own
+#: answer: *"it's not clear that this entity ID actually corresponds to the Salt
+#: Design System capability (the canonical Salt entity has a different ID)"*, and
+#: *"again it's uncertain this entity ID maps to Salt Design System
+#: specifically."* It was right, and it had to compare two UUIDs by eye to work it
+#: out — which is the one kind of reasoning a language model is worst at, on a
+#: surface whose entire purpose is assembling context a model can use.
+#:
+#: `LEFT JOIN`, because a claim whose subject has not resolved is exactly the case
+#: the curation queue exists for; it keeps its `NULL` name and stays servable.
+#:
+#: Discloses nothing new. The subject id is already in the payload, the caller can
+#: already resolve it through the catalog, and claims are already filtered by
+#: subject visibility before they are served — so the name is reachable by anyone
+#: receiving the row, and withholding it only made the row harder to use.
+_SUBJECT_JOIN = """
+  LEFT JOIN entities subject
+    ON subject.entity_id = c.subject_entity_id
+   AND subject.tenant_id = c.owning_tenant_id
+"""
 
 _SELECT = f"""
 SELECT {_PROJECTION}
   FROM memory_claims c
+{_SUBJECT_JOIN}
 """  # noqa: S608 - _PROJECTION is a fixed, module-level column list, not caller input; every actual value below is bound via :param
 
 # The ranked arms join the shared index. The discriminator lives in the join predicate, so
 # a fact's vector cannot reach a claim answer even though both kinds share one table.
-_INDEX_JOIN = """
+_INDEX_JOIN = f"""
   FROM memory_claims c
   JOIN embeddings emb
     ON emb.target_type = 'claim' AND emb.target_id = c.claim_id
+{_SUBJECT_JOIN}
 """
 
 _QUERY_SQL = f"""

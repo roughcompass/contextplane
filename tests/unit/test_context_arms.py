@@ -330,6 +330,7 @@ def _claim(*, category: str = "interface_contract", human_confirmed: bool = Fals
     return ServedClaim(
         claim_id=uuid.uuid4(),
         subject_entity_id=uuid.uuid4(),
+        subject_name="payments-api",
         predicate="requires_auth_scope",
         value="payments:write",
         claim_category=category,

@@ -322,3 +322,44 @@ async def test_a_deployment_that_cannot_rank_still_answers_and_says_it_could_not
 
     assert block.items, "a deployment without an embedder must still serve claims"
     assert block.reason is not None and "embedder" in block.reason
+
+
+@pytest.mark.asyncio
+async def test_a_served_claim_names_the_thing_it_is_about(
+    factory: async_sessionmaker[AsyncSession], pg_container: str
+) -> None:
+    """The gap a language model reported in its own answer.
+
+    Asked *"who owns salt design system and what lifecycle state is it in?"*, the
+    simulated agent said, twice:
+
+        it's not clear that this entity ID actually corresponds to the Salt
+        Design System capability (the canonical Salt entity has a different ID)
+
+        again it's uncertain this entity ID maps to Salt Design System
+        specifically
+
+    It was right, and reaching that conclusion required comparing two UUIDs by
+    eye — the one kind of reasoning a language model is worst at, on a surface
+    whose entire purpose is assembling context a model can use. The canonical
+    block names its entities; the claims block gave an opaque id and nothing
+    else.
+
+    Asserted on the payload rather than on the SQL, because what matters is what
+    reaches the reader.
+    """
+    tenant_id, actor_id = await _seed(factory, pg_container)
+    from contextplane.types import TenantContext
+
+    ctx = TenantContext(tenant_id=tenant_id, actor_id=actor_id, roles=["producer"])
+    arm = _arms(factory, embedder=StubEmbedder()).observed_claims_arm(ctx, query=None, moment=_MOMENT, limit=4)
+    envelope = (await assemble({BLOCK_OBSERVED_CLAIMS: arm}, now=_MOMENT)).envelope
+    items = envelope.block(BLOCK_OBSERVED_CLAIMS).items
+
+    assert items, "the corpus has claims; this test is about what they say"
+    for item in items:
+        assert "subject_name" in item.payload, "a claim must say what it is about, not only which id"
+        assert item.payload["subject_name"], (
+            f"claim {item.payload['claim_id']} names its subject only as "
+            f"{item.payload['subject_entity_id']}, which a reader cannot resolve"
+        )

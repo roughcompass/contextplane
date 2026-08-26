@@ -94,6 +94,7 @@ def _claim_row(**overrides: object) -> dict[str, object]:
     defaults: dict[str, object] = dict(
         claim_id=uuid.uuid4(),
         subject_entity_id=uuid.uuid4(),
+        subject_name="payments-api",
         predicate="owned_by_team",
         value="platform",
         claim_category="ownership_stewardship",
@@ -221,6 +222,7 @@ def _served_claim_kwargs(**overrides: object) -> dict[str, object]:
     defaults: dict[str, object] = dict(
         claim_id=uuid.uuid4(),
         subject_entity_id=uuid.uuid4(),
+        subject_name="payments-api",
         predicate="owned_by_team",
         value="platform",
         claim_category="ownership_stewardship",
