@@ -142,59 +142,87 @@ class TestUpsertTenant:
 
 @pytest.mark.asyncio
 class TestUpsertActor:
-    async def test_first_sight_inserts_and_emits_audit(self):
-        first_insert_uuid: list[uuid.UUID] = []
+    @staticmethod
+    def _session(stored: tuple[uuid.UUID, str] | None, seen: list[str]):
+        """A session whose lookup answers `stored`, recording the SQL it is asked for.
 
-        session = AsyncMock()
+        `stored` is what the actor row already holds, or `None` for a principal
+        nobody has seen. The tests below distinguish paths by which statements
+        `seen` ends up containing, which is the thing that actually differs —
+        counting awaits alone would go green against a version that reads the row
+        and then writes it anyway.
+        """
 
         async def execute_side_effect(stmt, params=None):
             sql = str(stmt)
+            seen.append(sql)
             result = MagicMock()
-            if "INSERT INTO actors" in sql:
-                first_insert_uuid.append(params["actor_id"])
-                # Match — first sight, RETURNING yields the same UUID.
-                result.first = MagicMock(return_value=(params["actor_id"],))
+            if "SELECT actor_id, display_name FROM actors" in sql:
+                result.first = MagicMock(return_value=stored)
+            elif "INSERT INTO actors" in sql:
+                result.first = MagicMock(return_value=(stored[0] if stored else params["actor_id"],))
             elif "INSERT INTO audit_log" in sql:
                 result.first = MagicMock(return_value=None)
             return result
 
+        session = AsyncMock()
         session.execute = AsyncMock(side_effect=execute_side_effect)
+        return session
 
-        tenant_id = uuid.uuid4()
-        returned_id = await upsert_entitlement_actor(session, tenant_id, "user-abc", "User Display")
+    async def test_first_sight_looks_first_then_inserts_and_emits_audit(self):
+        """Nobody has seen this principal, so the lookup finds nothing and the
+        write is the point of the call."""
+        seen: list[str] = []
+        session = self._session(None, seen)
 
-        assert returned_id == first_insert_uuid[0]
-        # INSERT + audit.
-        assert session.execute.await_count == 2
+        returned_id = await upsert_entitlement_actor(session, uuid.uuid4(), "user-abc", "User Display")
 
-    async def test_re_sight_returns_existing_actor_no_audit(self):
-        """ON CONFLICT DO UPDATE returns the existing UUID; the
-        UUID-comparison discriminator skips the audit emission."""
+        assert any("SELECT actor_id, display_name FROM actors" in s for s in seen)
+        assert any("INSERT INTO actors" in s for s in seen)
+        assert any("INSERT INTO audit_log" in s for s in seen)
+        assert returned_id is not None
+
+    async def test_an_unchanged_re_sight_takes_no_write_lock_at_all(self):
+        """The invariant the deadlock fix rests on, asserted where it is cheapest.
+
+        Authentication runs on the request-scoped transaction, so any write here
+        holds a row-exclusive lock on the caller's own actor row until the
+        response is written — and every handler that later writes that row waits
+        on a lock its own request holds. The integration suite proves the lock is
+        gone against a real Postgres; this proves the *reason* it is gone, which
+        is that the common path issues no write statement whatsoever.
+        """
         existing_actor = uuid.uuid4()
+        seen: list[str] = []
+        session = self._session((existing_actor, "Same Name"), seen)
 
-        session = AsyncMock()
-        execute_calls: list[str] = []
+        returned_id = await upsert_entitlement_actor(session, uuid.uuid4(), "user-abc", "Same Name")
 
-        async def execute_side_effect(stmt, params=None):
-            sql = str(stmt)
-            execute_calls.append(sql)
-            result = MagicMock()
-            if "INSERT INTO actors" in sql:
-                # Conflict: RETURNING yields the EXISTING actor_id (not
-                # the one we tried to insert).
-                result.first = MagicMock(return_value=(existing_actor,))
-            elif "INSERT INTO audit_log" in sql:
-                result.first = MagicMock(return_value=None)
-            return result
+        assert returned_id == existing_actor
+        assert not any("INSERT INTO actors" in s for s in seen), (
+            "a re-sight with an unchanged display name must not write, or it reinstates "
+            "the lock this path exists to avoid"
+        )
+        assert not any("INSERT INTO audit_log" in s for s in seen)
+        assert session.execute.await_count == 1
 
-        session.execute = AsyncMock(side_effect=execute_side_effect)
+    async def test_a_changed_display_name_still_writes_and_still_emits_no_audit(self):
+        """The upsert is not gone, it is conditional.
+
+        A token whose `name` claim has since been populated upstream must still
+        propagate without a separate sync — that is the documented reason the
+        conflict path updates `display_name` — and a re-sight is still not a
+        creation, so no audit row is emitted.
+        """
+        existing_actor = uuid.uuid4()
+        seen: list[str] = []
+        session = self._session((existing_actor, "Old Name"), seen)
 
         returned_id = await upsert_entitlement_actor(session, uuid.uuid4(), "user-abc", "Updated Name")
 
         assert returned_id == existing_actor
-        # No audit INSERT.
-        assert any("INSERT INTO audit_log" in s for s in execute_calls) is False
-        assert session.execute.await_count == 1
+        assert any("INSERT INTO actors" in s for s in seen)
+        assert not any("INSERT INTO audit_log" in s for s in seen)
 
     async def test_display_name_passed_to_insert(self):
         """The supplied display_name (not oidc_subject) is what lands in

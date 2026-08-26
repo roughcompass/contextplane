@@ -173,7 +173,39 @@ async def upsert_entitlement_actor(
     missed. The declaration is attributed to the row itself: the entitlement
     service has no actor row of its own to point at, and the schema requires an
     attribution alongside the timestamp.
+
+    **Reads before it writes, because every request calls this and almost none of
+    them have anything to write.** The upsert takes a row-exclusive lock on the
+    caller's own actor row, and authentication runs inside the request-scoped
+    transaction — so the lock was held from authentication until the response was
+    written, on every request, for a row the request had no intention of
+    modifying.
+
+    Any endpoint that then wrote to that same row deadlocked the request against
+    itself. `POST /v1/admin/actors/{id}/declare` on the caller's own actor is the
+    reachable case: `ActorDirectory.declare` opens its own session, so its
+    `UPDATE actors` waited on a lock held by the same request on another
+    connection, and no amount of waiting could release it. Observed as a 500
+    after exactly the statement timeout; `pg_blocking_pids` named the request's
+    own authentication backend as the blocker. Declaring *another* actor
+    succeeded, which is what made it look like a permissions problem.
+
+    So the common path — the row exists and its display name is already current
+    — is now a `SELECT` that takes no write lock at all. The upsert still runs on
+    genuine first sight and when the identity provider has sent a new display
+    name, which is the only case whose whole point is to write. The race two
+    concurrent first sights create is unchanged, because the write they race on
+    is still `ON CONFLICT DO UPDATE`.
     """
+    existing = (
+        await session.execute(
+            text("SELECT actor_id, display_name FROM actors WHERE tenant_id = :tenant_id AND oidc_subject = :sub"),
+            {"tenant_id": tenant_id, "sub": oidc_subject},
+        )
+    ).first()
+    if existing is not None and existing[1] == (display_name or oidc_subject):
+        return uuid.UUID(str(existing[0]))
+
     new_actor_id = uuid.uuid4()
     now = datetime.datetime.now(tz=datetime.UTC)
     effective_display = display_name or oidc_subject
