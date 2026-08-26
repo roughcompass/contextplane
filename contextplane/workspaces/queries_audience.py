@@ -334,7 +334,9 @@ async def search_authorized_checkpoints(
                 ),
                 IntentCheckpoint.goal.ilike(f"%{needle}%"),
             )
-            .order_by(IntentCheckpoint.recorded_at.desc())
+            # Total, for the reason `recall.py` gives: this feeds the workspace
+            # block, which now presents items in the order its read produced.
+            .order_by(IntentCheckpoint.recorded_at.desc(), IntentCheckpoint.checkpoint_id)
             .limit(limit)
         )
     ).scalars()

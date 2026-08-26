@@ -251,11 +251,79 @@ async def test_an_arm_reports_no_block_state_of_its_own() -> None:
 
 
 @pytest.mark.asyncio
-async def test_items_come_back_in_a_deterministic_order() -> None:
-    """Ordered by receipt item id, so two identical requests produce identical
-    envelopes regardless of how the rows arrived from the database."""
+async def test_the_block_keeps_the_order_the_read_produced() -> None:
+    """Inverted, and the inversion found a real defect. ADR 0028.
+
+    This asserted that reversing the rows changed nothing — *"two identical
+    requests produce identical envelopes regardless of how the rows arrived from
+    the database"*. True of a digest sort, and it was buying determinism by
+    throwing the read's ordering away: the block presented checkpoints in
+    hexadecimal digest order, so the most recent one was wherever its hash fell.
+
+    The phrase *regardless of how the rows arrived* is the tell. Rows arriving in
+    an arbitrary order is not a hypothetical the sort was defending against — it
+    was the truth. `recall`'s reads ordered by `recorded_at DESC` alone, so two
+    checkpoints recorded in the same instant could arrive either way round, and
+    a `LIMIT` could keep a different one each time. The sort hid it by discarding
+    the order; the fix was to make the read total, not to keep hiding it.
+
+    So this now asserts the opposite, and its counterpart in
+    `test_workspace_recall_reads_are_totally_ordered` asserts the property that
+    makes the opposite safe.
+    """
     rows = tuple(_Row() for _ in range(5))
     recall = WorkspaceRecall(session_factory=None)  # type: ignore[arg-type]
-    first = await recall._as_outcome(recall._cut(rows, 5), moment=_NOW)
-    second = await recall._as_outcome(recall._cut(tuple(reversed(rows)), 5), moment=_NOW)
-    assert [i.receipt_item_id for i in first.items] == [i.receipt_item_id for i in second.items]
+    outcome = await recall._as_outcome(recall._cut(rows, 5), moment=_NOW)
+
+    assert [item.receipt_item_id.item_key for item in outcome.items] == [str(row.checkpoint_id) for row in rows]
+
+
+def test_workspace_recall_reads_are_totally_ordered() -> None:
+    """The property the change above depends on, asserted rather than assumed.
+
+    Ordering a block by its read is only deterministic if the read is. Every
+    checkpoint read that feeds the workspace block must therefore break ties down
+    to a unique column, and `checkpoint_id` is the primary key. Asserted against
+    the source because the alternative — staging two checkpoints on one instant
+    and hoping Postgres returns them the wrong way round — cannot fail reliably.
+    """
+    import pathlib
+
+    def order_by_clauses(source: str) -> list[str]:
+        """Each `.order_by(...)` naming IntentCheckpoint, to its matching paren.
+
+        Balanced-paren scan rather than a regex: `.desc()` contains a closing
+        paren, so `[^)]*` stops inside the first column and reports the clause as
+        untiebroken whether or not it is. The first version of this test did
+        exactly that and failed against correct code.
+        """
+        clauses: list[str] = []
+        marker = ".order_by("
+        index = source.find(marker)
+        while index != -1:
+            cursor = index + len(marker)
+            depth = 1
+            while cursor < len(source) and depth:
+                depth += {"(": 1, ")": -1}.get(source[cursor], 0)
+                cursor += 1
+            clause = source[index:cursor]
+            if "IntentCheckpoint" in clause:
+                clauses.append(clause)
+            index = source.find(marker, cursor)
+        return clauses
+
+    reads = {
+        "contextplane/workspaces/recall.py": 2,
+        "contextplane/workspaces/queries_audience.py": 1,
+        "contextplane/context/queries.py": 1,
+    }
+    root = pathlib.Path(__file__).resolve().parents[2]
+    for relative, expected in reads.items():
+        clauses = order_by_clauses((root / relative).read_text(encoding="utf-8"))
+        assert len(clauses) == expected, f"{relative}: expected {expected} checkpoint read(s), found {len(clauses)}"
+        for clause in clauses:
+            assert "checkpoint_id" in clause, (
+                f"{relative} orders checkpoints without a unique tiebreak: {clause.strip()}. "
+                "Two checkpoints sharing an instant would then arrive in either order, and the "
+                "block presents items in the order its read produced."
+            )
