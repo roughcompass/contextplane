@@ -246,6 +246,12 @@ def claim_payload(claim: ServedClaim) -> dict[str, object]:
     return {
         "claim_id": str(claim.claim_id),
         "subject_entity_id": str(claim.subject_entity_id),
+        # The name beside the id, because a reader of this block — an agent, most
+        # of the time — cannot resolve a UUID and should not have to compare two
+        # of them by eye to decide whether a claim is about the thing they asked
+        # about. `None` where the reference has not resolved, which is a state
+        # rather than a gap.
+        "subject_name": claim.subject_name,
         "predicate": claim.predicate,
         "value": claim.value,
         "category": claim.claim_category,

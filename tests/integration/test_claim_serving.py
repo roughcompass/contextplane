@@ -196,6 +196,7 @@ def test_a_claim_cannot_be_constructed_without_citations() -> None:
         ServedClaim(
             claim_id=uuid.uuid4(),
             subject_entity_id=uuid.uuid4(),
+            subject_name="payments-api",
             predicate="owned_by_team",
             value="platform",
             claim_category="ownership_stewardship",
@@ -217,6 +218,7 @@ def test_a_served_claim_cannot_shed_its_untrusted_label() -> None:
         ServedClaim(
             claim_id=uuid.uuid4(),
             subject_entity_id=uuid.uuid4(),
+            subject_name="payments-api",
             predicate="owned_by_team",
             value="platform",
             claim_category="ownership_stewardship",

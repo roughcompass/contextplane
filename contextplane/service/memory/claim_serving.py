@@ -165,6 +165,11 @@ class ServedClaim:
 
     claim_id: uuid.UUID
     subject_entity_id: uuid.UUID
+    #: What the subject is called, or `None` when the reference has not resolved
+    #: — which is the state the curation queue exists to clear, not an error. An
+    #: agent given only the id cannot tell what a claim is about; see
+    #: `_SUBJECT_JOIN` for the answer that said so.
+    subject_name: str | None
     predicate: str
     value: Any
     claim_category: str
@@ -703,6 +708,7 @@ class ClaimServingService:
         return ServedClaim(
             claim_id=row["claim_id"],
             subject_entity_id=row["subject_entity_id"],
+            subject_name=row["subject_name"],
             predicate=row["predicate"],
             value=row["value"],
             claim_category=row["claim_category"],

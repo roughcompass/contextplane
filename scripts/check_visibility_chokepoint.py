@@ -102,6 +102,22 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
+        path="contextplane/service/memory/claim_serving_sql.py",
+        reason=(
+            "The only entities reference is `_SUBJECT_JOIN`, whose predicate is "
+            "`subject.tenant_id = c.owning_tenant_id` — and `owning_tenant_id` is by "
+            "definition the subject entity's own tenant, which `_assert_owner_pinned` "
+            "states and relies on: `_resolve_subject` derives it from `entity.tenant_id` "
+            "on both branches, `link_subject` writes the same value, and an unresolved "
+            "subject leaves it NULL. The three statements that select through this join "
+            "all pin `c.owning_tenant_id = :tid`, so the join cannot reach an entity "
+            "outside the caller's tenant. `_BY_ID_SQL` does not pin, and is the one path "
+            "that still runs the full `_visible_subjects` read before returning anything "
+            "— the join fetches a name there, and `get` discards the whole row when the "
+            "subject is not visible. It selects `name` and nothing else."
+        ),
+    ),
+    Exemption(
         path="contextplane/service/catalog/external_ids.py",
         reason=(
             "The create path resolves an entity's tenant_id and raises TenantIsolationError "
