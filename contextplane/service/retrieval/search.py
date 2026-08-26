@@ -20,8 +20,10 @@ Semantic arm:
   - Over-fetches top_k * 4 rows and returns the nearest top_k after SET LOCAL.
 
 Lexical arm:
-  - tsvector @@ plainto_tsquery on facts.ts_vector (GIN index).
-  - Ranked via ts_rank_cd.
+  - tsvector @@ a disjunction of the query's terms, on facts.ts_vector (GIN
+    index). Any term matches; `ts_rank_cd` over both the disjunction and the
+    conjunction is what orders them, so a row carrying the whole query still
+    outranks one carrying part of it. See `any_term_tsquery`.
 
 Graph arm:
   - Recursive CTE on edges, depth <= 2 (hardcoded for search), edge types
@@ -42,9 +44,8 @@ import asyncio
 import hashlib
 import logging
 import uuid
-from collections.abc import Awaitable, Callable, Hashable, Mapping, Sequence
-from dataclasses import dataclass
-from typing import Any, Final, Generic, TypeVar
+from collections.abc import Sequence
+from typing import Any, Final, TypeVar
 
 from sqlalchemy import RowMapping, text
 
@@ -53,14 +54,50 @@ from contextplane.profile.scoring import resolve_weights
 from contextplane.service.retrieval._query_primitives import (
     _GRAPH_EDGE_TYPES,
     _RetrievalState,
+    any_term_tsquery,
     temporal_sql_fragments,
 )
+from contextplane.service.retrieval.fusion import fuse_hybrid_arms
 from contextplane.types import EntityRef, FactRef, SearchResult, TemporalFilter, TenantContext
 
 _log = logging.getLogger(__name__)
 
 # Search-time graph hop limit (separate from get_dependencies's cap).
 _SEARCH_GRAPH_DEPTH = 2
+
+# How many name-matching entities may seed the graph arm's recursive expansion.
+# Seeds cost more than rows: each one expands two hops. The bound is deliberately
+# well above a realistic seed set rather than tuned to one — on the development
+# catalog the broadest single-word query seeds 41 — so it acts as a ceiling on
+# the pathological case (a query term shared by most of the catalog) and not as
+# a relevance cut on ordinary ones. `_GRAPH_SEED_RANK_FLOOR` is what actually
+# decides relevance.
+_GRAPH_SEED_LIMIT = 50
+
+# How good a name match has to be, relative to the best name match the same query
+# found, to be worth expanding from.
+#
+# A count-based cut cannot tell the two cases apart, and they need opposite
+# answers. `Who owns salt design system?` matches 41 entity names, but one of
+# them carries every term of the query and the other 40 carry only "salt";
+# expanding from all 41 returns `salt-drawer` as a top answer to a question about
+# ownership of the design system, which is the "results unrelated to the prompt"
+# complaint in its exact form. `salt` also matches 41, and there every one of
+# them is equally and genuinely what was asked about.
+#
+# Measured on the development catalog, the discriminating query scores its best
+# seed at 0.30 and every distractor at 0.10, while the non-discriminating one
+# scores every match identically. A relative floor therefore cuts hard exactly
+# when the query distinguishes and keeps everything exactly when it does not,
+# without either case being special-cased. One half is the midpoint of that
+# measured gap rather than a tuned value; the rule is what matters, and it
+# survives a catalog whose ranks look nothing like this one's.
+_GRAPH_SEED_RANK_FLOOR = 0.5
+
+# Both the lexical arm and the graph arm's seed match on any of the query's
+# terms. Shared with claim retrieval so a prompt is parsed one way across the
+# product — see `any_term_tsquery` for why the conjunction was wrong.
+_ANY_TERM = any_term_tsquery("query")
 
 _T = TypeVar("_T")
 
@@ -74,144 +111,6 @@ def _cache_key(query_text: str, model_version: str) -> str:
 #: The governed magnitude this module fuses with. Its value, and the reason it
 #: holds that value, live in `contextplane/ranking_registry.json`.
 _FUSION_MODEL_ID: Final = "entity-search-hybrid-fusion@1"
-
-
-def rank_decay_weights(n: int) -> list[float]:
-    """Rank-based decay: weight for rank r (0-based) = 1/(r+1).
-
-    Public because claim retrieval fuses through it too. A second
-    implementation would drift from this one, and then a caller comparing a
-    capability result with a claim result would be comparing numbers produced
-    by different arithmetic.
-
-    Takes the arm's row *count*, not the rows or their scores — the decay
-    curve depends only on how many ranked positions there are, never on what
-    occupies them, so a caller cannot pass the wrong data by passing the
-    right length. Returns ``[]`` for ``n <= 0``.
-    """
-    return [1.0 / (rank + 1) for rank in range(n)]
-
-
-def redistribute_weights(
-    weights: dict[str, float],
-    failed_arms: set[str],
-) -> dict[str, float]:
-    """Return new weights with failed arms removed and remaining scaled to sum=1.
-
-    Public for the same reason as `rank_decay_weights`: how a missing arm is
-    handled is part of what a fused score means, so every fusion in the
-    product handles it the same way.
-    """
-    surviving = {arm: w for arm, w in weights.items() if arm not in failed_arms}
-    total = sum(surviving.values())
-    if total == 0.0:
-        return {}
-    return {arm: w / total for arm, w in surviving.items()}
-
-
-@dataclass(frozen=True)
-class FusedRow(Generic[_T]):
-    """One fused result: the winning arm's row plus its accumulated score.
-
-    ``row`` is whatever the first arm to introduce this key returned. Later
-    arms that rank the same key only add to ``score`` and ``arm_scores`` —
-    they never replace ``row`` — because the identity of a result does not
-    depend on which arm found it first, only on being found.
-    """
-
-    row: _T
-    score: float
-    arm_scores: dict[str, float]
-
-
-async def fuse_hybrid_arms(
-    arms: Mapping[str, Awaitable[Sequence[_T]]],
-    weights: Mapping[str, float],
-    key: Callable[[_T], Hashable],
-) -> tuple[dict[Hashable, FusedRow[_T]], set[str]]:
-    """Run N ranked retrieval arms concurrently and fuse them into one ranking.
-
-    This is the orchestration ``search`` runs its three arms through, pulled
-    out as a public primitive so a second hybrid ranker can reuse the exact
-    arithmetic instead of reimplementing it and drifting from it.
-
-    Parameters
-    ----------
-    arms:
-        One already-invoked awaitable per named arm (a coroutine, a task —
-        anything ``asyncio.gather`` accepts). Each arm owns its own per-arm
-        over-fetch: fusion re-ranks across arms, so a row an individual arm
-        placed fourth can finish first once weights and the other arms'
-        contributions are added in, and an arm that only returned the
-        caller's final desired count would already have discarded it before
-        fusion had a chance to promote it. This function does not truncate;
-        callers slice the fused, sorted result to whatever size they need.
-    weights:
-        Base per-arm weight, expected to sum to 1.0 by convention (not
-        enforced — weights that don't sum to 1 produce scores that don't
-        either).
-    key:
-        Extracts the dedup identity from one row of one arm's results. Two
-        arms returning a row for the same key contribute additively to that
-        key's score.
-
-    Arm failure vs. an empty arm
-    -----------------------------
-    An arm whose awaitable raises is excluded from fusion and its weight is
-    redistributed proportionally across the surviving arms (see
-    ``redistribute_weights``) — a missing arm should not silently lower every
-    score by omission, or the ranking would look like every result got worse
-    rather than like one signal went away. An arm that raises nothing but
-    returns an empty list is treated differently: it keeps its weight slot
-    and simply contributes nothing, because an empty result is a legitimate
-    answer ("nothing matched"), not a failure.
-
-    Returns
-    -------
-    A ``(fused, failed_arms)`` pair. ``fused`` maps each row's dedup key to
-    its winning row, accumulated score, and per-arm score breakdown. Rows are
-    unordered; callers sort by ``.fused_rank_score`` themselves so they can apply their
-    own tie-break.
-    """
-    names = list(arms.keys())
-    raw_results = await asyncio.gather(*arms.values(), return_exceptions=True)
-
-    arm_rows: dict[str, Sequence[_T]] = {}
-    failed_arms: set[str] = set()
-    for name, result in zip(names, raw_results, strict=True):
-        if isinstance(result, BaseException):
-            _log.warning(
-                "retrieval arm failed — excluding from fusion",
-                extra={"arm": name, "error": str(result)},
-            )
-            failed_arms.add(name)
-        else:
-            arm_rows[name] = result
-
-    effective_weights = redistribute_weights(dict(weights), failed_arms)
-
-    fused: dict[Hashable, FusedRow[_T]] = {}
-    for arm_name, weight in effective_weights.items():
-        rows = arm_rows.get(arm_name, [])
-        if not rows:
-            continue
-        rank_scores = rank_decay_weights(len(rows))
-        for rank, row in enumerate(rows):
-            row_key = key(row)
-            contribution = weight * rank_scores[rank]
-            existing = fused.get(row_key)
-            if existing is None:
-                fused[row_key] = FusedRow(row=row, score=contribution, arm_scores={arm_name: contribution})
-            else:
-                new_arm_scores = dict(existing.arm_scores)
-                new_arm_scores[arm_name] = new_arm_scores.get(arm_name, 0.0) + contribution
-                fused[row_key] = FusedRow(
-                    row=existing.row,
-                    score=existing.score + contribution,
-                    arm_scores=new_arm_scores,
-                )
-
-    return fused, failed_arms
 
 
 class _SearchMethods(_RetrievalState):
@@ -444,7 +343,36 @@ class _SearchMethods(_RetrievalState):
         temporal_filter: TemporalFilter,
         entity_type: str | None,
     ) -> list[tuple[uuid.UUID, EntityRef, list[FactRef]]]:
-        """Full-text search via tsvector @@ plainto_tsquery, ranked by ts_rank_cd."""
+        """Full-text search over facts, matching any query term and ranking by coverage.
+
+        **Any term, not every term, and the difference is the whole arm.**
+        `plainto_tsquery` conjoins: `Who owns salt design system?` becomes
+        `'own' & 'salt' & 'design' & 'system'`, which requires one fact to
+        contain all four. Against a real corpus that matches nothing — measured,
+        not supposed: on the dev seed the conjunction returns 0 facts and the
+        disjunction returns 15. Dropping the word "owns" from the same question
+        made it match. A retrieval arm behind a prompt box cannot require the
+        user to phrase a keyword query, because the box asks for a question.
+
+        **Coverage still decides the order, so widening the match does not
+        flatten the ranking.** Two ranks are computed. `rank_all` scores the
+        conjunction, so a fact carrying every term sorts above one carrying some;
+        `rank_any` scores the disjunction and orders the rest by how much of the
+        query they cover and how close together it appears. A fact that merely
+        contains "system" ranks last rather than being excluded, which is the
+        right answer for an arm whose output is fused with two others and cut to
+        `top_k`.
+
+        **The disjunction is derived from the conjunction rather than parsed
+        again.** `plainto_tsquery` already did the tokenising, stemming and
+        stopword removal; rewriting its operators keeps one parse and one
+        normalisation. Building a second query from the raw string would be a
+        second lexer that drifts from the first.
+
+        A query of only stopwords yields an empty tsquery, which matches nothing.
+        That is unchanged and correct: there is no term to search for, and
+        returning the whole corpus would be worse than returning none of it.
+        """
         now = self._clock.now()
         tf_sql, tf_params = temporal_sql_fragments(temporal_filter, now, table_alias="f")
 
@@ -461,6 +389,15 @@ class _SearchMethods(_RetrievalState):
 
         sql = text(
             f"""
+            WITH parsed AS (
+                -- One parse, two shapes. The disjunction is the conjunction with
+                -- its operators rewritten, so tokenising, stemming and stopword
+                -- removal happen exactly once and the two can never disagree
+                -- about what the query's terms are.
+                SELECT
+                    plainto_tsquery('english', CAST(:query AS TEXT)) AS all_terms,
+                    {_ANY_TERM} AS any_term
+            )
             SELECT
                 f.fact_id,
                 f.entity_id,
@@ -481,20 +418,26 @@ class _SearchMethods(_RetrievalState):
                 ent.external_id,
                 ent.is_active,
                 ent.created_at,
-                ts_rank_cd(f.ts_vector, plainto_tsquery('english', :query)) AS rank
+                ts_rank_cd(f.ts_vector, parsed.all_terms) AS rank_all,
+                ts_rank_cd(f.ts_vector, parsed.any_term) AS rank_any
             FROM facts f
             JOIN entities ent ON ent.entity_id = f.entity_id
+            CROSS JOIN parsed
             WHERE f.tenant_id = :tid
               AND ent.tenant_id = :tid
               AND ent.is_active = TRUE
-              AND f.ts_vector @@ plainto_tsquery('english', :query)
+              AND f.ts_vector @@ parsed.any_term
               {entity_filter}
               AND {tf_sql}
+            -- Every term first, then coverage of any. A fact carrying the whole
+            -- query outranks one carrying part of it, and the partial matches are
+            -- ordered by how much they cover rather than being discarded.
+            --
             -- Tiebroken for the same reason as the semantic arm above:
             -- `ts_rank_cd` returns equal ranks routinely across a corpus of short
             -- similar documents, and an untiebroken LIMIT then selects a
             -- different set on each run.
-            ORDER BY rank DESC, lower(ent.name), f.fact_id
+            ORDER BY rank_all DESC, rank_any DESC, lower(ent.name), f.fact_id
             LIMIT :limit
             """
         )
@@ -515,9 +458,27 @@ class _SearchMethods(_RetrievalState):
     ) -> list[tuple[uuid.UUID, EntityRef, list[FactRef]]]:
         """Graph-neighbour expansion via recursive CTE.
 
-        Starting from entities whose names match the query text (lexical match),
-        expand outward via graph edges up to _SEARCH_GRAPH_DEPTH hops.
-        Returns entity-level rows for the neighbour entities.
+        Starting from entities whose names match the query's terms, expand
+        outward via graph edges up to `_SEARCH_GRAPH_DEPTH` hops. Returns
+        entity-level rows for the neighbour entities.
+
+        **The seed matches terms, not the query as a substring.** It previously
+        ran `ent.name ILIKE '%' || query || '%'`, which asks whether some entity
+        is *named* the thing the user typed. `Who owns salt design system?`
+        seeded nothing, and so did `salt design system`, because no entity is
+        called that — the catalog spells it `salt-design-system`. An arm that
+        contributes only when the user already knows an entity's exact name
+        contributes nothing to the case it exists for, which is the user who does
+        not. Matching `to_tsvector(name)` against the same disjunction the
+        lexical arm builds seeds `salt-design-system` first for all three
+        spellings, because Postgres tokenises the hyphenated name into its parts.
+
+        **Seeds are ranked and capped.** An unbounded seed set was tolerable
+        while the match was a rare exact-substring hit; matching any term makes a
+        common word like "system" a plausible seed for much of the catalog, and
+        each seed then pays for a recursive expansion. `ts_rank_cd` puts the
+        entity that matches the most of the query first, and `_GRAPH_SEED_LIMIT`
+        bounds what expands.
         """
         now = self._clock.now()
         tf_fact_sql, tf_fact_params = temporal_sql_fragments(temporal_filter, now, table_alias="f")
@@ -532,9 +493,11 @@ class _SearchMethods(_RetrievalState):
         entity_filter = ""
         params: dict[str, Any] = {
             "tid": ctx.tenant_id,
-            "query": f"%{q}%",
+            "query": q,
             "edge_types": list(_GRAPH_EDGE_TYPES),
             "limit": top_k,
+            "seed_limit": _GRAPH_SEED_LIMIT,
+            "seed_rank_floor": _GRAPH_SEED_RANK_FLOOR,
             **tf_fact_params,
             **tf_edge_params_renamed,
         }
@@ -545,7 +508,8 @@ class _SearchMethods(_RetrievalState):
         sql = text(
             f"""
             WITH RECURSIVE graph_cte AS (
-                -- Seed: entities matching query text
+                -- Seed: entities whose names carry any of the query's terms,
+                -- best coverage first, capped before anything expands.
                 SELECT
                     ent.entity_id,
                     ent.tenant_id,
@@ -554,12 +518,53 @@ class _SearchMethods(_RetrievalState):
                     ent.external_id,
                     ent.is_active,
                     ent.created_at,
-                    0 AS depth_counter
-                FROM entities ent
-                WHERE ent.tenant_id = :tid
-                  AND ent.is_active = TRUE
-                  AND ent.name ILIKE :query
-                  {entity_filter}
+                    0 AS depth_counter,
+                    ent.seed_rank
+                FROM (
+                    -- Wrapped rather than filtered in place: the floor compares
+                    -- each candidate against the best candidate, so the whole
+                    -- matched set has to be ranked before any of it can be cut.
+                    -- Postgres also rejects ORDER BY/LIMIT directly in a
+                    -- recursive CTE's non-recursive term.
+                    SELECT
+                        scored.entity_id,
+                        scored.tenant_id,
+                        scored.entity_type,
+                        scored.name,
+                        scored.external_id,
+                        scored.is_active,
+                        scored.created_at,
+                        scored.seed_rank
+                    FROM (
+                        SELECT
+                            ent.entity_id,
+                            ent.tenant_id,
+                            ent.entity_type,
+                            ent.name,
+                            ent.external_id,
+                            ent.is_active,
+                            ent.created_at,
+                            ts_rank_cd(
+                                to_tsvector('english', ent.name),
+                                {_ANY_TERM}
+                            ) AS seed_rank,
+                            MAX(
+                                ts_rank_cd(
+                                    to_tsvector('english', ent.name),
+                                    {_ANY_TERM}
+                                )
+                            ) OVER () AS best_rank
+                        FROM entities ent
+                        WHERE ent.tenant_id = :tid
+                          AND ent.is_active = TRUE
+                          AND to_tsvector('english', ent.name) @@
+                              {_ANY_TERM}
+                          {entity_filter}
+                    ) scored
+                    WHERE scored.seed_rank >= scored.best_rank * :seed_rank_floor
+                    ORDER BY scored.seed_rank DESC, lower(scored.name), scored.entity_id
+                    LIMIT :seed_limit
+                ) ent
 
                 UNION
 
@@ -571,7 +576,11 @@ class _SearchMethods(_RetrievalState):
                     ent2.external_id,
                     ent2.is_active,
                     ent2.created_at,
-                    graph_cte.depth_counter + 1
+                    graph_cte.depth_counter + 1,
+                    -- A neighbour inherits the anchor it was reached from, so
+                    -- the outer ordering can put the neighbours of the best
+                    -- match above the neighbours of a weak one.
+                    graph_cte.seed_rank
                 FROM graph_cte
                 JOIN edges e ON e.src_entity_id = graph_cte.entity_id
                 JOIN entities ent2 ON ent2.entity_id = e.dst_entity_id
@@ -582,7 +591,10 @@ class _SearchMethods(_RetrievalState):
                   AND graph_cte.depth_counter < :search_depth
                   AND {tf_edge_sql_renamed}
             )
+            SELECT * FROM (
             SELECT DISTINCT ON (g.entity_id)
+                g.depth_counter,
+                g.seed_rank,
                 g.entity_id,
                 g.tenant_id AS ent_tenant_id,
                 g.entity_type,
@@ -606,9 +618,35 @@ class _SearchMethods(_RetrievalState):
             LEFT JOIN facts f ON f.entity_id = g.entity_id
               AND f.tenant_id = :tid
               AND {tf_fact_sql}
-            ORDER BY g.entity_id, g.depth_counter
+            -- DISTINCT ON dictates this ORDER BY: its leading expression must
+            -- be the distinct key, so the only choice left here is which of an
+            -- entity's duplicate rows survives, and the shallowest should.
+            --
+            -- Total, not merely shallowest-first. An entity reachable from two
+            -- seeds at the same depth has two rows carrying different
+            -- `seed_rank`s, and an entity with several facts has one row per
+            -- fact; under an ordering that does not separate them Postgres
+            -- keeps whichever it happens to reach first, and the arm returns a
+            -- different ranking on each run from identical data. Measured: with
+            -- only `(entity_id, depth_counter)` this suite's precision@1 moved
+            -- between 0.50 and 0.74 across runs. The strongest anchor wins, and
+            -- `fact_id` makes the rest of the order reproducible.
+            ORDER BY g.entity_id, g.depth_counter, g.seed_rank DESC, f.fact_id
+            ) deduped
+            -- The ordering that decides what the arm actually returns, applied
+            -- after DISTINCT ON has had the ordering it requires. Ordering by
+            -- `entity_id` was the whole result order before, which meant a UUID
+            -- chose the top ten: the arm returned an arbitrary slice of
+            -- everything it could reach and called it a ranking. Direct name
+            -- matches come first, then how well the anchor matched, so a
+            -- neighbour of the best match outranks a neighbour of a weak one.
+            ORDER BY
+                deduped.depth_counter,
+                deduped.seed_rank DESC,
+                lower(deduped.name),
+                deduped.entity_id
             LIMIT :limit
-            """
+            """  # noqa: S608 - every interpolated fragment is module-level SQL text (`_ANY_TERM`, the temporal fragments, the entity-type clause) built from fixed strings and `:param` binds; the query text is bound, never formatted in
         )
         params["search_depth"] = _SEARCH_GRAPH_DEPTH
 

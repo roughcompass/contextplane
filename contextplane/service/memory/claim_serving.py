@@ -44,7 +44,8 @@ from contextplane.exceptions import TenantIsolationError, ValidationError
 from contextplane.profile.scoring import resolve_weights
 from contextplane.service.memory.confidence_decay import half_life_days
 from contextplane.service.memory.confidence_read import serve as serve_confidence
-from contextplane.service.retrieval.search import fuse_hybrid_arms
+from contextplane.service.retrieval._query_primitives import any_term_tsquery
+from contextplane.service.retrieval.fusion import fuse_hybrid_arms
 from contextplane.storage.models import Entity
 from contextplane.types import Clock, Embedder, TenantContext
 
@@ -738,15 +739,21 @@ SELECT {_PROJECTION}
 # `DISTINCT ON` is load-bearing. The lexical arm deliberately does not filter `model_id`
 # (text is text, whatever produced the vector), so with two models indexed a claim would
 # appear once per model and fusion would count its weight twice.
+# Any of the query's terms, ranked by how many of them a claim carries. The
+# conjunction `plainto_tsquery` builds made this arm answer a question only when
+# the asker already phrased it as keywords — see `any_term_tsquery`, which entity
+# search's lexical arm shares so the two parse a prompt the same way.
+_ANY_TERM = any_term_tsquery("q")
+
 _LEXICAL_ARM_INNER = f"""
 SELECT DISTINCT ON (c.claim_id) {_PROJECTION},
-       ts_rank(emb.ts_vector, plainto_tsquery('english', CAST(:q AS TEXT))) AS lex_rank
+       ts_rank(emb.ts_vector, {_ANY_TERM}) AS lex_rank
 {_INDEX_JOIN}
  WHERE {_SERVABLE_AS_OF}
 {_ARM_FILTERS}
-   AND emb.ts_vector @@ plainto_tsquery('english', CAST(:q AS TEXT))
+   AND emb.ts_vector @@ {_ANY_TERM}
  ORDER BY c.claim_id,
-          ts_rank(emb.ts_vector, plainto_tsquery('english', CAST(:q AS TEXT))) DESC
+          ts_rank(emb.ts_vector, {_ANY_TERM}) DESC
 """
 
 # `DISTINCT ON` requires its key to lead the ORDER BY, so relevance ordering is applied

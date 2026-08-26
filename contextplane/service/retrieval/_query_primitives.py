@@ -59,6 +59,35 @@ from contextplane.types import Clock, Embedder, TemporalFilter, TenantContext
 _GRAPH_EDGE_TYPES: tuple[str, ...] = ("depends_on", "integrates_with", "event_source")
 
 
+def any_term_tsquery(bind: str = "query") -> str:
+    """SQL for a tsquery matching *any* of a user's terms, not all of them.
+
+    `plainto_tsquery` conjoins. That is the right default for a keyword box and
+    the wrong one everywhere this product puts a prompt box, because a question
+    carries words the corpus does not: `Who owns salt design system?` parses to
+    `'own' & 'salt' & 'design' & 'system'` and requires one row to contain all
+    four. Measured on the development catalog that returned 0 facts where the
+    disjunction returned 15, and deleting the single word "owns" was enough to
+    make the same question match.
+
+    Rewriting the parsed query's operators, rather than parsing the raw string a
+    second time, is what keeps this honest: tokenising, stemming and stopword
+    removal have already happened, so the disjunction covers exactly the terms
+    the conjunction did. A separately-built OR query would be a second lexer,
+    and the two would eventually disagree about what the query's terms are.
+
+    Shared rather than written twice for the reason `fuse_hybrid_arms` is shared:
+    entity search and claim retrieval both have a lexical arm, and a caller
+    comparing an entity result with a claim result should not be comparing
+    matches produced by different parsing.
+
+    Callers keep binding the raw query text to ``bind``; only the operator
+    changes. Relevance is unaffected by the widening as long as the caller ranks
+    with `ts_rank`/`ts_rank_cd`, which score how much of the query a row covers.
+    """
+    return f"replace(plainto_tsquery('english', CAST(:{bind} AS TEXT))::text, '&', '|')::tsquery"
+
+
 def temporal_sql_fragments(
     temporal_filter: TemporalFilter,
     now: datetime.datetime,
