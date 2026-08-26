@@ -483,7 +483,9 @@ def test_every_read_that_the_tripwire_guards_actually_pins_the_tenant() -> None:
     into a 500 for every caller, which is loud -- but this fails first, at lint
     speed, and says which read lost it.
     """
-    from contextplane.service.memory import claim_serving as module
+    # The statements moved to `claim_serving_sql` when the service module crossed
+    # the size ceiling. The tripwire is about what the SQL pins, so it reads the SQL.
+    from contextplane.service.memory import claim_serving_sql as module
 
     pinned = "c.owning_tenant_id = :tid"
     assert pinned in module._QUERY_SQL

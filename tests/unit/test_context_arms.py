@@ -87,15 +87,63 @@ class _FakeRetrieval:
 
 @dataclasses.dataclass
 class _FakeClaims:
+    """Both reads the arm can choose between, recording which one it chose.
+
+    `read` is the assertion most of the new tests make. Comparing returned claims
+    would pass against an arm that called the wrong method and got lucky, because
+    a fake can return the same rows either way — the choice is the behaviour.
+    """
+
     served: tuple[ServedClaim, ...] = ()
+    #: What the ranked read answers, when it differs from the structural one.
+    ranked: tuple[ServedClaim, ...] | None = None
     raises: Exception | None = None
     asked_limit: int | None = None
+    asked_query: str | None = None
+    asked_as_of: datetime.datetime | None = None
+    read: str | None = None
+    #: Whether the embedding index holds anything for this tenant. `True` by
+    #: default because that is the ordinary case; the test that sets it `False`
+    #: covers the one CI caught, where the ranked read is structurally unable to
+    #: see claims the structural read serves.
+    indexed: bool = True
+
+    async def index_can_answer(self, ctx: TenantContext, *, model_id: str) -> bool:
+        return self.indexed
 
     async def query(self, ctx: TenantContext, spec: Any) -> tuple[ServedClaim, ...]:
+        self.read = "query"
         self.asked_limit = spec.limit
+        self.asked_as_of = spec.as_of
         if self.raises is not None:
             raise self.raises
         return self.served
+
+    async def retrieve(
+        self,
+        ctx: TenantContext,
+        *,
+        query: str,
+        embedder: Any,
+        as_of: datetime.datetime | None = None,
+        top_k: int = 10,
+    ) -> tuple[ServedClaim, ...]:
+        self.read = "retrieve"
+        self.asked_query = query
+        self.asked_limit = top_k
+        self.asked_as_of = as_of
+        if self.raises is not None:
+            raise self.raises
+        return self.ranked if self.ranked is not None else self.served
+
+
+class _FakeEmbedder:
+    """A deployment that can embed. Nothing here reaches the vector."""
+
+    model_version = "fake-embedder"
+
+    def encode(self, texts: list[str]) -> list[list[float]]:
+        return [[0.0] for _ in texts]
 
 
 @dataclasses.dataclass
@@ -221,6 +269,7 @@ def _arms(
     receipts: _FakeReceipts | None = None,
     recall: _FakeRecall | None = None,
     session_factory: Any = None,
+    embedder: Any = None,
 ) -> ContextArms:
     return ContextArms(
         # Defaulted, not forced: the one test that supplies its own factory to
@@ -231,6 +280,9 @@ def _arms(
         arc_receipts=receipts or _FakeReceipts(),
         recall=recall or _FakeRecall(),
         instructions=InstructionChannel(session_factory or (lambda: _NoOverdueSession())),
+        # `None` is a real deployment state and the arm branches on it, so the
+        # default here stays `None` and the tests that need one say so.
+        embedder=embedder,
     )
 
 
@@ -589,6 +641,177 @@ async def test_no_claims_is_an_empty_block() -> None:
     envelope = await _envelope({BLOCK_OBSERVED_CLAIMS: _arms().observed_claims_arm(_ctx(), moment=_NOW)})
 
     assert envelope.block(BLOCK_OBSERVED_CLAIMS).state == BLOCK_EMPTY
+
+
+async def test_a_question_with_no_subject_is_answered_by_what_it_asks_about() -> None:
+    """The defect, stated as the behaviour that was missing.
+
+    Asking *"Who owns salt design system?"* returned three claims about
+    `memory-loop-demo` — real, current, correctly trusted, and about something
+    else — in a block reported `success`. The caller named no subject, so there
+    was no structure to read, and the arm read recency instead of the question.
+
+    Asserted on *which read ran*, not on which claims came back. A fake can
+    return the same rows either way, so comparing claims would pass against an
+    arm that called the wrong method and got lucky.
+    """
+    claims = _FakeClaims()
+    arm = _arms(claims=claims, embedder=_FakeEmbedder()).observed_claims_arm(
+        _ctx(), query="Who owns salt design system?", moment=_NOW
+    )
+
+    await _envelope({BLOCK_OBSERVED_CLAIMS: arm})
+
+    assert claims.read == "retrieve", "a question with no subject must be answered by ranking it"
+    assert claims.asked_query == "Who owns salt design system?"
+
+
+async def test_a_named_subject_is_still_read_exactly() -> None:
+    """ADR 0027 changes one branch and leaves the other alone.
+
+    When the caller names a subject, an exact lookup is the answer. Replacing it
+    with a similarity score would make a precise question return a fuzzy one,
+    which is the argument the original docstring made and which still holds here.
+    """
+    claims = _FakeClaims()
+    arm = _arms(claims=claims, embedder=_FakeEmbedder()).observed_claims_arm(
+        _ctx(), query="Who owns salt design system?", subject_entity_id=uuid.uuid4(), moment=_NOW
+    )
+
+    await _envelope({BLOCK_OBSERVED_CLAIMS: arm})
+
+    assert claims.read == "query", "a caller who named a subject asked for that subject, not for a ranking"
+
+
+@pytest.mark.parametrize("query", [None, "", "   "])
+async def test_a_caller_who_supplied_no_query_still_gets_the_recency_read(query: str | None) -> None:
+    """No query is not a degradation, and must not be reported as one.
+
+    A caller who supplied nothing to narrow by was not narrowed. Saying the block
+    degraded would teach a reader to distrust a block that answered exactly what
+    was asked — and the resolver has callers that legitimately want "recent
+    claims in this tenant" with no question attached.
+    """
+    claims = _FakeClaims(served=(_claim(),))
+    arm = _arms(claims=claims, embedder=_FakeEmbedder()).observed_claims_arm(_ctx(), query=query, moment=_NOW)
+
+    block = (await _envelope({BLOCK_OBSERVED_CLAIMS: arm})).block(BLOCK_OBSERVED_CLAIMS)
+
+    assert claims.read == "query"
+    assert block.state == BLOCK_SUCCESS
+    assert block.reason is None
+
+
+async def test_a_query_of_only_stopwords_is_ranked_and_returns_nothing() -> None:
+    """Where the branch is decided, and what it costs.
+
+    The arm branches on whether a *string* was supplied, not on whether that
+    string has searchable terms — deciding the latter means parsing a tsquery,
+    which is Postgres's job and not something to reimplement in an arm to pick a
+    code path. So `what is the` takes the ranked read, matches nothing, and the
+    block is empty.
+
+    That is the better of the two available answers. The alternative is to notice
+    the emptiness and silently serve recency instead, which answers a question
+    the caller did not ask and cannot be told apart from a real result. An empty
+    block says *nothing matched what you asked*, which is true.
+    """
+    claims = _FakeClaims(served=(_claim(),), ranked=())
+    arm = _arms(claims=claims, embedder=_FakeEmbedder()).observed_claims_arm(_ctx(), query="what is the", moment=_NOW)
+
+    block = (await _envelope({BLOCK_OBSERVED_CLAIMS: arm})).block(BLOCK_OBSERVED_CLAIMS)
+
+    assert claims.read == "retrieve"
+    assert block.state == BLOCK_EMPTY
+
+
+async def test_an_undrained_claim_index_falls_back_without_calling_the_block_degraded() -> None:
+    """The defect CI caught, and the reason it does not degrade.
+
+    `retrieve` reads the embedding index; `query` reads the claim store. A claim
+    consolidated but not yet drained is servable by one and invisible to the
+    other, so switching to the ranked read without asking dropped claims silently
+    — strictly worse than the irrelevant ones this change exists to stop serving.
+    Five integration tests went from serving two claims to serving none.
+
+    It falls back, and it does **not** degrade. A degraded block degrades the
+    whole envelope and makes it uncacheable, and an undrained index is transient
+    by construction: every tenant starts with one. Marking it would make every
+    resolution on a fresh or draining tenant incomplete, which is how `degraded`
+    stops meaning anything anywhere else. `index_coverage` is the number for this
+    condition and exists to put it on a dashboard.
+
+    The no-embedder case *does* degrade, and the test above is what says so —
+    that gap is permanent and an operator can act on it.
+    """
+    claims = _FakeClaims(served=(_claim(),), indexed=False)
+    arm = _arms(claims=claims, embedder=_FakeEmbedder()).observed_claims_arm(
+        _ctx(), query="Who owns salt design system?", moment=_NOW
+    )
+
+    block = (await _envelope({BLOCK_OBSERVED_CLAIMS: arm})).block(BLOCK_OBSERVED_CLAIMS)
+
+    assert claims.read == "query", "an index that cannot answer must not be asked to"
+    assert block.items, "the claims the store can still serve must still be served"
+    assert block.state == BLOCK_SUCCESS
+    assert block.reason is None
+
+
+async def test_a_deployment_that_cannot_rank_says_so_rather_than_answering_quietly() -> None:
+    """The fallback that must never be silent.
+
+    With no embedder the arm cannot rank, so it serves recency — the same items
+    it would have served before this change, and indistinguishable from a ranked
+    answer by looking at them. "The tenant's recent claims" and "claims about
+    what you asked" are different answers, so the block says which one this is.
+    """
+    claims = _FakeClaims(served=(_claim(),))
+    arm = _arms(claims=claims, embedder=None).observed_claims_arm(
+        _ctx(), query="Who owns salt design system?", moment=_NOW
+    )
+
+    block = (await _envelope({BLOCK_OBSERVED_CLAIMS: arm})).block(BLOCK_OBSERVED_CLAIMS)
+
+    assert claims.read == "query"
+    assert block.state == BLOCK_DEGRADED
+    assert block.reason is not None
+    assert "embedder" in block.reason
+
+
+async def test_the_ranked_read_is_pinned_to_the_resolution_moment() -> None:
+    """One instant across five blocks, or the receipt records a lie.
+
+    `retrieve` previously took its `as_of` from the clock alone, which is
+    invisible while every caller wants the present. A resolution pins one moment
+    and reads every block at it; a ranked claim read using wall-clock time would
+    make one block of a temporal envelope answer a different question from the
+    other four, while the receipt recorded the pinned instant for all five.
+    """
+    claims = _FakeClaims()
+    arm = _arms(claims=claims, embedder=_FakeEmbedder()).observed_claims_arm(
+        _ctx(), query="who owns the payments api", moment=_NOW
+    )
+
+    await _envelope({BLOCK_OBSERVED_CLAIMS: arm})
+
+    assert claims.asked_as_of == _NOW
+
+
+async def test_the_ranked_read_is_clamped_the_same_way_the_structural_one_is() -> None:
+    """An over-large caller bound is refused by this arm on both paths.
+
+    The clamp lived on the branch that existed when it was written. A second read
+    path is exactly how a bound like this stops applying to half the calls.
+    """
+    claims = _FakeClaims()
+    arm = _arms(claims=claims, embedder=_FakeEmbedder()).observed_claims_arm(
+        _ctx(), query="who owns the payments api", moment=_NOW, limit=10_000
+    )
+
+    await _envelope({BLOCK_OBSERVED_CLAIMS: arm})
+
+    assert claims.read == "retrieve"
+    assert claims.asked_limit == 100
 
 
 async def test_a_lifecycle_profile_withholds_claims_placed_elsewhere_and_says_so() -> None:

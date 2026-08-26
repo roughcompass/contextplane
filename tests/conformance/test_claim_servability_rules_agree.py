@@ -46,7 +46,10 @@ from __future__ import annotations
 import pathlib
 import re
 
-from contextplane.service.memory import claim_serving
+# The statements live in `claim_serving_sql`; they moved there when the service
+# module crossed the size ceiling. What this checks is a property of the SQL, so
+# it follows the SQL rather than the service that executes it.
+from contextplane.service.memory import claim_serving_sql as claim_serving
 from contextplane.service.memory import curation_queue as queue_module
 from contextplane.service.retrieval import embedding_index
 
