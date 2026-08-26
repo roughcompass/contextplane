@@ -49,6 +49,7 @@ from typing import Any, Final, TypeVar
 
 from sqlalchemy import RowMapping, text
 
+from contextplane.embedding.stub import STUB_MODEL_VERSION
 from contextplane.embedding.targets import TARGET_FACT
 from contextplane.profile.scoring import resolve_weights
 from contextplane.service.retrieval._query_primitives import (
@@ -159,13 +160,38 @@ class _SearchMethods(_RetrievalState):
             resolved = await resolve_weights(session, tenant_id=ctx.tenant_id, model_id=_FUSION_MODEL_ID)
         base_weights = resolved.value
 
+        # An embedder that cannot rank is *absent*, not a quiet contributor.
+        #
+        # `StubEmbedder` returns zero vectors and says so: "every distance is
+        # identical, so the ranking is arbitrary". Arbitrary is not neutral. This
+        # arm carries the largest of the three weights, so on any deployment
+        # running the stub — every `make dev-up`, every smoke stack — half the
+        # fused score was being assigned to an arbitrary handful of rows.
+        #
+        # Measured on the fifty-question corpus, changing nothing else:
+        # precision@1 0.66-0.74 with the arm present, 0.98 with it absent, and
+        # the run-to-run variance goes with it. The corpus was reporting a
+        # different number each run because an arm with no signal was choosing
+        # which rows it happened to return.
+        #
+        # `fuse_hybrid_arms` already models this: an arm left out of both maps is
+        # gone rather than empty, and `redistribute_weights` gives its share to
+        # the arms that can still answer. Dropping it from `arms` alone would
+        # leave it holding its weight while contributing nothing, which lowers
+        # every score by omission and is the case that docstring warns about.
+        arms: dict[str, Any] = {
+            "lexical": self._lexical_arm(ctx, q, top_k, temporal_filter, entity_type),
+            "graph": self._graph_arm(ctx, q, top_k, temporal_filter, entity_type),
+        }
+        weights = dict(base_weights)
+        if self._embedder.model_version == STUB_MODEL_VERSION:
+            weights.pop("semantic", None)
+        else:
+            arms["semantic"] = self._semantic_arm(ctx, q, top_k, temporal_filter, entity_type)
+
         fused, _failed_arms = await fuse_hybrid_arms(
-            arms={
-                "semantic": self._semantic_arm(ctx, q, top_k, temporal_filter, entity_type),
-                "lexical": self._lexical_arm(ctx, q, top_k, temporal_filter, entity_type),
-                "graph": self._graph_arm(ctx, q, top_k, temporal_filter, entity_type),
-            },
-            weights=base_weights,
+            arms=arms,
+            weights=weights,
             key=lambda row: row[0],
         )
 
