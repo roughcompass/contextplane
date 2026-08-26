@@ -205,6 +205,14 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # out of ranked results.
         "service/retrieval/embedding_index.py",
         "service/memory/claim_serving.py",
+        # The statements `claim_serving` runs, split out when that module crossed
+        # the size ceiling. Listed rather than folded into the entry above
+        # because this sweep reads *files*: a module holding claim SQL is exactly
+        # what it exists to notice, and the fact that this one holds only text a
+        # single already-listed reader executes is a claim about the split, which
+        # is the sort of claim that stops being true quietly. If a second module
+        # ever imports from here, that is the moment to ask whether it should.
+        "service/memory/claim_serving_sql.py",
         "service/memory/promotion.py",
         # Reads a claim's status, subject, and neighbourhood to decide eligibility and
         # impact. Writes nothing at all. The output is a classification a reviewer

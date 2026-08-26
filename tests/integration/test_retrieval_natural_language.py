@@ -197,10 +197,14 @@ def test_both_lexical_arms_parse_a_prompt_the_same_way() -> None:
     prompt and whose observed-claims block silently does not — the harder failure
     to notice, because the envelope still comes back populated.
     """
-    from contextplane.service.memory import claim_serving
+    from contextplane.service.memory import claim_serving_sql
     from contextplane.service.retrieval import search
 
-    for module, bind in ((search, "query"), (claim_serving, "q")):
+    # `claim_serving_sql` rather than `claim_serving`: the statements moved to
+    # their own module when the service crossed the size ceiling. The invariant
+    # did not move — it is about the two arms parsing a prompt the same way, not
+    # about which file either lives in.
+    for module, bind in ((search, "query"), (claim_serving_sql, "q")):
         assert module._ANY_TERM == any_term_tsquery(
             bind
         ), f"{module.__name__} builds its own tsquery instead of sharing `any_term_tsquery`"

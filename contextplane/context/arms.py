@@ -225,7 +225,12 @@ class ContextArms:
             BLOCK_CANONICAL: self.canonical_arm(ctx, query=query, moment=moment, limit=limit),
             BLOCK_ARC: self.arc_arm(arc, receipt_id=arc_receipt_id),
             BLOCK_OBSERVED_CLAIMS: self.observed_claims_arm(
-                ctx, subject_entity_id=subject_entity_id, moment=moment, limit=limit, lifecycle=lifecycle
+                ctx,
+                query=query,
+                subject_entity_id=subject_entity_id,
+                moment=moment,
+                limit=limit,
+                lifecycle=lifecycle,
             ),
             BLOCK_WORKSPACE: self.workspace_arm(
                 ctx,
@@ -306,6 +311,7 @@ class ContextArms:
         self,
         ctx: TenantContext,
         *,
+        query: str | None = None,
         subject_entity_id: uuid.UUID | None = None,
         moment: datetime.datetime,
         limit: int = DEFAULT_ARM_LIMIT,
@@ -313,13 +319,59 @@ class ContextArms:
     ) -> ContextArm:
         """Claims recalled from living memory, weighed but not promoted.
 
-        A structural read rather than a ranked one. Ranking would make an
-        answer's contents depend on a similarity score nobody asked for, and a
-        receipt that cannot be reproduced from its own inputs is decorative.
+        **A named subject is read structurally. Everything else is scoped by the
+        query.** ADR 0027 records why the two differ and this docstring used to
+        state only the first half:
+
+            A structural read rather than a ranked one. Ranking would make an
+            answer's contents depend on a similarity score nobody asked for, and
+            a receipt that cannot be reproduced from its own inputs is
+            decorative.
+
+        That is right where it was aimed — when the caller names a subject, an
+        exact lookup is the answer and a similarity score would make a precise
+        question return a fuzzy one. It was then applied to a case it does not
+        describe. **With no subject there is no structure to read**, and the read
+        was not structural but `ORDER BY recency LIMIT n` over the whole tenant:
+        asking *"Who owns salt design system?"* returned three claims about
+        `memory-loop-demo`, in a block reported `success`, in an envelope
+        reported `complete`, with no field saying the claims were about something
+        else.
+
+        The reproducibility argument favours the change rather than opposing it.
+        A recency read depends on wall-clock time and on every claim written
+        since, neither of which is an input to the request — two resolutions of
+        the identical request minutes apart legitimately differ. A ranked read
+        depends on the query, which *is* an input, and on the corpus at `as_of`,
+        which the receipt already pins.
+
+        The neighbouring arm had already made this decision: `for_request` passes
+        `term=workspace_term if workspace_term is not None else query`. This one
+        was the only block of the five that ignored what was asked.
+
+        The ranked read is `ClaimServingService.retrieve` — not a new path, but
+        the existing one this arm declined to call. It serves through the same
+        visibility checks, citation construction and recall label as the
+        structural read, which is why borrowing it does not weaken the block.
+
+        **A fallback says so.** A deployment with no embedder cannot rank, and a
+        query of only stopwords has nothing to rank by. Both fall back to the
+        recency read, and the first sets `degraded_reason`, because "the tenant's
+        recent claims" and "claims about what you asked" are different answers
+        that look identical in the items alone. The second does not: a caller who
+        supplied nothing to narrow by was not narrowed, and that is not a
+        degradation.
 
         A lifecycle profile narrows this to claims placed where the caller is.
         `lifecycle.narrow` owns that rule, and says why no other block shares it.
         """
+        # Whether the query can scope anything is decided here, once, rather than
+        # inside the coroutine: it depends only on arguments already in hand, and
+        # a branch resolved per-call would be a branch the receipt cannot explain
+        # from the request.
+        searchable = query.strip() if query else ""
+        wants_ranking = subject_entity_id is None and bool(searchable)
+        no_embedder = wants_ranking and self._embedder is None
         # One more than the bound for the same reason the canonical arm asks for
         # it, clamped to what the query type accepts so an over-large caller
         # bound is refused by this arm rather than by the service underneath it.
@@ -342,10 +394,30 @@ class ContextArms:
             # that has just become unservable.
             async with self._session_factory() as session:
                 await self._refuse_if_overdue(session, tenant_id=ctx.tenant_id, moment=moment)
-            served = await self._claims.query(
-                ctx,
-                ClaimQuery(subject_entity_id=subject_entity_id, as_of=moment, limit=bounded),
-            )
+            # The ranked read reads the *index*; the structural read reads the
+            # store. A consolidated claim that the drain has not reached yet is
+            # servable by one and invisible to the other, so switching without
+            # asking would drop claims silently -- strictly worse than the
+            # irrelevant ones this change exists to stop serving. Asked here, per
+            # resolution, because the drain runs between resolutions.
+            unindexed = False
+            if wants_ranking and self._embedder is not None:
+                unindexed = not await self._claims.index_can_answer(ctx, model_id=self._embedder.model_version)
+
+            if wants_ranking and not no_embedder and not unindexed:
+                assert self._embedder is not None  # noqa: S101 - narrowed above
+                served = await self._claims.retrieve(
+                    ctx,
+                    query=searchable,
+                    embedder=self._embedder,
+                    as_of=moment,
+                    top_k=bounded,
+                )
+            else:
+                served = await self._claims.query(
+                    ctx,
+                    ClaimQuery(subject_entity_id=subject_entity_id, as_of=moment, limit=bounded),
+                )
             excluded: tuple[Exclusion, ...] = ()
             if lifecycle is not None and lifecycle.selects():
                 served, excluded = await context_lifecycle.narrow(self._session_factory, lifecycle, served, ctx)
@@ -363,6 +435,29 @@ class ContextArms:
             return ArmOutcome(
                 items=ordered_items(items),
                 exclusions=excluded,
+                # **Only the permanent gap degrades.** A block marked degraded
+                # degrades the whole envelope and makes it uncacheable, so the
+                # signal has to be worth that. No embedder is: the deployment
+                # cannot rank, it will not start being able to, and an operator
+                # can act on it.
+                #
+                # An undrained claim index is not, even though it produces the
+                # same fallback. It is transient by construction -- every tenant
+                # starts with one and the drain fixes it -- and the block returns
+                # exactly what it returned before this arm learned to rank, which
+                # nothing called degraded then. Marking it would make every
+                # resolution on a fresh or draining tenant incomplete and
+                # uncacheable, which is how `degraded` stops meaning anything
+                # anywhere else. `index_coverage` is the number for that
+                # condition, and its docstring says so: it exists to show an empty
+                # claim index on a dashboard rather than leave it to be discovered
+                # by reading code.
+                degraded_reason=(
+                    "this deployment has no embedder, so these are the tenant's most recent claims "
+                    "rather than the claims about what was asked"
+                    if no_embedder
+                    else None
+                ),
                 truncated=len(served) > limit,
                 # Same reasoning as the canonical arm: a live read is as fresh as
                 # its own instant. Each claim additionally carries its own

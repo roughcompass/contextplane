@@ -1090,7 +1090,7 @@ def test_the_claim_arm_joins_on_target_kind() -> None:
     belong to a fact, which is reachable because `target_id` carries no foreign key. That
     is worth an explicit guard even though only the source can show it.
     """
-    from contextplane.service.memory.claim_serving import _INDEX_JOIN
+    from contextplane.service.memory.claim_serving_sql import _INDEX_JOIN
 
     assert "emb.target_type = 'claim'" in _INDEX_JOIN, "the claim arms no longer discriminate on target kind"
 
