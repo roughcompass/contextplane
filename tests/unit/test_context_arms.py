@@ -289,8 +289,12 @@ def _arms(
 # -- fixtures for the rows the arms map ------------------------------------
 
 
-def _search_result(name: str = "payments-api") -> SearchResult:
-    entity_id = uuid.uuid4()
+def _search_result(name: str = "payments-api", entity_id: uuid.UUID | None = None) -> SearchResult:
+    # Callers that assert on ordering pin the id: `receipt_item_id` is a digest of
+    # the entity id, so a random one makes the *old* digest ordering random too —
+    # and a test for an ordering defect that only sometimes reproduces it is not a
+    # test. Everything else keeps the fresh id it always had.
+    entity_id = entity_id or uuid.uuid4()
     return SearchResult(
         entity=EntityRef(
             entity_id=entity_id,
@@ -381,7 +385,7 @@ def _receipt(
     }
 
 
-async def _assemble(arms: dict[str, ContextArm]) -> AssemblyResult:
+async def _assemble(arms: dict[str, ContextArm], **kwargs: Any) -> AssemblyResult:
     """Assemble over the given arms, filling any absent block with an empty one.
 
     Every test drives the real assembler so the states asserted below are the
@@ -392,12 +396,12 @@ async def _assemble(arms: dict[str, ContextArm]) -> AssemblyResult:
     async def _nothing() -> ArmOutcome:
         return ArmOutcome()
 
-    return await assemble({name: arms.get(name, _nothing) for name in BLOCK_NAMES}, now=_NOW)
+    return await assemble({name: arms.get(name, _nothing) for name in BLOCK_NAMES}, now=_NOW, **kwargs)
 
 
-async def _envelope(arms: dict[str, ContextArm]) -> ContextEnvelopeV1:
+async def _envelope(arms: dict[str, ContextArm], **kwargs: Any) -> ContextEnvelopeV1:
     """The envelope alone, for the majority of cases that assert on block state."""
-    return (await _assemble(arms)).envelope
+    return (await _assemble(arms, **kwargs)).envelope
 
 
 # -- the mapping is total --------------------------------------------------
@@ -440,6 +444,57 @@ async def test_the_canonical_arm_reads_one_past_its_bound_so_truncation_is_measu
     assert len(block.items) == 3
     assert block.state == BLOCK_DEGRADED
     assert "partial read" in (block.reason or "")
+
+
+#: Identities pinned so the *old* behaviour is deterministic too. `receipt_item_id`
+#: digests the entity id, so random ids made digest order random and a test for an
+#: ordering defect that only sometimes reproduces it is not a test. With these
+#: eight, ranked first to last, the digest sort ordered them 3, 8, 6, 5, 7, 1, 4, 2
+#: — so a cap of four kept 3, 8, 6, 5 and discarded the two best answers outright.
+_RANKED_IDS = [uuid.UUID(f"{i:032x}") for i in range(1, 9)]
+
+
+async def test_the_block_presents_the_retrievers_best_answer_first() -> None:
+    """ADR 0028, asserted where an agent would notice it.
+
+    The retriever ranks; the block used to sort that ranking away by receipt-item
+    digest. Measured on the development catalog before the fix: asked *"which
+    components depend on the salt theme provider"*, `search()` ranked
+    `salt-design-system` first at 0.3222 and `salt-avatar` fourth at 0.1000, and
+    the block presented `salt-avatar` first — the whole block in ascending
+    hexadecimal digest order.
+
+    Names, not digests, because a name is what the reader of a failure needs.
+    """
+    ranked = [f"rank-{i}" for i in range(1, 9)]
+    retrieval = _FakeRetrieval(
+        results=[_search_result(name, entity_id=eid) for name, eid in zip(ranked, _RANKED_IDS, strict=True)]
+    )
+    arm = _arms(retrieval=retrieval).canonical_arm(_ctx(), query="salt theme provider", moment=_NOW, limit=8)
+
+    block = (await _envelope({BLOCK_CANONICAL: arm})).block(BLOCK_CANONICAL)
+
+    assert [item.payload["name"] for item in block.items] == ranked
+
+
+async def test_the_cap_drops_a_blocks_worst_items_rather_than_an_arbitrary_subset() -> None:
+    """The half of ADR 0028 that changes *content*, not only order.
+
+    `_block_from_outcome` caps with `outcome.items[:item_cap]`, applied after the
+    block's order is decided. Under the digest sort the survivors were whichever
+    hashes sorted first — for these eight, ranks 3, 8, 6 and 5, so the two best
+    answers were discarded and the eighth-best kept, in a block still reported
+    `success` with no field recording what went missing.
+    """
+    ranked = [f"rank-{i}" for i in range(1, 9)]
+    retrieval = _FakeRetrieval(
+        results=[_search_result(name, entity_id=eid) for name, eid in zip(ranked, _RANKED_IDS, strict=True)]
+    )
+    arm = _arms(retrieval=retrieval).canonical_arm(_ctx(), query="anything", moment=_NOW, limit=8)
+
+    block = (await _envelope({BLOCK_CANONICAL: arm}, item_cap=4)).block(BLOCK_CANONICAL)
+
+    assert [item.payload["name"] for item in block.items] == ranked[:4]
 
 
 async def test_a_canonical_arm_with_nothing_to_say_is_empty_not_degraded() -> None:

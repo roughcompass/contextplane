@@ -113,7 +113,15 @@ async def workspace_arm(
             IntentCheckpoint.tenant_id == tenant_id,
             IntentCheckpoint.intent_id.in_(authorized),
         )
-        .order_by(IntentCheckpoint.recorded_at.desc(), IntentCheckpoint.sequence.desc())
+        # `checkpoint_id` last, making the order total. Two checkpoints in
+        # different tasks can share both an instant and a sequence, and the
+        # block now presents items in the order its read produced (ADR 0028),
+        # so a partial order makes two identical requests differ.
+        .order_by(
+            IntentCheckpoint.recorded_at.desc(),
+            IntentCheckpoint.sequence.desc(),
+            IntentCheckpoint.checkpoint_id,
+        )
         # One more than the limit, so "there is more" is answered by the query
         # rather than guessed from a full page.
         .limit(limit + 1)
