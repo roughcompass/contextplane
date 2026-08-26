@@ -313,7 +313,14 @@ class WorkspaceRecall:
                         ),
                         IntentCheckpoint.goal.ilike(f"%{needle}%"),
                     )
-                    .order_by(IntentCheckpoint.recorded_at.desc())
+                    # Tiebroken to a total order. `recorded_at` alone leaves two
+                    # checkpoints recorded in the same instant free to arrive in
+                    # either order, and the block now presents items in the order
+                    # its read produced (ADR 0028) — so an untiebroken read makes
+                    # two identical requests differ, and a `LIMIT` on one keeps a
+                    # different row each time. `ordered_items`'s digest sort used to
+                    # hide this by discarding the order entirely.
+                    .order_by(IntentCheckpoint.recorded_at.desc(), IntentCheckpoint.checkpoint_id)
                     # One more than asked for, so hitting the bound is
                     # distinguishable from happening to land on it exactly.
                     .limit(size + 1)
@@ -364,7 +371,14 @@ class WorkspaceRecall:
                         ),
                         IntentCheckpoint.checkpoint_id.in_(bound_checkpoints),
                     )
-                    .order_by(IntentCheckpoint.recorded_at.desc())
+                    # Tiebroken to a total order. `recorded_at` alone leaves two
+                    # checkpoints recorded in the same instant free to arrive in
+                    # either order, and the block now presents items in the order
+                    # its read produced (ADR 0028) — so an untiebroken read makes
+                    # two identical requests differ, and a `LIMIT` on one keeps a
+                    # different row each time. `ordered_items`'s digest sort used to
+                    # hide this by discarding the order entirely.
+                    .order_by(IntentCheckpoint.recorded_at.desc(), IntentCheckpoint.checkpoint_id)
                     .limit(size + 1)
                 )
             ).scalars()

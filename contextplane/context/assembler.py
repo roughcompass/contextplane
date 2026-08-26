@@ -360,14 +360,43 @@ def contextual_item(
 
 
 def ordered_items(items: Sequence[ContextItemV1]) -> tuple[ContextItemV1, ...]:
-    """Items in a deterministic order, independent of how they were fetched.
+    """Items in the order the read produced them. ADR 0028.
 
-    Sorted by receipt item id, which is derived from block, source and item
-    identity -- so the order is a property of what the items *are* rather than
-    of the query plan that found them. Two resolutions over unchanged data
-    produce the same order, which is what makes a receipt checkable.
+    This sorted by `receipt_item_id.value()` -- a SHA-256 digest of the block,
+    source and item identity -- for a stated reason:
+
+        Sorted by receipt item id ... so the order is a property of what the
+        items *are* rather than of the query plan that found them. Two
+        resolutions over unchanged data produce the same order, which is what
+        makes a receipt checkable.
+
+    The property is real. What it cost was not stated, and is easiest to see
+    measured. Asking the development catalog *"which components depend on the
+    salt theme provider"*, the retriever ranked `salt-design-system` first at
+    0.3222 and `salt-avatar` fourth at 0.1000; the block presented `salt-avatar`
+    first and the design system third, in ascending hexadecimal digest order.
+    **The ranking was computed and then discarded**, on every block, on every
+    resolution.
+
+    Worse than presentation: `_block_from_outcome` caps with
+    `outcome.items[:item_cap]` *after* this call, so a block over the cap dropped
+    items by hash. The best match could be discarded while a worse one was kept.
+
+    Determinism did not need a digest, only a total order, and every read feeding
+    a block already has one -- entity search's was measured directly across three
+    freshly seeded databases while fixing the natural-language defect. So the
+    guarantee moves from this function to the arms, where it is asserted by a
+    test rather than made true by construction and therefore untestable.
+
+    Kept as a function, and every arm keeps calling it, because one point where a
+    block's order is decided is what makes that decision enforceable. A read added
+    without a total `ORDER BY` now produces a block whose order varies between
+    identical requests, which is the risk ADR 0028 accepts and names.
+
+    The receipt is unaffected: `context_receipt_items` has no position column, so
+    it records *which* items were served and never in what order.
     """
-    return tuple(sorted(items, key=lambda item: item.receipt_item_id.value()))
+    return tuple(items)
 
 
 __all__ = [

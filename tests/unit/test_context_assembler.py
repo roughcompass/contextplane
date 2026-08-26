@@ -490,12 +490,41 @@ def test_quality_orders_degraded_blocks_by_the_fixed_block_order() -> None:
 # --- Determinism --------------------------------------------------------------
 
 
-def test_item_order_is_a_property_of_the_items_not_of_the_query() -> None:
-    """Two resolutions over unchanged data produce the same order, which is what
-    makes a receipt checkable rather than decorative."""
+def test_a_block_keeps_the_order_its_read_produced() -> None:
+    """The inverse of what this asserted, and ADR 0028 says why.
+
+    It used to assert `ordered_items(items) == ordered_items(reversed(items))` —
+    that a block's order is independent of the read that produced it. That is a
+    true description of a digest sort and it is the defect: every read ranks its
+    results and the sort threw the ranking away, so the first item in a block was
+    whichever digest happened to sort first. Measured on the development catalog,
+    the retriever's fourth-best result was presented first.
+
+    Inverted rather than deleted. A block's order now *is* the read's order, so
+    reversing the input reverses the output — which is exactly what the old
+    assertion forbade.
+    """
     items = [_contextual(BLOCK_WORKSPACE, key) for key in ("c", "a", "b")]
 
-    assert ordered_items(items) == ordered_items(list(reversed(items)))
+    assert ordered_items(items) == tuple(items)
+    assert ordered_items(list(reversed(items))) == tuple(reversed(items))
+
+
+def test_two_identical_resolutions_still_agree_on_order() -> None:
+    """The guarantee the digest sort used to make, now made by the arms.
+
+    Dropping the sort moves "two resolutions over unchanged data produce the same
+    order" from something true by construction to something the reads have to
+    deliver — every one of them has a total `ORDER BY`, and this is what says so.
+    The old sort made this untestable: it was true whatever the arms did, which is
+    why it could stay true while the ranking underneath it was being discarded.
+    """
+    items = [_contextual(BLOCK_WORKSPACE, key) for key in ("c", "a", "b")]
+
+    assert ordered_items(items) == ordered_items(items)
+    assert [item.receipt_item_id.value() for item in ordered_items(items)] == [
+        item.receipt_item_id.value() for item in ordered_items(items)
+    ]
 
 
 @pytest.mark.asyncio
