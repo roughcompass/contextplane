@@ -25,7 +25,7 @@ import numpy as np
 import pytest
 
 from contextplane.service.retrieval import RetrievalService
-from contextplane.service.retrieval.search import rank_decay_weights, redistribute_weights
+from contextplane.service.retrieval.fusion import rank_decay_weights, redistribute_weights
 from contextplane.types import (
     EntityRef,
     FactRef,
