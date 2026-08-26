@@ -50,10 +50,13 @@ that touches retrieval imports ``RetrievalService`` by name from
 contract, and rewriting it everywhere the day the internals moved would have
 been a second, unrelated change bundled into a refactor that owed nobody one.
 A future caller wanting ``rank_decay_weights`` or ``fuse_hybrid_arms``
-imports ``contextplane.service.retrieval.search`` directly, the same way a
+imports ``contextplane.service.retrieval.fusion`` directly, the same way a
 catalog caller imports ``contextplane.service.catalog.entity`` directly — nothing
 below the facade is re-exported, and reaching for it through here is reaching
-past the facade this split exists to keep thin.
+past the facade this split exists to keep thin. Those four names live in
+``fusion`` rather than in ``search`` because two retrievers rank through them and
+only one of those is entity search; ``search.py`` reaching the file-size ceiling
+is what prompted the move, but the seam it was cut along is that one.
 
 ``RetrievalService`` itself is not a facade that delegates to three separate
 service objects the way ``CatalogService`` delegates to ``EntityService`` and
