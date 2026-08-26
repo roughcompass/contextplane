@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 from sqlalchemy import RowMapping, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from contextplane.embedding.stub import STUB_MODEL_VERSION
 from contextplane.exceptions import TenantIsolationError, ValidationError
 from contextplane.profile.scoring import resolve_weights
 from contextplane.service.memory.claim_serving_sql import (
@@ -615,15 +616,31 @@ class ClaimServingService:
         # ordering is identical; only internal score magnitudes differ, and
         # nothing downstream reads them. Arms run sequentially on the one
         # session — asyncpg connections are not concurrency-safe.
-        semantic_rows = await _semantic()
+        # An embedder that cannot rank is absent, exactly as in entity search.
+        # `StubEmbedder`'s zero vectors tie every distance, so this arm returns an
+        # arbitrary handful and — carrying the larger of the two weights — decides
+        # the answer. Entity search measured the cost on its own corpus:
+        # precision@1 0.66-0.74 with the arm present, 0.98 without. Here the
+        # effect is starker, because with two arms an arbitrary one is half the
+        # ranking rather than a third of it.
+        can_rank = model_version != STUB_MODEL_VERSION
+        semantic_rows = await _semantic() if can_rank else []
         lexical_rows = await _lexical()
 
         async def _ready(rows: list[Any]) -> list[Any]:
             return rows
 
-        arm_weights = (await resolve_weights(session, tenant_id=tenant_id, model_id=_FUSION_MODEL_ID)).value
+        arm_weights = dict((await resolve_weights(session, tenant_id=tenant_id, model_id=_FUSION_MODEL_ID)).value)
+        arms: dict[str, Any] = {"lexical": _ready(lexical_rows)}
+        if can_rank:
+            arms["semantic"] = _ready(semantic_rows)
+        else:
+            # Out of both maps, so the weight is redistributed rather than held by
+            # an arm that answers nothing -- see `fuse_hybrid_arms`.
+            arm_weights.pop("semantic", None)
+
         fused, _failed = await fuse_hybrid_arms(
-            {"semantic": _ready(semantic_rows), "lexical": _ready(lexical_rows)},
+            arms,
             arm_weights,
             key=lambda row: row["claim_id"],
         )
